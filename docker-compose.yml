@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: gov_uk_corpus_db
+    environment:
+      POSTGRES_DB: gov_uk_urls
+      POSTGRES_USER: gov_uk_crawler
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gov_uk_crawler -d gov_uk_urls"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gov_uk_corpus_api
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: gov_uk_urls
+      DB_USER: gov_uk_crawler
+      DB_PASSWORD: ${DB_PASSWORD:-changeme}
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      LOG_DIR: /app/logs
+      REPORT_DIR: /app/reports
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+      - ./reports:/app/reports
+    command: python -m api.app
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gov_uk_corpus_scheduler
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: gov_uk_urls
+      DB_USER: gov_uk_crawler
+      DB_PASSWORD: ${DB_PASSWORD:-changeme}
+      LOG_DIR: /app/logs
+      REPORT_DIR: /app/reports
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+      - ./reports:/app/reports
+    command: python jobs/scheduler.py
+
+volumes:
+  postgres_data:
+
+networks:
+  default:
+    name: gov_uk_corpus_network
