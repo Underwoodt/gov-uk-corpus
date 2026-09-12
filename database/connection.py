@@ -15,7 +15,7 @@ def init_connection_pool(
     port: int = int(os.getenv("DB_PORT", 5432)),
     database: str = os.getenv("DB_NAME", "gov_uk_urls"),
     user: str = os.getenv("DB_USER", "gov_uk_crawler"),
-    password: str = os.getenv("DB_PASSWORD", ""),
+    password: str = os.getenv("DB_PASSWORD", "Tennis6902"),
     minconn: int = 2,
     maxconn: int = 10
 ):
