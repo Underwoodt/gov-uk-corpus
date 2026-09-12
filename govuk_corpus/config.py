@@ -9,6 +9,9 @@ RATE_LIMIT_PER_SEC = 2.0
 REQUEST_TIMEOUT = 30.0
 USER_AGENT = "gov-uk-corpus/0.1 (+contact: corpus rebuild pilot)"
 
+# Stage 2 — redirect chains. GOV.UK chains are short; cap to catch loops/pathologies.
+MAX_REDIRECT_DEPTH = 10
+
 # DEFRA-family publishing bodies (pilot scope, Q1). Mirrors the 44 slugs in
 # ai-eu-trade-accelerator/guidance-discovery/src/filters.py.
 DEFRA_ORGS = [

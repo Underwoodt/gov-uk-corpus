@@ -144,3 +144,34 @@ def sitemap_frontier(conn: sqlite3.Connection, limit: Optional[int] = None):
         q += " LIMIT ?"
         params = (limit,)
     return conn.execute(q, params).fetchall()
+
+
+# ---- redirects (Stage 2) --------------------------------------------------
+
+def find_unresolved_redirects(conn: sqlite3.Connection, limit: Optional[int] = None):
+    """Redirect pages not yet resolved into the `redirects` table."""
+    q = (
+        "SELECT url FROM content "
+        "WHERE is_redirect = 1 AND url NOT IN (SELECT source_url FROM redirects) "
+        "ORDER BY url"
+    )
+    params: tuple = ()
+    if limit:
+        q += " LIMIT ?"
+        params = (limit,)
+    return [r["url"] for r in conn.execute(q, params).fetchall()]
+
+
+def upsert_redirect(conn: sqlite3.Connection, source_url: str,
+                    destination_url: Optional[str], http_status: Optional[int],
+                    run_id: str) -> None:
+    conn.execute(
+        "INSERT INTO redirects (source_url, destination_url, http_status, resolved_run, resolved_at) "
+        "VALUES (?,?,?,?,?) "
+        "ON CONFLICT(source_url) DO UPDATE SET "
+        "destination_url=excluded.destination_url, http_status=excluded.http_status, "
+        "resolved_run=excluded.resolved_run, resolved_at=excluded.resolved_at",
+        (source_url, destination_url, http_status, run_id, now_iso()),
+    )
+    # Keep the source page's destination pointing at the FINAL target.
+    conn.execute("UPDATE content SET destination_url=? WHERE url=?", (destination_url, source_url))
