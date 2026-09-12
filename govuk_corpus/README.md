@@ -19,6 +19,7 @@ now and Postgres on migration.
 | `stage_sitemap.py` | **Stage 0** — sitemap frontier refresh (offline dir or live), `lastmod` tracking. |
 | `stage_align.py` | **Stage 1** — fetch, hash, upsert with provenance; reads the frontier. |
 | `stage_redirects.py` | **Stage 2** — resolve redirect chains to final (depth-capped, cycle-safe), import destination. |
+| `stage_attachments.py` | **Stage 3** — expand child/attachment pages into the one corpus; record `page_links`. |
 | `pilot.py` | Runnable pilot: seed / existing-db / `--from-frontier`. |
 
 ## Run the pilot
@@ -47,12 +48,15 @@ python3 -m govuk_corpus.stage_sitemap --db data/pilot.db --live --limit-sitemaps
 python3 -m govuk_corpus.pilot --db data/pilot.db --from-frontier 50
 # resolve redirects to their final destination and import it
 python3 -m govuk_corpus.stage_redirects --db data/pilot.db
+# expand child/attachment pages into the one corpus
+python3 -m govuk_corpus.stage_attachments --db data/pilot.db
 ```
 
 ## Status / next
 - **Done:** canonicalisation, schema + provenance (`runs`/`fetch_log`), hashing,
   **Stage 0** (sitemap frontier + `lastmod`), **Stage 1** align + frontier wiring,
-  **Stage 2** (redirect chains → final → import). **23 unit tests pass.** Verified
-  end-to-end incl. a real redirect resolving to its collection page.
-- **Next:** Stage 3 (attachment/child-page expansion into the one corpus via
-  `page_links`), then the Lightsail Postgres migration.
+  **Stage 2** (redirect chains → final → import), **Stage 3** (child/attachment page
+  expansion + `page_links`; file binaries counted, deferred). **28 unit tests pass.**
+  All four stages verified end-to-end on the pilot DB.
+- **Next:** the Lightsail Postgres migration (upload `content.db.zip`, `pgloader`,
+  port schema), then daily scheduling and the shortlist output.
