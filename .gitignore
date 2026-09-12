@@ -85,3 +85,8 @@ build/
 # Sensitive data - never commit
 # credentials.json
 # secrets/
+
+# pilot data + sqlite sidecars
+data/
+*.db-wal
+*.db-shm
