@@ -1,11 +1,14 @@
 """Pilot configuration for the GOV.UK corpus rebuild."""
 from __future__ import annotations
 
+import os
+
 GOVUK_API_BASE = "https://www.gov.uk/api/content"
 GOVUK_SITEMAP_INDEX = "https://www.gov.uk/sitemap.xml"
 
-# Politeness: be gentle on the public API.
-RATE_LIMIT_PER_SEC = 2.0
+# Politeness: be gentle on the public API. Override with env GOVUK_RATE (req/sec);
+# defaults to a conservative 2. Keep it sane (gov.uk is public infrastructure).
+RATE_LIMIT_PER_SEC = float(os.getenv("GOVUK_RATE", "2"))
 REQUEST_TIMEOUT = 30.0
 USER_AGENT = "gov-uk-corpus/0.1 (+contact: corpus rebuild pilot)"
 
