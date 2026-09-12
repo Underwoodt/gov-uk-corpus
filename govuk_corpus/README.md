@@ -24,6 +24,7 @@ now and Postgres on migration.
 | `db_pg.py` | Postgres backend (psycopg3) — mirrors `db.py`'s API so stages run unchanged. |
 | `schema_pg.sql` | Postgres schema (parity with `schema.sql`). |
 | `run_all.py` | Runs the full cycle (Stage 0→1→2→3) — the daily cron entry point. |
+| `shortlist.py` | Emit a deterministic URL shortlist (org × document_type × keyword) for inference. |
 | `pilot.py` | Runnable pilot: seed / existing-db / `--from-frontier`. |
 
 ## Run the pilot
@@ -56,14 +57,27 @@ python3 -m govuk_corpus.stage_redirects --db data/pilot.db
 python3 -m govuk_corpus.stage_attachments --db data/pilot.db
 ```
 
+## Shortlists (the output that feeds inference)
+```bash
+# URLs about slurry OR nitrate, published by the Environment Agency, as guidance
+python3 -m govuk_corpus.shortlist --db data/pilot.db \
+  --organisation environment-agency --document-type guidance \
+  --keywords slurry,nitrate --match any
+# just the count
+python3 -m govuk_corpus.shortlist --db data/pilot.db --keywords slurry --count
+```
+
 ## Status / next
 - **Done:** canonicalisation, schema + provenance (`runs`/`fetch_log`), hashing,
   **Stage 0** (sitemap frontier + `lastmod`), **Stage 1** align + frontier wiring,
   **Stage 2** (redirect chains → final → import), **Stage 3** (child/attachment page
   expansion + `page_links`; file binaries counted, deferred). **28 unit tests pass.**
   All four stages verified end-to-end on the pilot DB.
-- **Postgres-ready:** `db_pg.py` + `backend.py` + `schema_pg.sql` mean the same stages
-  run on Postgres by setting `DB_HOST` (needs `pip install "psycopg[binary]"`). `run_all.py`
-  is the daily entry point. Migration steps: `projects/gov-uk-corpus/lightsail-migration-runbook.md`.
-- **Next:** provision Lightsail + migrate (`pgloader`), schedule `run_all` daily, add the
-  shortlist output.
+- **Shortlist output** (`shortlist.py`) — deterministic URL lists by org × document_type ×
+  keyword, backend-agnostic; keyword is a substring over `content` for now (FTS index
+  deferred). This is the corpus's hand-off to inference.
+- **Postgres-ready:** `db_pg.py` + `backend.py` + `schema_pg.sql` run the same stages on
+  Postgres by setting `DB_HOST` (needs `pip install "psycopg[binary]"`). `run_all.py` is the
+  daily entry point. Migration: `projects/gov-uk-corpus/lightsail-migration-runbook.md`.
+- **Phase A code complete** (39 tests). **Next (ops):** provision Lightsail + migrate
+  (`pgloader`), schedule `run_all` daily. Later: swap the keyword substring for a real index.
