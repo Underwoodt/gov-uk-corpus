@@ -20,6 +20,10 @@ now and Postgres on migration.
 | `stage_align.py` | **Stage 1** — fetch, hash, upsert with provenance; reads the frontier. |
 | `stage_redirects.py` | **Stage 2** — resolve redirect chains to final (depth-capped, cycle-safe), import destination. |
 | `stage_attachments.py` | **Stage 3** — expand child/attachment pages into the one corpus; record `page_links`. |
+| `backend.py` | Selects the DB backend by env: Postgres (`DB_HOST`/`DB_BACKEND=postgres`) else SQLite. |
+| `db_pg.py` | Postgres backend (psycopg3) — mirrors `db.py`'s API so stages run unchanged. |
+| `schema_pg.sql` | Postgres schema (parity with `schema.sql`). |
+| `run_all.py` | Runs the full cycle (Stage 0→1→2→3) — the daily cron entry point. |
 | `pilot.py` | Runnable pilot: seed / existing-db / `--from-frontier`. |
 
 ## Run the pilot
@@ -58,5 +62,8 @@ python3 -m govuk_corpus.stage_attachments --db data/pilot.db
   **Stage 2** (redirect chains → final → import), **Stage 3** (child/attachment page
   expansion + `page_links`; file binaries counted, deferred). **28 unit tests pass.**
   All four stages verified end-to-end on the pilot DB.
-- **Next:** the Lightsail Postgres migration (upload `content.db.zip`, `pgloader`,
-  port schema), then daily scheduling and the shortlist output.
+- **Postgres-ready:** `db_pg.py` + `backend.py` + `schema_pg.sql` mean the same stages
+  run on Postgres by setting `DB_HOST` (needs `pip install "psycopg[binary]"`). `run_all.py`
+  is the daily entry point. Migration steps: `projects/gov-uk-corpus/lightsail-migration-runbook.md`.
+- **Next:** provision Lightsail + migrate (`pgloader`), schedule `run_all` daily, add the
+  shortlist output.

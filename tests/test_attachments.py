@@ -54,5 +54,27 @@ class TestExtractChildLinks(unittest.TestCase):
         self.assertEqual(binaries, 0)
 
 
+class TestDbHelpers(unittest.TestCase):
+    def setUp(self):
+        from govuk_corpus import db
+        self.db = db
+        self.conn = db.connect(":memory:")
+        db.init_db(self.conn)
+
+    def tearDown(self):
+        self.conn.close()
+
+    def test_content_exists_and_add_page_link(self):
+        self.assertFalse(self.db.content_exists(self.conn, "https://www.gov.uk/a"))
+        self.conn.execute("INSERT INTO content (url) VALUES (?)", ("https://www.gov.uk/a",))
+        self.conn.commit()
+        self.assertTrue(self.db.content_exists(self.conn, "https://www.gov.uk/a"))
+
+        self.db.add_page_link(self.conn, "https://www.gov.uk/a", "https://www.gov.uk/a/child", "child")
+        self.db.add_page_link(self.conn, "https://www.gov.uk/a", "https://www.gov.uk/a/child", "child")  # idempotent
+        n = self.conn.execute("SELECT COUNT(*) AS n FROM page_links").fetchone()["n"]
+        self.assertEqual(n, 1)
+
+
 if __name__ == "__main__":
     unittest.main()

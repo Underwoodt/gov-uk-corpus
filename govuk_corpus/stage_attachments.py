@@ -14,7 +14,8 @@ import json
 import os
 from typing import Dict, List, Optional
 
-from . import config, db
+from . import config
+from .backend import db
 from .extract import extract_child_links
 from .stage_align import align_urls
 
@@ -42,13 +43,9 @@ def run_stage3(conn, run_id: str, limit: Optional[int] = None) -> Dict[str, int]
         children, binaries = extract_child_links(payload, row["url"])
         counters["binaries"] += binaries
         for child_url, relation in children:
-            conn.execute(
-                "INSERT OR IGNORE INTO page_links (parent_url, child_url, relation) VALUES (?,?,?)",
-                (row["url"], child_url, relation),
-            )
+            db.add_page_link(conn, row["url"], child_url, relation)
             counters["child_links"] += 1
-            exists = conn.execute("SELECT 1 FROM content WHERE url=?", (child_url,)).fetchone()
-            if not exists:
+            if not db.content_exists(conn, child_url):
                 to_import.append(child_url)
         conn.commit()
 
@@ -80,8 +77,8 @@ def main() -> None:
     print(f"Stage 3 run {run_id[:8]} complete. Counters:")
     for k, v in counters.items():
         print(f"  {k:26} {v}")
-    total_links = conn.execute("SELECT COUNT(*) FROM page_links").fetchone()[0]
-    total_content = conn.execute("SELECT COUNT(*) FROM content").fetchone()[0]
+    total_links = conn.execute("SELECT COUNT(*) AS n FROM page_links").fetchone()["n"]
+    total_content = conn.execute("SELECT COUNT(*) AS n FROM content").fetchone()["n"]
     print(f"\npage_links: {total_links} | content rows: {total_content}")
     conn.close()
 
