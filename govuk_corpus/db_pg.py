@@ -143,6 +143,7 @@ def sitemap_frontier(conn, limit: Optional[int] = None):
         "SELECT s.url AS url, s.lastmod AS lastmod "
         "FROM sitemap s LEFT JOIN content c ON c.url = s.url "
         "WHERE c.url IS NULL "
+        "   OR c.content_hash IS NULL "
         "   OR (s.lastmod IS NOT NULL AND s.lastmod <> '' "
         "        AND (c.sitemap_lastmod IS NULL OR s.lastmod > c.sitemap_lastmod)) "
         "ORDER BY s.url"

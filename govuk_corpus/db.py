@@ -134,7 +134,8 @@ def sitemap_frontier(conn: sqlite3.Connection, limit: Optional[int] = None):
     q = (
         "SELECT s.url AS url, s.lastmod AS lastmod "
         "FROM sitemap s LEFT JOIN content c ON c.url = s.url "
-        "WHERE c.url IS NULL "                       # never fetched
+        "WHERE c.url IS NULL "                       # not in corpus at all
+        "   OR c.content_hash IS NULL "              # row exists but never successfully fetched (e.g. migrated backlog)
         "   OR (s.lastmod IS NOT NULL AND s.lastmod <> '' "
         "        AND (c.sitemap_lastmod IS NULL OR s.lastmod > c.sitemap_lastmod)) "  # sitemap says newer
         "ORDER BY s.url"
