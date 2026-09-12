@@ -6,9 +6,9 @@ writing SQLite-specific generated columns.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
-from .canonical import canonicalise
+from .canonical import canonicalise, path_of
 
 _ORG_BASE = "/government/organisations/"
 
@@ -66,3 +66,52 @@ def extract_organisations(payload: Dict[str, Any]) -> List[Dict[str, str]]:
     add(links.get("primary_publishing_organisation"), "primary")
     add(links.get("organisations"), "related")
     return out
+
+
+def extract_child_links(payload: Dict[str, Any], parent_url: str) -> Tuple[List[Tuple[str, str]], int]:
+    """Child/attachment PAGES referenced by a parent page.
+
+    Returns (child_links, binary_count) where child_links is a list of
+    (canonical_child_url, relation) with relation in {child, part, attachment}.
+    `binary_count` is the number of non-page file attachments (PDF/spreadsheet/...)
+    — deferred to a future binary_attachments table, counted for visibility only.
+
+    Sources:
+      - links.children            -> HTML attachment / child pages (relation "child")
+      - details.parts[].slug      -> multi-part guide sections (relation "part")
+      - details.attachments html  -> inline HTML attachments (relation "attachment")
+    """
+    base = payload.get("base_path") or path_of(parent_url) or ""
+    links = payload.get("links") or {}
+    details = payload.get("details") or {}
+
+    raw: List[Tuple[str, str]] = []
+    for it in links.get("children") or []:
+        bp = it.get("base_path")
+        if bp:
+            raw.append((bp, "child"))
+    for part in details.get("parts") or []:
+        slug = part.get("slug")
+        if slug and base:
+            raw.append((base.rstrip("/") + "/" + slug, "part"))
+
+    binary_count = 0
+    for att in details.get("attachments") or []:
+        if att.get("attachment_type") == "html" and att.get("url"):
+            raw.append((att["url"], "attachment"))
+        elif att.get("attachment_type") == "file":
+            binary_count += 1
+
+    out: List[Tuple[str, str]] = []
+    seen = set()
+    for ref, relation in raw:
+        target = ref if ref.startswith("http") else "https://www.gov.uk" + ref
+        cu = canonicalise(target)
+        if cu is None or cu == parent_url:  # drop external/bad and self-references
+            continue
+        key = (cu, relation)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append((cu, relation))
+    return out, binary_count
