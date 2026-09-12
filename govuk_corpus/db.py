@@ -102,3 +102,45 @@ def replace_page_organisations(conn: sqlite3.Connection, url: str, orgs: list) -
             "(page_url, organisation_content_id, organisation_slug, role) VALUES (?,?,?,?)",
             (url, o.get("content_id"), o.get("slug"), o.get("role")),
         )
+
+
+# ---- sitemap (Stage 0) ----------------------------------------------------
+
+def upsert_sitemap(conn: sqlite3.Connection, url: str, sitemap_file: str,
+                   lastmod: Optional[str]) -> str:
+    """Insert or update one frontier URL. Returns 'new' | 'updated' | 'unchanged'."""
+    row = conn.execute("SELECT lastmod FROM sitemap WHERE url=?", (url,)).fetchone()
+    if row is None:
+        conn.execute(
+            "INSERT INTO sitemap (url, sitemap_file, lastmod, imported_at) VALUES (?,?,?,?)",
+            (url, sitemap_file, lastmod, now_iso()),
+        )
+        return "new"
+    if (row["lastmod"] or "") != (lastmod or ""):
+        conn.execute(
+            "UPDATE sitemap SET sitemap_file=?, lastmod=?, imported_at=? WHERE url=?",
+            (sitemap_file, lastmod, now_iso(), url),
+        )
+        return "updated"
+    return "unchanged"
+
+
+def sitemap_frontier(conn: sqlite3.Connection, limit: Optional[int] = None):
+    """URLs needing (re)fetch: not in content, or the sitemap lastmod is newer.
+
+    NOTE: lastmod comparison is lexicographic on the ISO-8601 strings, which is
+    correct while GOV.UK emits a consistent timezone/format (it does).
+    """
+    q = (
+        "SELECT s.url AS url, s.lastmod AS lastmod "
+        "FROM sitemap s LEFT JOIN content c ON c.url = s.url "
+        "WHERE c.url IS NULL "                       # never fetched
+        "   OR (s.lastmod IS NOT NULL AND s.lastmod <> '' "
+        "        AND (c.sitemap_lastmod IS NULL OR s.lastmod > c.sitemap_lastmod)) "  # sitemap says newer
+        "ORDER BY s.url"
+    )
+    params: tuple = ()
+    if limit:
+        q += " LIMIT ?"
+        params = (limit,)
+    return conn.execute(q, params).fetchall()

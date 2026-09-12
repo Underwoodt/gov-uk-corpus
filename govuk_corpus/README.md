@@ -16,8 +16,9 @@ now and Postgres on migration.
 | `schema.sql` | Pilot schema (SQLite, Postgres-ready): `runs`, `fetch_log`, `content`, `sitemap`, `page_organisations`, `page_links`, `redirects`. |
 | `db.py` | SQLite access + run/provenance helpers. |
 | `extract.py` | Deterministic field + organisation extraction from `/api/content`. |
-| `stage_align.py` | **Stage 1** — fetch, hash, upsert with provenance. |
-| `pilot.py` | Runnable first-session pilot (DEFRA slice). |
+| `stage_sitemap.py` | **Stage 0** — sitemap frontier refresh (offline dir or live), `lastmod` tracking. |
+| `stage_align.py` | **Stage 1** — fetch, hash, upsert with provenance; reads the frontier. |
+| `pilot.py` | Runnable pilot: seed / existing-db / `--from-frontier`. |
 
 ## Run the pilot
 ```bash
@@ -35,10 +36,20 @@ python3 -m govuk_corpus.pilot --from-content-db ~/Downloads/content.db --limit 1
 python3 -m unittest -v tests.test_canonical
 ```
 
+## Run Stage 0 (sitemap frontier)
+```bash
+# offline: parse the sub-sitemaps already in ./sitemaps/
+python3 -m govuk_corpus.stage_sitemap --db data/pilot.db --from-dir sitemaps
+# live: fetch a couple of sub-sitemaps from gov.uk
+python3 -m govuk_corpus.stage_sitemap --db data/pilot.db --live --limit-sitemaps 2
+# then align pages from the frontier
+python3 -m govuk_corpus.pilot --db data/pilot.db --from-frontier 50
+```
+
 ## Status / next
-- Done: canonicalisation (tested), schema + provenance (`runs`/`fetch_log`), hashing,
-  Stage 1 align, pilot runner. Verified end-to-end on a live DEFRA slice
-  (new → unchanged across two runs).
-- Next: Stage 0 (sitemap refresh with `lastmod`), Stage 2 (consolidated redirects),
-  Stage 3 (attachment/child-page expansion into the one corpus), then the Lightsail
-  Postgres migration.
+- **Done:** canonicalisation (tested), schema + provenance (`runs`/`fetch_log`), hashing,
+  **Stage 0** (sitemap frontier + `lastmod` change tracking), **Stage 1** align, frontier
+  wiring, pilot runner. 17 unit tests pass. Verified end-to-end: sitemap → frontier →
+  align, and fetched pages leave the frontier.
+- **Next:** Stage 2 (consolidated redirects), Stage 3 (attachment/child-page expansion
+  into the one corpus), then the Lightsail Postgres migration.

@@ -37,6 +37,8 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="GOV.UK corpus pilot (Stage 1 align).")
     ap.add_argument("--db", default="data/pilot.db", help="pilot SQLite path")
     ap.add_argument("--from-content-db", help="seed frontier from an existing content.db (read-only)")
+    ap.add_argument("--from-frontier", type=int, metavar="N",
+                    help="align N URLs from the sitemap frontier (Stage 0 output)")
     ap.add_argument("--limit", type=int, default=15, help="seed size when using --from-content-db")
     ap.add_argument("--scope", default="defra-pilot")
     args = ap.parse_args()
@@ -45,7 +47,13 @@ def main() -> None:
     conn = db.connect(args.db)
     db.init_db(conn)
 
-    if args.from_content_db:
+    lastmods = None
+    if args.from_frontier:
+        rows = db.sitemap_frontier(conn, limit=args.from_frontier)
+        seeds = [r["url"] for r in rows]
+        lastmods = {r["url"]: r["lastmod"] for r in rows}
+        source = "sitemap"
+    elif args.from_content_db:
         seeds = _seed_from_content_db(args.from_content_db, args.limit)
         source = "sitemap"
     else:
@@ -54,7 +62,7 @@ def main() -> None:
 
     print(f"Seed frontier: {len(seeds)} URLs (source={source})")
     run_id = db.start_run(conn, stage="align", scope=args.scope)
-    counters = align_urls(conn, run_id, seeds, source=source)
+    counters = align_urls(conn, run_id, seeds, source=source, lastmods=lastmods)
     db.finish_run(conn, run_id, counters)
 
     print(f"\nRun {run_id[:8]} complete. Counters:")

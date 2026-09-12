@@ -40,7 +40,10 @@ class _RateLimiter:
 
 
 def align_urls(conn, run_id: str, urls: Iterable[str], source: str,
-               stage: str = "align") -> Dict[str, int]:
+               stage: str = "align", lastmods: Dict[str, str] = None) -> Dict[str, int]:
+    """Fetch/hash/upsert each URL. `lastmods` maps canonical URL -> sitemap lastmod,
+    stored on the content row so the frontier query can detect future changes."""
+    lastmods = lastmods or {}
     counters = _new_counters()
     limiter = _RateLimiter(config.RATE_LIMIT_PER_SEC)
     seen_canonical: set = set()
@@ -100,6 +103,8 @@ def align_urls(conn, run_id: str, urls: Iterable[str], source: str,
                 "source": source,
                 "http_status": resp.status_code,
             })
+            if url in lastmods:
+                fields["sitemap_lastmod"] = lastmods[url]
             db.upsert_content(conn, url, run_id, fields, changed=changed, first_time=first_time)
             if changed:
                 db.replace_page_organisations(conn, url, extract_organisations(payload))
