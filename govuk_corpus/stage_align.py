@@ -12,7 +12,8 @@ from typing import Dict, Iterable, List
 
 import httpx
 
-from . import config, db
+from . import config
+from .backend import db
 from .canonical import canonicalise, path_of
 from .extract import extract_fields, extract_organisations
 from .hashing import content_hash

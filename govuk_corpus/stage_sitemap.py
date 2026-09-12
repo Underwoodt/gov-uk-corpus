@@ -25,7 +25,8 @@ from typing import Dict, List, Optional, Tuple
 
 import httpx
 
-from . import config, db
+from . import config
+from .backend import db
 from .canonical import canonicalise
 
 _SM_NS = "{http://www.sitemaps.org/schemas/sitemap/0.9}"
@@ -133,7 +134,7 @@ def main() -> None:
     print(f"Stage 0 run {run_id[:8]} complete. Counters:")
     for k, v in counters.items():
         print(f"  {k:14} {v}")
-    total = conn.execute("SELECT COUNT(*) FROM sitemap").fetchone()[0]
+    total = conn.execute("SELECT COUNT(*) AS n FROM sitemap").fetchone()["n"]
     frontier = len(db.sitemap_frontier(conn))
     print(f"\nsitemap table: {total} URLs | frontier needing (re)fetch: {frontier}")
     conn.close()

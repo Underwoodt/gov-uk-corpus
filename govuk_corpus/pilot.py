@@ -15,7 +15,8 @@ import os
 import sqlite3
 from typing import List
 
-from . import config, db
+from . import config
+from .backend import db
 from .stage_align import align_urls
 
 
@@ -69,8 +70,8 @@ def main() -> None:
     for k, v in counters.items():
         print(f"  {k:16} {v}")
 
-    total = conn.execute("SELECT COUNT(*) FROM content").fetchone()[0]
-    orgs = conn.execute("SELECT COUNT(*) FROM page_organisations").fetchone()[0]
+    total = conn.execute("SELECT COUNT(*) AS n FROM content").fetchone()["n"]
+    orgs = conn.execute("SELECT COUNT(*) AS n FROM page_organisations").fetchone()["n"]
     print(f"\nCorpus now: {total} content rows, {orgs} organisation links.")
     print("Sample:")
     for row in conn.execute(

@@ -14,7 +14,8 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 import httpx
 
-from . import config, db
+from . import config
+from .backend import db
 from .canonical import canonicalise, path_of
 from .stage_align import _RateLimiter, align_urls
 
@@ -145,7 +146,7 @@ def main() -> None:
     print(f"Stage 2 run {run_id[:8]} complete. Counters:")
     for k, v in counters.items():
         print(f"  {k:20} {v}")
-    total = conn.execute("SELECT COUNT(*) FROM redirects").fetchone()[0]
+    total = conn.execute("SELECT COUNT(*) AS n FROM redirects").fetchone()["n"]
     print(f"\nredirects table: {total} source->final mappings")
     conn.close()
 
