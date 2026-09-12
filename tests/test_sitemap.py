@@ -68,11 +68,17 @@ class TestFrontierLogic(unittest.TestCase):
         # fetched, sitemap lastmod newer -> in frontier
         self._sitemap("https://www.gov.uk/changed", "2026-06-01T00:00:00+00:00")
         self._content("https://www.gov.uk/changed", "2026-01-01T00:00:00+00:00")
+        # migrated backlog: row exists, lastmod matches, but never fetched (no hash) -> in frontier
+        self._sitemap("https://www.gov.uk/backlog", "2026-01-01T00:00:00+00:00")
+        self.conn.execute(
+            "INSERT INTO content (url, content_hash, sitemap_lastmod) VALUES (?,?,?)",
+            ("https://www.gov.uk/backlog", None, "2026-01-01T00:00:00+00:00"))
+        self.conn.commit()
 
         urls = {r["url"] for r in db.sitemap_frontier(self.conn)}
         self.assertEqual(
             urls,
-            {"https://www.gov.uk/new", "https://www.gov.uk/changed"},
+            {"https://www.gov.uk/new", "https://www.gov.uk/changed", "https://www.gov.uk/backlog"},
         )
 
     def test_upsert_sitemap_transitions(self):
