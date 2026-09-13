@@ -9,7 +9,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from govuk_corpus import db
-from govuk_corpus.shortlist import build_query, count, shortlist
+from govuk_corpus.shortlist import build_query, count, shortlist, shortlist_rows
 
 
 class TestBuildQuery(unittest.TestCase):
@@ -84,6 +84,15 @@ class TestShortlistResults(unittest.TestCase):
 
     def test_count(self):
         self.assertEqual(count(self.conn, keywords=["slurry"]), 2)
+
+    def test_shortlist_rows_has_url_and_title(self):
+        rows = shortlist_rows(self.conn, keywords=["slurry"])
+        self.assertEqual([r["url"] for r in rows], ["https://www.gov.uk/a", "https://www.gov.uk/c"])
+        self.assertTrue(all("title" in r for r in rows))
+
+    def test_build_query_include_title(self):
+        sql, _ = build_query(include_title=True)
+        self.assertIn("DISTINCT c.url AS url, c.title AS title", sql)
 
     def test_include_redirects_and_any_status(self):
         urls = shortlist(self.conn, keywords=["slurry"], include_redirects=True, any_status=True)

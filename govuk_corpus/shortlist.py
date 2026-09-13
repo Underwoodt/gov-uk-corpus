@@ -34,6 +34,7 @@ def build_query(
     include_redirects: bool = False,
     any_status: bool = False,
     count_only: bool = False,
+    include_title: bool = False,        # also select c.title (for CSV export)
     limit: Optional[int] = None,
 ) -> Tuple[str, list]:
     """Build (sql, params). Pure/deterministic, so it is unit-testable."""
@@ -64,7 +65,12 @@ def build_query(
         where.append("c.http_status = 200")
 
     where_sql = (" WHERE " + " AND ".join(where)) if where else ""
-    select = "COUNT(DISTINCT c.url) AS n" if count_only else "DISTINCT c.url AS url"
+    if count_only:
+        select = "COUNT(DISTINCT c.url) AS n"
+    elif include_title:
+        select = "DISTINCT c.url AS url, c.title AS title"
+    else:
+        select = "DISTINCT c.url AS url"
     sql = f"SELECT {select} FROM content c{joins}{where_sql}"
     if not count_only:
         sql += " ORDER BY c.url"
@@ -77,6 +83,13 @@ def build_query(
 def shortlist(conn, **kwargs) -> List[str]:
     sql, params = build_query(count_only=False, **kwargs)
     return [r["url"] for r in conn.execute(sql, tuple(params)).fetchall()]
+
+
+def shortlist_rows(conn, **kwargs) -> List[dict]:
+    """Return [{'url':..., 'title':...}] for CSV export."""
+    sql, params = build_query(count_only=False, include_title=True, **kwargs)
+    return [{"url": r["url"], "title": r["title"]}
+            for r in conn.execute(sql, tuple(params)).fetchall()]
 
 
 def count(conn, **kwargs) -> int:
