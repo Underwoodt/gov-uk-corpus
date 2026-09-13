@@ -25,7 +25,10 @@ now and Postgres on migration.
 | `schema_pg.sql` | Postgres schema (parity with `schema.sql`). |
 | `run_all.py` | Runs the full cycle (Stage 0→1→2→3) — the daily cron entry point. |
 | `shortlist.py` | Emit a deterministic URL shortlist (org × document_type × keyword) for inference. |
+| `metrics.py` | Pure dashboard queries (corpus totals, source breakdown, recent runs) — backend-agnostic, unit-tested. |
 | `pilot.py` | Runnable pilot: seed / existing-db / `--from-frontier`. |
+
+(The Streamlit ops dashboard lives at repo-root `dashboard.py`; it reads `metrics.py`.)
 
 ## Run the pilot
 ```bash
@@ -66,6 +69,18 @@ python3 -m govuk_corpus.shortlist --db data/pilot.db \
 # just the count
 python3 -m govuk_corpus.shortlist --db data/pilot.db --keywords slurry --count
 ```
+
+## Ops dashboard (Streamlit)
+```bash
+pip install streamlit
+# local (SQLite pilot)
+DASHBOARD_DB=data/pilot.db streamlit run dashboard.py
+# server (Postgres via env), password-protected, public port
+set -a; . ~/gov-uk-corpus.env; set +a
+DASHBOARD_PASSWORD=yourpw streamlit run dashboard.py --server.port 8501 --server.address 0.0.0.0
+```
+Shows corpus size, source breakdown (sitemap/redirect/attachment), and the last 7 runs
+with status / elapsed / success-rate. Same app will host the search/shortlist UI later.
 
 ## Status / next
 - **Done:** canonicalisation, schema + provenance (`runs`/`fetch_log`), hashing,
