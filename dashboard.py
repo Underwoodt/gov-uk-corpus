@@ -19,6 +19,7 @@ import streamlit as st
 
 from govuk_corpus import metrics
 from govuk_corpus.backend import db
+from ui_common import check_password, connect
 
 st.set_page_config(page_title="GOV.UK Corpus — Ops", page_icon="📊", layout="wide")
 
@@ -51,27 +52,9 @@ _SOURCE_COLORS = {
 }
 
 
-def check_password() -> bool:
-    pw = os.getenv("DASHBOARD_PASSWORD")
-    if not pw:
-        st.warning("No DASHBOARD_PASSWORD set — dashboard is open. Set one before exposing it publicly.")
-        return True
-    if st.session_state.get("authed"):
-        return True
-    with st.form("login"):
-        entered = st.text_input("Password", type="password")
-        if st.form_submit_button("Enter"):
-            if entered == pw:
-                st.session_state["authed"] = True
-                st.rerun()
-            else:
-                st.error("Incorrect password.")
-    return False
-
-
 @st.cache_data(ttl=30, show_spinner=False)
 def load_data():
-    conn = db.connect(os.getenv("DASHBOARD_DB", "data/pilot.db"))
+    conn = connect()
     try:
         return {
             "totals": metrics.corpus_totals(conn),

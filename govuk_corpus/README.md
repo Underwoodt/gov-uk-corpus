@@ -26,9 +26,11 @@ now and Postgres on migration.
 | `run_all.py` | Runs the full cycle (Stage 0→1→2→3) — the daily cron entry point. |
 | `shortlist.py` | Emit a deterministic URL shortlist (org × document_type × keyword) for inference. |
 | `metrics.py` | Pure dashboard queries (corpus totals, source breakdown, recent runs) — backend-agnostic, unit-tested. |
+| `categories.py` | Saved shortlist specs ("categories") — CRUD + validation; filter fields execute via `shortlist.py`. |
 | `pilot.py` | Runnable pilot: seed / existing-db / `--from-frontier`. |
 
-(The Streamlit ops dashboard lives at repo-root `dashboard.py`; it reads `metrics.py`.)
+Streamlit app (repo root): `dashboard.py` (ops home) + `pages/1_Shortlist_Builder.py`
+(CRUD for saved query specs + live filter execution); shared auth/connection in `ui_common.py`.
 
 ## Run the pilot
 ```bash

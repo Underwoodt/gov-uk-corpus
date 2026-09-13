@@ -85,3 +85,24 @@ CREATE TABLE IF NOT EXISTS redirects (
     resolved_run    text,
     resolved_at     text
 );
+
+-- Saved shortlist specs ("categories") — CRUD from the Shortlist Builder UI.
+CREATE TABLE IF NOT EXISTS categories (
+    id                            bigint PRIMARY KEY,
+    created_at                    text,
+    updated_at                    text,
+    status                        text DEFAULT 'draft',
+    owner_email                   text,
+    description                   text,
+    dept_slugs                    text,
+    document_type_slugs           text,
+    keywords                      text,
+    inclusion_context             text,
+    exclusion_context             text,
+    adjudication_hints_keep       text,
+    adjudication_hints_drop       text,
+    extra_guidance_urls           text,
+    only_use_extra_guidance_urls  smallint DEFAULT 0,
+    extra_law_urls                text,
+    only_use_extra_law_urls       smallint DEFAULT 0
+);
