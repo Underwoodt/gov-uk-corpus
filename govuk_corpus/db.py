@@ -15,7 +15,8 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def connect(db_path: str) -> sqlite3.Connection:
+def connect(db_path: str, statement_timeout_ms: Optional[int] = None) -> sqlite3.Connection:
+    # statement_timeout_ms is accepted for signature parity with db_pg.connect; SQLite ignores it.
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL;")

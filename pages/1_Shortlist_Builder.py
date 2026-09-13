@@ -85,11 +85,26 @@ def run_and_show(c):
     orgs = cat.parse_list(c.get("dept_slugs"))
     dts = cat.parse_list(c.get("document_type_slugs"))
     kws = cat.parse_list(c.get("keywords"))
-    st.caption(f"Filter → departments: {orgs or '—'} · document types: {dts or '—'} · keywords (any): {kws or '—'}")
-    n = shortlist.count(conn, organisations=orgs, document_types=dts, keywords=kws, match="any")
+
+    # Guard: keyword search has no index yet, so a keyword-only query would scan the
+    # whole corpus. Only apply keywords when a structured filter (dept/doc-type) has
+    # already narrowed the set. Structured-only and unfiltered COUNT/limit are cheap.
+    apply_keywords = bool(kws) and bool(orgs or dts)
+    if kws and not apply_keywords:
+        st.warning(
+            "Keyword filtering is skipped here: keyword search over the whole corpus "
+            "needs the full-text index (coming next). Add a Department or Document Type "
+            "to use keywords now. Showing the department/document-type result only."
+        )
+    used_kws = kws if apply_keywords else []
+    st.caption(
+        f"Filter → departments: {orgs or '—'} · document types: {dts or '—'} · "
+        f"keywords (any): {used_kws or '—'}"
+    )
+    n = shortlist.count(conn, organisations=orgs, document_types=dts, keywords=used_kws, match="any")
     st.metric("Matching pages in corpus", f"{n:,}")
     if n:
-        urls = shortlist.shortlist(conn, organisations=orgs, document_types=dts, keywords=kws,
+        urls = shortlist.shortlist(conn, organisations=orgs, document_types=dts, keywords=used_kws,
                                    match="any", limit=10000)
         st.download_button("⬇ Download URL shortlist (.txt)", "\n".join(urls),
                            file_name=f"shortlist-{c['id']}.txt", mime="text/plain")

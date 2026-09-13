@@ -28,5 +28,9 @@ def check_password() -> bool:
 
 
 def connect():
-    """Open a connection to the active backend (SQLite locally, Postgres on the server)."""
-    return db.connect(os.getenv("DASHBOARD_DB", "data/pilot.db"))
+    """Open a connection to the active backend (SQLite locally, Postgres on the server).
+
+    A 15s statement timeout guards the UI: no single query can hang the dashboard
+    (the timeout is a Postgres feature; SQLite ignores the argument).
+    """
+    return db.connect(os.getenv("DASHBOARD_DB", "data/pilot.db"), statement_timeout_ms=15000)
