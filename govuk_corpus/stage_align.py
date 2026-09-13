@@ -40,7 +40,7 @@ class _RateLimiter:
         self._last = time.monotonic()
 
 
-def align_urls(conn, run_id: str, urls: Iterable[str], source: str,
+def align_urls(conn, run_id: str, urls: Iterable[str], source,
                stage: str = "align", lastmods: Dict[str, str] = None) -> Dict[str, int]:
     """Fetch/hash/upsert each URL. `lastmods` maps canonical URL -> sitemap lastmod,
     stored on the content row so the frontier query can detect future changes."""
@@ -101,9 +101,10 @@ def align_urls(conn, run_id: str, urls: Iterable[str], source: str,
             fields.update({
                 "content": raw_json,
                 "content_hash": new_hash,
-                "source": source,
                 "http_status": resp.status_code,
             })
+            if source is not None:      # None = leave existing source untouched (reconcile re-verify)
+                fields["source"] = source
             if url in lastmods:
                 fields["sitemap_lastmod"] = lastmods[url]
             db.upsert_content(conn, url, run_id, fields, changed=changed, first_time=first_time)
