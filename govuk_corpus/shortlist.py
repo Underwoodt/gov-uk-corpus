@@ -120,19 +120,16 @@ def selection_funnel(conn, organisations: Sequence[str] = (),
     Each stage is a fast indexed COUNT (keyword via the GIN full-text index on
     Postgres), so this is cheap even on the full corpus.
     """
-    stages = [
+    return [
         ("All pages", count(conn)),
         ("After organisation filter", count(conn, organisations=organisations)),
         ("After document-type filter",
          count(conn, organisations=organisations, document_types=document_types)),
+        # Always shown as the final total; equals the previous row when no keywords are set.
+        ("After keyword filter",
+         count(conn, organisations=organisations, document_types=document_types,
+               keywords=keywords, match="any")),
     ]
-    if keywords:
-        stages.append((
-            "After keyword filter",
-            count(conn, organisations=organisations, document_types=document_types,
-                  keywords=keywords, match="any"),
-        ))
-    return stages
 
 
 def count(conn, **kwargs) -> int:
