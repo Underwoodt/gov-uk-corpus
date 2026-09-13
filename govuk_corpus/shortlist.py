@@ -92,6 +92,20 @@ def shortlist_rows(conn, **kwargs) -> List[dict]:
             for r in conn.execute(sql, tuple(params)).fetchall()]
 
 
+def selection_funnel(conn, organisations: Sequence[str] = (),
+                     document_types: Sequence[str] = ()) -> List[Tuple[str, int]]:
+    """Progressive narrowing: total → after organisation → after document type.
+
+    Each stage is a fast indexed COUNT, so this is cheap even on the full corpus.
+    """
+    return [
+        ("All pages", count(conn)),
+        ("After organisation filter", count(conn, organisations=organisations)),
+        ("After document-type filter",
+         count(conn, organisations=organisations, document_types=document_types)),
+    ]
+
+
 def count(conn, **kwargs) -> int:
     kwargs.pop("limit", None)
     sql, params = build_query(count_only=True, **kwargs)
