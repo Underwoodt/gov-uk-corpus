@@ -1,15 +1,14 @@
-"""Shortlist Builder — CRUD for saved query specs ("categories"), with live execution.
+"""Shortlist Builder — categories list + 3-tab category view (Summary / Edit / Run).
 
 Filter fields (departments × document types × keywords) run against the corpus to
-produce a URL shortlist; the inference fields (include/exclude context, adjudication
-hints, URL overrides) are saved for the downstream LLM phases.
+produce a URL shortlist; inference fields are saved for the downstream LLM phases.
 """
 from __future__ import annotations
 
 import csv
 import io
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -25,7 +24,6 @@ if not check_password():
 
 conn = connect()
 
-# field -> (kind, help). Sections drive layout & order.
 HELP = {
     "owner_email": "Owner of the category; notified when a run finishes.",
     "description": "Goal of the shortlist (≤100 chars).",
@@ -77,52 +75,72 @@ def render_form(existing):
                     data[f] = st.text_area(lbl, value=cur or "", height=90, help=HELP.get(f))
                 elif kind == "bool":
                     data[f] = st.checkbox(lbl, value=bool(cur), help=HELP.get(f))
-        c1, c2 = st.columns([1, 1])
-        saved = c1.form_submit_button("💾 Save", type="primary")
-        cancelled = c2.form_submit_button("Cancel")
-    return data, saved, cancelled
+        saved = st.form_submit_button("💾 Save", type="primary")
+    return data, saved
 
 
-def run_and_show(c):
+def _filters(c):
     orgs = cat.parse_list(c.get("dept_slugs"))
     dts = cat.parse_list(c.get("document_type_slugs"))
     kws = cat.parse_list(c.get("keywords"))
+    apply_kw = bool(kws) and bool(orgs or dts)     # keyword needs a structured filter (no index yet)
+    return orgs, dts, kws, apply_kw
 
-    # Guard: keyword search has no index yet, so a keyword-only query would scan the
-    # whole corpus. Only apply keywords when a structured filter (dept/doc-type) has
-    # already narrowed the set. Structured-only and unfiltered COUNT/limit are cheap.
-    apply_keywords = bool(kws) and bool(orgs or dts)
-    if kws and not apply_keywords:
-        st.warning(
-            "Keyword filtering is skipped here: keyword search over the whole corpus "
-            "needs the full-text index (coming next). Add a Department or Document Type "
-            "to use keywords now. Showing the department/document-type result only."
-        )
-    used_kws = kws if apply_keywords else []
-    st.caption(
-        f"Filter → departments: {orgs or '—'} · document types: {dts or '—'} · "
-        f"keywords (any): {used_kws or '—'}"
-    )
+
+def tab_summary(c):
+    orgs, dts, kws, _ = _filters(c)
+    st.markdown("##### Selection funnel")
+    st.caption("How each filter narrows the corpus (fast indexed counts).")
+    funnel = shortlist.selection_funnel(conn, organisations=orgs, document_types=dts)
+    st.table([{"Selection criterion": lbl, "Rows returned": f"{n:,}"} for lbl, n in funnel])
+    if kws:
+        st.info("Keyword filtering is applied at Run time (only alongside a dept/doc-type "
+                "filter, until the full-text index is added).")
+
+
+def tab_edit(c):
+    st.caption("Update the saved specification.")
+    data, saved = render_form(c)
+    if saved:
+        errors = cat.validate(data)
+        if errors:
+            for e in errors:
+                st.error(e)
+        else:
+            cat.update_category(conn, c["id"], data)
+            st.success("Changes saved.")
+            _go("view", c["id"])
+
+
+def tab_run(c):
+    orgs, dts, kws, apply_kw = _filters(c)
+    used_kws = kws if apply_kw else []
+    if kws and not apply_kw:
+        st.warning("Keyword filtering skipped: keyword-only search needs the full-text index. "
+                   "Add a Department or Document Type to use keywords now.")
+
+    st.markdown("##### Summary")
+    funnel = shortlist.selection_funnel(conn, organisations=orgs, document_types=dts)
+    st.table([{"Selection criterion": lbl, "Rows returned": f"{n:,}"} for lbl, n in funnel])
+
     filters = dict(organisations=orgs, document_types=dts, keywords=used_kws, match="any")
     n = shortlist.count(conn, **filters)
-    st.metric("Matching pages in corpus", f"{n:,}")
+    st.markdown("##### Result")
+    st.metric("Pages in this shortlist", f"{n:,}")
     if n:
         rows = shortlist.shortlist_rows(conn, limit=10000, **filters)
-
-        # CSV (url, title) + plain URL list
         buf = io.StringIO()
-        writer = csv.writer(buf)
-        writer.writerow(["url", "title"])
+        w = csv.writer(buf)
+        w.writerow(["url", "title"])
         for r in rows:
-            writer.writerow([r["url"], r["title"] or ""])
-        d1, d2 = st.columns([1, 1])
+            w.writerow([r["url"], r["title"] or ""])
+        d1, d2 = st.columns(2)
         d1.download_button("⬇ Download CSV (url, title)", buf.getvalue(),
                            file_name=f"shortlist-{c['id']}.csv", mime="text/csv")
         d2.download_button("⬇ Download URLs (.txt)", "\n".join(r["url"] for r in rows),
                            file_name=f"shortlist-{c['id']}.txt", mime="text/plain")
-
         st.dataframe([{"url": r["url"], "title": r["title"]} for r in rows[:500]],
-                     use_container_width=True, height=320)
+                     use_container_width=True, height=300)
         if len(rows) > 500:
             st.caption(f"Showing first 500 of {len(rows):,}. Download for the full list.")
 
@@ -132,7 +150,7 @@ def run_and_show(c):
         st.caption(f"Parameters: {params}")
 
 
-# ---------------------------------------------------------------- LIST
+# ================================================================= LIST
 if mode == "list":
     top_l, top_r = st.columns([4, 1])
     top_l.title("🔎 Shortlist Builder")
@@ -145,60 +163,59 @@ if mode == "list":
     if not rows:
         st.info("No shortlists yet. Click **New shortlist** to create one.")
     else:
-        st.dataframe(
-            [{"ID": r["id"], "Description": (r["description"] or "")[:60], "Owner": r["owner_email"],
-              "Departments": (r["dept_slugs"] or "")[:40], "Doc types": (r["document_type_slugs"] or "")[:40],
-              "Status": r["status"], "Created": (r["created_at"] or "")[:10]} for r in rows],
-            use_container_width=True, hide_index=True,
-        )
-        options = {f"{r['id']} — {(r['description'] or '')[:50]}": r["id"] for r in rows}
-        pick = st.selectbox("Open a shortlist", ["—"] + list(options))
-        if pick != "—":
-            _go("view", options[pick])
+        ratios = [1.6, 3, 2.4, 2.4, 1.1, 1.1]
+        h = st.columns(ratios)
+        for col, name in zip(h, ["ID", "Description", "Owner", "Departments", "Status", ""]):
+            col.markdown(f"**{name}**")
+        st.divider()
+        for r in rows:
+            c0, c1, c2, c3, c4, c5 = st.columns(ratios)
+            c0.write(str(r["id"]))
+            c1.write((r["description"] or "")[:60])
+            c2.write(r["owner_email"] or "")
+            c3.write((r["dept_slugs"] or "")[:40])
+            c4.write(r["status"] or "")
+            if c5.button("Open", key=f"open_{r['id']}"):
+                _go("view", r["id"])
 
-# ---------------------------------------------------------------- CREATE / EDIT
-elif mode in ("create", "edit"):
-    existing = cat.get_category(conn, sel_id) if mode == "edit" else None
-    st.title("✏️ " + ("Edit shortlist" if mode == "edit" else "New shortlist"))
-    data, saved, cancelled = render_form(existing)
-    if cancelled:
+# ================================================================= CREATE
+elif mode == "create":
+    st.title("✏️ New shortlist")
+    if st.button("← Back to list"):
         _go("list")
+    data, saved = render_form(None)
     if saved:
         errors = cat.validate(data)
         if errors:
             for e in errors:
                 st.error(e)
         else:
-            if mode == "edit":
-                cat.update_category(conn, sel_id, data)
-                st.success("Changes saved.")
-                _go("view", sel_id)
-            else:
-                cid = cat.create_category(conn, data)
-                st.success("Shortlist created.")
-                _go("view", cid)
+            cid = cat.create_category(conn, data)
+            st.success("Shortlist created.")
+            _go("view", cid)
 
-# ---------------------------------------------------------------- VIEW / RUN
+# ================================================================= VIEW (tabs)
 elif mode == "view":
     c = cat.get_category(conn, sel_id)
     if not c:
         _go("list")
-    st.title(f"📄 {(c['description'] or 'Shortlist')[:70]}")
-    b1, b2, b3, b4 = st.columns([1, 1, 1, 3])
-    if b1.button("✏️ Edit"):
-        _go("edit", sel_id)
+    hl, hr = st.columns([3, 2])
+    hl.title(f"📄 {(c['description'] or 'Shortlist')[:60]}")
+    hl.caption(f"Status: `{c['status']}` · Owner: {c['owner_email']} · "
+               f"Created: {(c['created_at'] or '')[:19].replace('T', ' ')}")
+    b1, b2, b3 = hr.columns(3)
+    if b1.button("← List"):
+        _go("list")
     publish_label = "Unpublish" if c["status"] == "published" else "Publish"
-    if b2.button(f"📢 {publish_label}"):
+    if b2.button(publish_label):
         cat.update_category(conn, sel_id, c, status="draft" if c["status"] == "published" else "published")
         _go("view", sel_id)
     if b3.button("🗑 Delete"):
         st.session_state["confirm_delete"] = True
-    if b4.button("← Back to list"):
-        _go("list")
 
     if st.session_state.get("confirm_delete"):
         st.warning("Delete this shortlist permanently?")
-        d1, d2, _ = st.columns([1, 1, 4])
+        d1, d2, _ = st.columns([1, 1, 5])
         if d1.button("Yes, delete", type="primary"):
             cat.delete_category(conn, sel_id)
             st.session_state["confirm_delete"] = False
@@ -207,18 +224,10 @@ elif mode == "view":
             st.session_state["confirm_delete"] = False
             st.rerun()
 
-    st.markdown(f"**Status:** `{c['status']}`  ·  **Owner:** {c['owner_email']}  ·  **Created:** {(c['created_at'] or '')[:19].replace('T',' ')}")
-
-    st.subheader("▶ Run filter against the corpus")
-    run_and_show(c)
-
-    st.subheader("Specification")
-    for section, fields in SECTIONS:
-        with st.expander(section, expanded=(section in ("Header", "Filters"))):
-            for f, kind in fields:
-                v = c.get(f)
-                if kind == "bool":
-                    st.markdown(f"**{cat.label(f)}:** {'Yes' if v else 'No'}")
-                else:
-                    st.markdown(f"**{cat.label(f)}:**")
-                    st.markdown(f"> {v}" if v else "> _(not provided)_")
+    t_summary, t_edit, t_run = st.tabs(["📊 Summary", "✏️ Edit Category & Save", "▶ Run the Pipeline"])
+    with t_summary:
+        tab_summary(c)
+    with t_edit:
+        tab_edit(c)
+    with t_run:
+        tab_run(c)

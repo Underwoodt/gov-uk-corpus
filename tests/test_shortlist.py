@@ -9,7 +9,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from govuk_corpus import db
-from govuk_corpus.shortlist import build_query, count, shortlist, shortlist_rows
+from govuk_corpus.shortlist import build_query, count, shortlist, shortlist_rows, selection_funnel
 
 
 class TestBuildQuery(unittest.TestCase):
@@ -93,6 +93,16 @@ class TestShortlistResults(unittest.TestCase):
     def test_build_query_include_title(self):
         sql, _ = build_query(include_title=True)
         self.assertIn("DISTINCT c.url AS url, c.title AS title", sql)
+
+    def test_selection_funnel_narrows(self):
+        funnel = selection_funnel(self.conn, organisations=["environment-agency"],
+                                  document_types=["guidance"])
+        labels = [lbl for lbl, _ in funnel]
+        self.assertEqual(labels, ["All pages", "After organisation filter", "After document-type filter"])
+        counts = [n for _, n in funnel]
+        # all >= after-org >= after-org+doctype
+        self.assertGreaterEqual(counts[0], counts[1])
+        self.assertGreaterEqual(counts[1], counts[2])
 
     def test_include_redirects_and_any_status(self):
         urls = shortlist(self.conn, keywords=["slurry"], include_redirects=True, any_status=True)
