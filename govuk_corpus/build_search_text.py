@@ -23,34 +23,49 @@ _P = "%s" if _IS_PG else "?"
 
 
 def rows_needing_search_text(conn, limit: Optional[int] = None):
+    """One page of rows still needing search_text (url + content). Memory-safe:
+    call repeatedly with keyset pagination via `build`, not all at once."""
     q = ("SELECT url, content FROM content "
-         "WHERE content IS NOT NULL AND (search_text IS NULL OR search_text = '') "
+         "WHERE content IS NOT NULL AND search_text IS NULL "
          "ORDER BY url")
     if limit:
         q += f" LIMIT {int(limit)}"
     return conn.execute(q).fetchall()
 
 
-def build(conn, run_id: str, limit: Optional[int] = None, batch: int = 1000) -> Dict[str, int]:
+def _batch(conn, after_url: str, size: int):
+    """Next `size` rows needing search_text with url > after_url (keyset paging)."""
+    q = (f"SELECT url, content FROM content "
+         f"WHERE content IS NOT NULL AND search_text IS NULL "
+         f"AND url > {_P} ORDER BY url LIMIT {int(size)}")
+    return conn.execute(q, (after_url,)).fetchall()
+
+
+def build(conn, run_id: str, limit: Optional[int] = None, batch: int = 300) -> Dict[str, int]:
+    """Stream through rows in small keyset batches so memory stays bounded — only
+    `batch` rows (with their content JSON) are held at a time."""
     counters = {"scanned": 0, "written": 0, "empty": 0, "bad_json": 0}
-    rows = rows_needing_search_text(conn, limit=limit)
-    pending = 0
-    for row in rows:
-        counters["scanned"] += 1
-        try:
-            payload = json.loads(row["content"])
-        except (ValueError, TypeError):
-            counters["bad_json"] += 1
-            continue
-        text = body_text(payload)
-        db.set_search_text(conn, row["url"], text)
-        counters["written" if text else "empty"] += 1
-        pending += 1
-        if pending >= batch:
-            conn.commit()
-            pending = 0
-            print(f"  ...{counters['written']} written", flush=True)
-    conn.commit()
+    after = ""
+    while True:
+        rows = _batch(conn, after, batch)
+        if not rows:
+            break
+        for row in rows:
+            counters["scanned"] += 1
+            after = row["url"]
+            try:
+                payload = json.loads(row["content"])
+            except (ValueError, TypeError):
+                counters["bad_json"] += 1
+                db.set_search_text(conn, row["url"], "")   # mark done so it isn't re-scanned
+                continue
+            text = body_text(payload)
+            db.set_search_text(conn, row["url"], text)
+            counters["written" if text else "empty"] += 1
+        conn.commit()
+        print(f"  ...{counters['scanned']} scanned / {counters['written']} written", flush=True)
+        if limit and counters["scanned"] >= limit:
+            break
     return counters
 
 
