@@ -32,7 +32,7 @@ def build_query(
     keywords: Sequence[str] = (),
     match: str = "all",                 # all | any  (how to combine keywords)
     include_redirects: bool = False,
-    any_status: bool = False,
+    include_unfetched: bool = False,    # include rows we have no body for (content_hash NULL)
     count_only: bool = False,
     include_title: bool = False,        # also select c.title (for CSV export)
     limit: Optional[int] = None,
@@ -61,8 +61,11 @@ def build_query(
 
     if not include_redirects:
         where.append("c.is_redirect = 0")
-    if not any_status:
-        where.append("c.http_status = 200")
+    if not include_unfetched:
+        # "usable" = we actually have the page body. http_status is unreliable in the
+        # migrated data (old crawler stored NULL status for many fully-fetched pages),
+        # so gate on content presence, matching the dashboard's "fetched" definition.
+        where.append("c.content_hash IS NOT NULL")
 
     where_sql = (" WHERE " + " AND ".join(where)) if where else ""
     if count_only:
@@ -128,7 +131,8 @@ def main() -> None:
     ap.add_argument("--keywords", action="append", help="keyword(s) (repeatable / comma-sep)")
     ap.add_argument("--match", choices=("all", "any"), default="all", help="combine keywords")
     ap.add_argument("--include-redirects", action="store_true")
-    ap.add_argument("--any-status", action="store_true", help="don't restrict to HTTP 200")
+    ap.add_argument("--include-unfetched", action="store_true",
+                    help="include pages we have no body for (content_hash NULL)")
     ap.add_argument("--limit", type=int)
     ap.add_argument("--count", action="store_true", help="print the count only")
     ap.add_argument("--format", choices=("txt", "json"), default="txt")
@@ -141,7 +145,7 @@ def main() -> None:
         keywords=_split(args.keywords),
         match=args.match,
         include_redirects=args.include_redirects,
-        any_status=args.any_status,
+        include_unfetched=args.include_unfetched,
     )
     if args.count:
         print(count(conn, **kw))

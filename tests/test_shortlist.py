@@ -13,10 +13,10 @@ from govuk_corpus.shortlist import build_query, count, shortlist, shortlist_rows
 
 
 class TestBuildQuery(unittest.TestCase):
-    def test_defaults_exclude_redirects_and_non_200(self):
+    def test_defaults_exclude_redirects_and_unfetched(self):
         sql, params = build_query()
         self.assertIn("c.is_redirect = 0", sql)
-        self.assertIn("c.http_status = 200", sql)
+        self.assertIn("c.content_hash IS NOT NULL", sql)
         self.assertNotIn("JOIN page_organisations", sql)
         self.assertEqual(params, [])
 
@@ -47,17 +47,17 @@ class TestShortlistResults(unittest.TestCase):
         self.conn = db.connect(":memory:")
         db.init_db(self.conn)
         rows = [
-            # url, document_type, is_redirect, http_status, content, org
-            ("https://www.gov.uk/a", "guidance", 0, 200, "slurry storage rules", "environment-agency"),
-            ("https://www.gov.uk/b", "guidance", 0, 200, "nitrate vulnerable zones", "environment-agency"),
-            ("https://www.gov.uk/c", "news_story", 0, 200, "slurry spreading news", "defra"),
-            ("https://www.gov.uk/d", "guidance", 1, 200, "old slurry page", "environment-agency"),  # redirect
-            ("https://www.gov.uk/e", "guidance", 0, 404, "slurry missing", "environment-agency"),   # non-200
+            # url, document_type, is_redirect, content_hash, content, org
+            ("https://www.gov.uk/a", "guidance", 0, "h", "slurry storage rules", "environment-agency"),
+            ("https://www.gov.uk/b", "guidance", 0, "h", "nitrate vulnerable zones", "environment-agency"),
+            ("https://www.gov.uk/c", "news_story", 0, "h", "slurry spreading news", "defra"),
+            ("https://www.gov.uk/d", "guidance", 1, "h", "old slurry page", "environment-agency"),  # redirect
+            ("https://www.gov.uk/e", "guidance", 0, None, "slurry missing", "environment-agency"),  # unfetched (no body)
         ]
-        for url, dt, red, st, content, org in rows:
+        for url, dt, red, chash, content, org in rows:
             self.conn.execute(
-                "INSERT INTO content (url, document_type, is_redirect, http_status, content) VALUES (?,?,?,?,?)",
-                (url, dt, red, st, content))
+                "INSERT INTO content (url, document_type, is_redirect, content_hash, content) VALUES (?,?,?,?,?)",
+                (url, dt, red, chash, content))
             self.conn.execute(
                 "INSERT INTO page_organisations (page_url, organisation_content_id, organisation_slug, role) "
                 "VALUES (?,?,?,?)", (url, org, org, "primary"))
@@ -66,9 +66,9 @@ class TestShortlistResults(unittest.TestCase):
     def tearDown(self):
         self.conn.close()
 
-    def test_keyword_filters_and_excludes_redirect_and_non200(self):
+    def test_keyword_filters_and_excludes_redirect_and_unfetched(self):
         urls = shortlist(self.conn, keywords=["slurry"])
-        # a and c match; d is a redirect, e is 404 -> excluded
+        # a and c match; d is a redirect, e is unfetched (no content_hash) -> excluded
         self.assertEqual(urls, ["https://www.gov.uk/a", "https://www.gov.uk/c"])
 
     def test_org_and_doctype(self):
@@ -104,10 +104,10 @@ class TestShortlistResults(unittest.TestCase):
         self.assertGreaterEqual(counts[0], counts[1])
         self.assertGreaterEqual(counts[1], counts[2])
 
-    def test_include_redirects_and_any_status(self):
-        urls = shortlist(self.conn, keywords=["slurry"], include_redirects=True, any_status=True)
-        self.assertIn("https://www.gov.uk/d", urls)
-        self.assertIn("https://www.gov.uk/e", urls)
+    def test_include_redirects_and_unfetched(self):
+        urls = shortlist(self.conn, keywords=["slurry"], include_redirects=True, include_unfetched=True)
+        self.assertIn("https://www.gov.uk/d", urls)   # redirect, now included
+        self.assertIn("https://www.gov.uk/e", urls)   # unfetched, now included
 
 
 if __name__ == "__main__":
