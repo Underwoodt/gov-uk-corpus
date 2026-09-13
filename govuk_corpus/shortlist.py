@@ -25,6 +25,24 @@ _IS_PG = db.__name__.endswith("db_pg")
 _P = "%s" if _IS_PG else "?"   # param placeholder for the active backend
 
 
+def _keyword_clause(keywords, match, is_pg):
+    """(sql_fragment, params) for keyword matching over title+description.
+
+    Postgres: GIN-indexed full-text (search_tsv @@ tsquery), stemmed via 'english'.
+    SQLite (pilot): case-insensitive LIKE over title+description.
+    `match`: 'any' → OR the keywords, 'all' → AND them.
+    """
+    if is_pg:
+        op = " || " if match == "any" else " && "
+        tq = op.join(["plainto_tsquery('english', %s)"] * len(keywords))
+        return f"c.search_tsv @@ ({tq})", list(keywords)
+    op = " OR " if match == "any" else " AND "
+    field = ("LOWER(COALESCE(c.title,'') || ' ' || COALESCE(c.description,'') "
+             "|| ' ' || COALESCE(c.search_text,''))")
+    like = op.join([f"{field} LIKE ?"] * len(keywords))
+    return f"({like})", [f"%{kw.lower()}%" for kw in keywords]
+
+
 def build_query(
     *,
     organisations: Sequence[str] = (),
@@ -54,10 +72,9 @@ def build_query(
         params.extend(document_types)
 
     if keywords:
-        joiner = " OR " if match == "any" else " AND "
-        clause = joiner.join([f"LOWER(c.content) LIKE {_P}"] * len(keywords))
-        where.append(f"({clause})")
-        params.extend(f"%{kw.lower()}%" for kw in keywords)
+        clause, kw_params = _keyword_clause(keywords, match, _IS_PG)
+        where.append(clause)
+        params.extend(kw_params)
 
     if not include_redirects:
         where.append("c.is_redirect = 0")
@@ -96,17 +113,26 @@ def shortlist_rows(conn, **kwargs) -> List[dict]:
 
 
 def selection_funnel(conn, organisations: Sequence[str] = (),
-                     document_types: Sequence[str] = ()) -> List[Tuple[str, int]]:
-    """Progressive narrowing: total → after organisation → after document type.
+                     document_types: Sequence[str] = (),
+                     keywords: Sequence[str] = ()) -> List[Tuple[str, int]]:
+    """Progressive narrowing: total → org → document type → keyword.
 
-    Each stage is a fast indexed COUNT, so this is cheap even on the full corpus.
+    Each stage is a fast indexed COUNT (keyword via the GIN full-text index on
+    Postgres), so this is cheap even on the full corpus.
     """
-    return [
+    stages = [
         ("All pages", count(conn)),
         ("After organisation filter", count(conn, organisations=organisations)),
         ("After document-type filter",
          count(conn, organisations=organisations, document_types=document_types)),
     ]
+    if keywords:
+        stages.append((
+            "After keyword filter",
+            count(conn, organisations=organisations, document_types=document_types,
+                  keywords=keywords, match="any"),
+        ))
+    return stages
 
 
 def count(conn, **kwargs) -> int:

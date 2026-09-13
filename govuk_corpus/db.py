@@ -154,6 +154,10 @@ def content_exists(conn: sqlite3.Connection, url: str) -> bool:
     return conn.execute("SELECT 1 FROM content WHERE url=?", (url,)).fetchone() is not None
 
 
+def set_search_text(conn: sqlite3.Connection, url: str, text: str) -> None:
+    conn.execute("UPDATE content SET search_text=? WHERE url=?", (text, url))
+
+
 def add_page_link(conn: sqlite3.Connection, parent_url: str, child_url: str,
                   relation: str) -> None:
     conn.execute(

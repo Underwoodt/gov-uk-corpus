@@ -168,6 +168,10 @@ def content_exists(conn, url: str) -> bool:
     return conn.execute("SELECT 1 FROM content WHERE url=%s", (url,)).fetchone() is not None
 
 
+def set_search_text(conn, url: str, text: str) -> None:
+    conn.execute("UPDATE content SET search_text=%s WHERE url=%s", (text, url))
+
+
 def add_page_link(conn, parent_url: str, child_url: str, relation: str) -> None:
     conn.execute(
         "INSERT INTO page_links (parent_url, child_url, relation) VALUES (%s,%s,%s) "

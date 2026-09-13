@@ -26,6 +26,8 @@ now and Postgres on migration.
 | `run_all.py` | Runs the full cycle (Stage 0→1→2→3) — the daily cron entry point. |
 | `shortlist.py` | Emit a deterministic URL shortlist (org × document_type × keyword) for inference. |
 | `reconcile.py` | Re-verify held pages (stalest first) to self-heal drift — re-fetch/hash/update, preserving `source`. |
+| `text.py` | HTML→plain text + body extraction from `/api/content` (builds `search_text` for keyword search). |
+| `build_search_text.py` | Backfill `content.search_text` (HTML-stripped body) for the keyword index. |
 | `metrics.py` | Pure dashboard queries (corpus totals, source breakdown, recent runs) — backend-agnostic, unit-tested. |
 | `categories.py` | Saved shortlist specs ("categories") — CRUD + validation; filter fields execute via `shortlist.py`. |
 | `pilot.py` | Runnable pilot: seed / existing-db / `--from-frontier`. |
