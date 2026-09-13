@@ -83,19 +83,15 @@ def _filters(c):
     orgs = cat.parse_list(c.get("dept_slugs"))
     dts = cat.parse_list(c.get("document_type_slugs"))
     kws = cat.parse_list(c.get("keywords"))
-    apply_kw = bool(kws) and bool(orgs or dts)     # keyword needs a structured filter (no index yet)
-    return orgs, dts, kws, apply_kw
+    return orgs, dts, kws
 
 
 def tab_summary(c):
-    orgs, dts, kws, _ = _filters(c)
+    orgs, dts, kws = _filters(c)
     st.markdown("##### Selection funnel")
-    st.caption("How each filter narrows the corpus (fast indexed counts).")
-    funnel = shortlist.selection_funnel(conn, organisations=orgs, document_types=dts)
+    st.caption("How each filter narrows the corpus (fast indexed counts; keyword via full-text index).")
+    funnel = shortlist.selection_funnel(conn, organisations=orgs, document_types=dts, keywords=kws)
     st.table([{"Selection criterion": lbl, "Rows returned": f"{n:,}"} for lbl, n in funnel])
-    if kws:
-        st.info("Keyword filtering is applied at Run time (only alongside a dept/doc-type "
-                "filter, until the full-text index is added).")
 
 
 def tab_edit(c):
@@ -113,17 +109,13 @@ def tab_edit(c):
 
 
 def tab_run(c):
-    orgs, dts, kws, apply_kw = _filters(c)
-    used_kws = kws if apply_kw else []
-    if kws and not apply_kw:
-        st.warning("Keyword filtering skipped: keyword-only search needs the full-text index. "
-                   "Add a Department or Document Type to use keywords now.")
+    orgs, dts, kws = _filters(c)
 
     st.markdown("##### Summary")
-    funnel = shortlist.selection_funnel(conn, organisations=orgs, document_types=dts)
+    funnel = shortlist.selection_funnel(conn, organisations=orgs, document_types=dts, keywords=kws)
     st.table([{"Selection criterion": lbl, "Rows returned": f"{n:,}"} for lbl, n in funnel])
 
-    filters = dict(organisations=orgs, document_types=dts, keywords=used_kws, match="any")
+    filters = dict(organisations=orgs, document_types=dts, keywords=kws, match="any")
     n = shortlist.count(conn, **filters)
     st.markdown("##### Result")
     st.metric("Pages in this shortlist", f"{n:,}")

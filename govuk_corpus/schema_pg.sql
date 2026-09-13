@@ -106,3 +106,17 @@ CREATE TABLE IF NOT EXISTS categories (
     extra_law_urls                text,
     only_use_extra_law_urls       smallint DEFAULT 0
 );
+
+-- Keyword search (Path A): Postgres full-text over title + description + body.
+-- search_text holds the HTML-stripped body (populated by the crawl and the
+-- build_search_text backfill). The generated tsvector recomputes per row whenever
+-- search_text changes, so keyword search starts on title+description and gains body
+-- coverage as the backfill runs. GIN makes it fast.
+-- NOTE: adding the STORED tsvector column rewrites the content table once (minutes on ~877k).
+ALTER TABLE content ADD COLUMN IF NOT EXISTS search_text text;
+ALTER TABLE content ADD COLUMN IF NOT EXISTS search_tsv tsvector
+  GENERATED ALWAYS AS (
+    to_tsvector('english',
+      coalesce(title, '') || ' ' || coalesce(description, '') || ' ' || coalesce(search_text, ''))
+  ) STORED;
+CREATE INDEX IF NOT EXISTS idx_content_search_tsv ON content USING GIN (search_tsv);
