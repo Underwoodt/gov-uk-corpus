@@ -90,3 +90,26 @@ CREATE TABLE IF NOT EXISTS redirects (
     resolved_run    TEXT,
     resolved_at     TEXT
 );
+
+-- Saved shortlist specs ("categories") — CRUD from the Shortlist Builder UI.
+-- The filter fields (dept_slugs, document_type_slugs, keywords) execute against the
+-- corpus; the inference fields are stored for downstream LLM phases.
+CREATE TABLE IF NOT EXISTS categories (
+    id                            INTEGER PRIMARY KEY,   -- epoch-ms, assigned in Python
+    created_at                    TEXT,
+    updated_at                    TEXT,
+    status                        TEXT DEFAULT 'draft',  -- draft | published | archived
+    owner_email                   TEXT,
+    description                   TEXT,
+    dept_slugs                    TEXT,
+    document_type_slugs           TEXT,
+    keywords                      TEXT,
+    inclusion_context             TEXT,
+    exclusion_context             TEXT,
+    adjudication_hints_keep       TEXT,
+    adjudication_hints_drop       TEXT,
+    extra_guidance_urls           TEXT,
+    only_use_extra_guidance_urls  INTEGER DEFAULT 0,
+    extra_law_urls                TEXT,
+    only_use_extra_law_urls       INTEGER DEFAULT 0
+);

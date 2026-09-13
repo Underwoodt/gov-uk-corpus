@@ -33,9 +33,16 @@ def _dsn() -> str:
     )
 
 
-def connect(_path: Optional[str] = None):
-    """Connect using env DSN. `_path` is accepted for signature parity with db.py."""
-    return psycopg.connect(_dsn(), row_factory=dict_row)
+def connect(_path: Optional[str] = None, statement_timeout_ms: Optional[int] = None):
+    """Connect using env DSN. `_path` is accepted for signature parity with db.py.
+
+    `statement_timeout_ms` sets a per-connection statement timeout (used by the
+    dashboard so an expensive ad-hoc query can never hang the UI).
+    """
+    kwargs = {"row_factory": dict_row}
+    if statement_timeout_ms:
+        kwargs["options"] = f"-c statement_timeout={int(statement_timeout_ms)}"
+    return psycopg.connect(_dsn(), **kwargs)
 
 
 def init_db(conn) -> None:
