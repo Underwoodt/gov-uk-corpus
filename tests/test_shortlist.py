@@ -113,18 +113,23 @@ class TestShortlistResults(unittest.TestCase):
         sql, _ = build_query(include_title=True)
         self.assertIn("DISTINCT c.url AS url, c.title AS title", sql)
 
-    def test_selection_funnel_narrows(self):
+    def test_selection_funnel_stages_and_monotonic(self):
         funnel = selection_funnel(self.conn, organisations=["environment-agency"],
                                   document_types=["guidance"])
         labels = [lbl for lbl, _ in funnel]
-        self.assertEqual(labels, ["All pages", "After organisation filter", "After document-type filter"])
+        self.assertEqual(labels, ["All pages", "After organisation filter",
+                                  "After document-type filter", "After keyword filter"])
         counts = [n for _, n in funnel]
-        self.assertGreaterEqual(counts[0], counts[1])
-        self.assertGreaterEqual(counts[1], counts[2])
+        # each stage narrows (or holds) the previous
+        for a, b in zip(counts, counts[1:]):
+            self.assertGreaterEqual(a, b)
 
-    def test_selection_funnel_adds_keyword_stage(self):
-        funnel = selection_funnel(self.conn, keywords=["slurry"])
+    def test_selection_funnel_keyword_row_always_present(self):
+        # no keywords -> keyword row equals the document-type row
+        funnel = selection_funnel(self.conn, organisations=["environment-agency"],
+                                  document_types=["guidance"])
         self.assertEqual(funnel[-1][0], "After keyword filter")
+        self.assertEqual(funnel[-1][1], funnel[-2][1])
 
     def test_keyword_searches_title_desc_body(self):
         # 'storage' only appears in search_text of /a -> found via title+desc+search_text
