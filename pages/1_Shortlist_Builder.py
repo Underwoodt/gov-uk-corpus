@@ -6,6 +6,8 @@ hints, URL overrides) are saved for the downstream LLM phases.
 """
 from __future__ import annotations
 
+import csv
+import io
 import sys
 import os
 
@@ -101,16 +103,33 @@ def run_and_show(c):
         f"Filter → departments: {orgs or '—'} · document types: {dts or '—'} · "
         f"keywords (any): {used_kws or '—'}"
     )
-    n = shortlist.count(conn, organisations=orgs, document_types=dts, keywords=used_kws, match="any")
+    filters = dict(organisations=orgs, document_types=dts, keywords=used_kws, match="any")
+    n = shortlist.count(conn, **filters)
     st.metric("Matching pages in corpus", f"{n:,}")
     if n:
-        urls = shortlist.shortlist(conn, organisations=orgs, document_types=dts, keywords=used_kws,
-                                   match="any", limit=10000)
-        st.download_button("⬇ Download URL shortlist (.txt)", "\n".join(urls),
+        rows = shortlist.shortlist_rows(conn, limit=10000, **filters)
+
+        # CSV (url, title) + plain URL list
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(["url", "title"])
+        for r in rows:
+            writer.writerow([r["url"], r["title"] or ""])
+        d1, d2 = st.columns([1, 1])
+        d1.download_button("⬇ Download CSV (url, title)", buf.getvalue(),
+                           file_name=f"shortlist-{c['id']}.csv", mime="text/csv")
+        d2.download_button("⬇ Download URLs (.txt)", "\n".join(r["url"] for r in rows),
                            file_name=f"shortlist-{c['id']}.txt", mime="text/plain")
-        st.dataframe({"url": urls[:500]}, use_container_width=True, height=320)
-        if len(urls) > 500:
-            st.caption(f"Showing first 500 of {len(urls):,}. Download for the full list.")
+
+        st.dataframe([{"url": r["url"], "title": r["title"]} for r in rows[:500]],
+                     use_container_width=True, height=320)
+        if len(rows) > 500:
+            st.caption(f"Showing first 500 of {len(rows):,}. Download for the full list.")
+
+    with st.expander("SQL query that was run"):
+        sql, params = shortlist.build_query(include_title=True, limit=10000, **filters)
+        st.code(sql, language="sql")
+        st.caption(f"Parameters: {params}")
 
 
 # ---------------------------------------------------------------- LIST
