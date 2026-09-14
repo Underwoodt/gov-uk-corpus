@@ -86,6 +86,28 @@ CREATE TABLE IF NOT EXISTS redirects (
     resolved_at     text
 );
 
+-- Organisation registry + hierarchy (imported from the GOV.UK search-API org
+-- aggregate). Lets selection expand a chosen organisation to its child departments
+-- and resolve a page's organisation to its parent.
+CREATE TABLE IF NOT EXISTS organisations (
+    slug                 text PRIMARY KEY,
+    title                text,
+    acronym              text,
+    content_id           text,
+    org_type             text,
+    org_state            text,
+    brand                text,
+    analytics_identifier text
+);
+
+CREATE TABLE IF NOT EXISTS organisation_hierarchy (
+    parent_slug text NOT NULL,
+    child_slug  text NOT NULL,
+    PRIMARY KEY (parent_slug, child_slug)
+);
+CREATE INDEX IF NOT EXISTS idx_org_hier_parent ON organisation_hierarchy(parent_slug);
+CREATE INDEX IF NOT EXISTS idx_org_hier_child  ON organisation_hierarchy(child_slug);
+
 -- Saved shortlist specs ("categories") — CRUD from the Shortlist Builder UI.
 CREATE TABLE IF NOT EXISTS categories (
     id                            bigint PRIMARY KEY,

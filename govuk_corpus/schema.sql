@@ -92,6 +92,28 @@ CREATE TABLE IF NOT EXISTS redirects (
     resolved_at     TEXT
 );
 
+-- Organisation registry + hierarchy (imported from the GOV.UK search-API org
+-- aggregate). Lets selection expand a chosen organisation to its child departments
+-- and resolve a page's organisation to its parent.
+CREATE TABLE IF NOT EXISTS organisations (
+    slug                 TEXT PRIMARY KEY,   -- matches page_organisations.organisation_slug
+    title                TEXT,
+    acronym              TEXT,
+    content_id           TEXT,
+    org_type             TEXT,
+    org_state            TEXT,
+    brand                TEXT,
+    analytics_identifier TEXT
+);
+
+CREATE TABLE IF NOT EXISTS organisation_hierarchy (
+    parent_slug TEXT NOT NULL,
+    child_slug  TEXT NOT NULL,
+    PRIMARY KEY (parent_slug, child_slug)
+);
+CREATE INDEX IF NOT EXISTS idx_org_hier_parent ON organisation_hierarchy(parent_slug);
+CREATE INDEX IF NOT EXISTS idx_org_hier_child  ON organisation_hierarchy(child_slug);
+
 -- Saved shortlist specs ("categories") — CRUD from the Shortlist Builder UI.
 -- The filter fields (dept_slugs, document_type_slugs, keywords) execute against the
 -- corpus; the inference fields are stored for downstream LLM phases.
