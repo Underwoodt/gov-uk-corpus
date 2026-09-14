@@ -21,10 +21,11 @@ class TestBuildQuery(unittest.TestCase):
         self.assertNotIn("JOIN page_organisations", sql)
         self.assertEqual(params, [])
 
-    def test_org_join_and_params(self):
+    def test_org_exists_and_params(self):
         sql, params = build_query(organisations=["environment-agency"])
-        self.assertIn("JOIN page_organisations", sql)
+        self.assertIn("EXISTS (SELECT 1 FROM page_organisations", sql)
         self.assertIn("organisation_slug IN (?)", sql)
+        self.assertNotIn("DISTINCT", sql)   # EXISTS avoids row fan-out
         self.assertEqual(params[0], "environment-agency")
 
     def test_keywords_all_vs_any(self):
@@ -39,7 +40,7 @@ class TestBuildQuery(unittest.TestCase):
 
     def test_count_only(self):
         sql, _ = build_query(count_only=True)
-        self.assertIn("COUNT(DISTINCT c.url)", sql)
+        self.assertIn("COUNT(*)", sql)
         self.assertNotIn("ORDER BY", sql)
 
     def test_keyword_clause_postgres_fulltext(self):
@@ -120,7 +121,7 @@ class TestShortlistResults(unittest.TestCase):
 
     def test_build_query_include_title(self):
         sql, _ = build_query(include_title=True)
-        self.assertIn("DISTINCT c.url AS url, c.title AS title", sql)
+        self.assertIn("c.url AS url, c.title AS title", sql)
 
     def test_selection_funnel_stages_and_monotonic(self):
         funnel = selection_funnel(self.conn, organisations=["environment-agency"],

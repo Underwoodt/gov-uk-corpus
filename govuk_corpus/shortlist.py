@@ -57,13 +57,15 @@ def build_query(
 ) -> Tuple[str, list]:
     """Build (sql, params). Pure/deterministic, so it is unit-testable."""
     params: list = []
-    joins = ""
     where: List[str] = []
 
     if organisations:
-        joins = " JOIN page_organisations po ON po.page_url = c.url"
+        # EXISTS (not JOIN) so a page with several matching org rows is counted once
+        # without a DISTINCT — index idx_page_orgs_slug makes this cheap even under load.
         placeholders = ",".join([_P] * len(organisations))
-        where.append(f"po.organisation_slug IN ({placeholders})")
+        where.append(
+            f"EXISTS (SELECT 1 FROM page_organisations po "
+            f"WHERE po.page_url = c.url AND po.organisation_slug IN ({placeholders}))")
         params.extend(organisations)
 
     if document_types:
@@ -85,13 +87,15 @@ def build_query(
         where.append("c.content_hash IS NOT NULL")
 
     where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+    # c.url is the primary key and every filter is now a predicate on content c
+    # (organisations via EXISTS), so there is no row fan-out and DISTINCT is unneeded.
     if count_only:
-        select = "COUNT(DISTINCT c.url) AS n"
+        select = "COUNT(*) AS n"
     elif include_title:
-        select = "DISTINCT c.url AS url, c.title AS title"
+        select = "c.url AS url, c.title AS title"
     else:
-        select = "DISTINCT c.url AS url"
-    sql = f"SELECT {select} FROM content c{joins}{where_sql}"
+        select = "c.url AS url"
+    sql = f"SELECT {select} FROM content c{where_sql}"
     if not count_only:
         sql += " ORDER BY c.url"
         if limit:
