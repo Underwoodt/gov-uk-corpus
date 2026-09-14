@@ -41,22 +41,36 @@ def _write(conn, url: str, reading_age: Optional[float], gds: int, findings: str
 
 
 def build(conn, limit: Optional[int] = None, batch: int = 300, after: str = "") -> Dict[str, int]:
-    counters = {"scanned": 0, "scored": 0, "too_short": 0}
-    while True:
-        rows = _batch(conn, after, batch)
-        if not rows:
-            break
-        for row in rows:
-            counters["scanned"] += 1
-            after = row["url"]
-            ra, gds, findings = analyse(row["search_text"] or "")
-            _write(conn, row["url"], ra, gds, findings)
-            counters["scored" if ra is not None else "too_short"] += 1
-        conn.commit()
-        print(f"  ...{counters['scanned']} scanned / {counters['scored']} scored "
-              f"(last: {after})", flush=True)
-        if limit and counters["scanned"] >= limit:
-            break
+    """Idempotent, resumable backfill. Only rows still needing analysis
+    (gds_english_score IS NULL) are selected, so re-running after a crash picks up
+    where it left off. Per-row failures are isolated: a bad row is marked done with
+    the error recorded in gds_findings, so the run continues and never loops on it.
+    Commits every batch, so at most one un-committed batch is ever repeated.
+    """
+    counters = {"scanned": 0, "scored": 0, "too_short": 0, "errors": 0}
+    try:
+        while True:
+            rows = _batch(conn, after, batch)
+            if not rows:
+                break
+            for row in rows:
+                counters["scanned"] += 1
+                after = row["url"]
+                try:
+                    ra, gds, findings = analyse(row["search_text"] or "")
+                    counters["scored" if ra is not None else "too_short"] += 1
+                except Exception as e:  # poison row: mark done so we don't retry it forever
+                    ra, gds, findings = None, 0, f"analysis error: {type(e).__name__}: {e}"
+                    counters["errors"] += 1
+                _write(conn, row["url"], ra, gds, findings)
+            conn.commit()
+            print(f"  ...{counters['scanned']} scanned / {counters['scored']} scored / "
+                  f"{counters['errors']} errors (last: {after})", flush=True)
+            if limit and counters["scanned"] >= limit:
+                break
+    except KeyboardInterrupt:
+        conn.commit()   # keep the batch in progress; the rest resumes next run
+        print("\nInterrupted — progress committed; re-run to continue.", flush=True)
     counters["last_url"] = after
     return counters
 
