@@ -17,6 +17,8 @@ import hmac
 import io
 import json
 import os
+import threading
+import time
 from typing import Dict, List
 
 from fastapi import FastAPI, Form, Request
@@ -66,6 +68,37 @@ EXAMPLES: Dict[str, dict] = {
 }
 
 _META_CACHE: Dict[str, str] = {}
+
+# ---- count cache ---------------------------------------------------------
+# The corpus changes ~daily but the funnel is viewed constantly, so cache each
+# distinct count for COUNT_CACHE_TTL seconds (0 disables). Keyed by the filter
+# set, not the connection, since the underlying data is the same DB.
+_COUNT_CACHE: Dict[tuple, tuple] = {}
+_COUNT_TTL = int(os.getenv("COUNT_CACHE_TTL", "300"))
+_COUNT_LOCK = threading.Lock()
+
+
+def _count_key(filters: dict) -> tuple:
+    return (tuple(sorted(filters.get("organisations") or [])),
+            tuple(sorted(filters.get("document_types") or [])),
+            tuple(sorted(filters.get("keywords") or [])),
+            filters.get("match", "all"))
+
+
+def cached_count(conn, **filters) -> int:
+    """shortlist.count with a short TTL cache keyed by the filter set."""
+    if _COUNT_TTL <= 0:
+        return shortlist.count(conn, **filters)
+    key = _count_key(filters)
+    now = time.time()
+    with _COUNT_LOCK:
+        hit = _COUNT_CACHE.get(key)
+        if hit and hit[1] > now:
+            return hit[0]
+    n = shortlist.count(conn, **filters)
+    with _COUNT_LOCK:
+        _COUNT_CACHE[key] = (n, now + _COUNT_TTL)
+    return n
 
 # Prefilled into the Page Types box on a new category (edit/clear as needed).
 DEFAULT_DOC_TYPES = "\n".join([
@@ -159,7 +192,7 @@ def list_categories_page(request: Request, flash: str = ""):
         r["display_name"] = r.get("slug") and cat.prettify(r["slug"]) or (r.get("description") or "Untitled")
         r["updated"] = (r.get("updated_at") or r.get("created_at") or "")[:10] or "—"
         try:
-            r["pages_kept"] = "{:,}".format(shortlist.count(
+            r["pages_kept"] = "{:,}".format(cached_count(
                 conn,
                 organisations=cat.parse_list(r.get("dept_slugs")),
                 document_types=cat.parse_list(r.get("document_type_slugs")),
@@ -298,7 +331,7 @@ def api_funnel(request: Request, cid: int, stage: str = "all"):
     kw = {k: filters[k] for k in applies}
     if "keywords" in kw:
         kw["match"] = "any"
-    n = shortlist.count(conn, **kw)
+    n = cached_count(conn, **kw)
     conn.close()
     return JSONResponse({"stage": stage, "label": label, "count": n})
 
@@ -313,7 +346,7 @@ def api_results(request: Request, cid: int, limit: int = 10):
     if not category:
         return JSONResponse({"error": "not found"}, status_code=404)
     filters = _filters(category)
-    total = shortlist.count(conn, **filters)
+    total = cached_count(conn, **filters)
     rows = shortlist.detail_rows(conn, limit=limit, **filters) if total else []
     conn.close()
     return JSONResponse({"total": total, "shown": len(rows), "rows": rows})
