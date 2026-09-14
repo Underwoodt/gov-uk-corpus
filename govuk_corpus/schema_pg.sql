@@ -108,6 +108,12 @@ CREATE TABLE IF NOT EXISTS organisation_hierarchy (
 CREATE INDEX IF NOT EXISTS idx_org_hier_parent ON organisation_hierarchy(parent_slug);
 CREATE INDEX IF NOT EXISTS idx_org_hier_child  ON organisation_hierarchy(child_slug);
 
+-- Small key/value app settings (e.g. which AI provider the UI uses).
+CREATE TABLE IF NOT EXISTS app_settings (
+    key   text PRIMARY KEY,
+    value text
+);
+
 -- Per-page funnel audit for a category (starting point = organisation filter).
 CREATE TABLE IF NOT EXISTS category_audit (
     category_id  bigint NOT NULL,
