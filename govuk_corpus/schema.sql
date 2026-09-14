@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS content (
     content            TEXT,                 -- raw /api/content JSON  (-> JSONB in PG)
     content_hash       TEXT,
     search_text        TEXT,                 -- HTML-stripped body for keyword search
+    reading_age        REAL,                 -- estimated reading age (years) of search_text
+    gds_english_score  REAL,                 -- GDS plain-English compliance score for search_text
     source             TEXT,                 -- sitemap | attachment | redirect | seed | other
     document_type      TEXT,
     schema_name        TEXT,

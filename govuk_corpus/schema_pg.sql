@@ -145,6 +145,10 @@ ALTER TABLE content ADD COLUMN IF NOT EXISTS search_tsv tsvector
   ) STORED;
 CREATE INDEX IF NOT EXISTS idx_content_search_tsv ON content USING GIN (search_tsv);
 
+-- Readability / plain-English analysis of the body text (populated by a later job).
+ALTER TABLE content ADD COLUMN IF NOT EXISTS reading_age real;          -- estimated reading age (years)
+ALTER TABLE content ADD COLUMN IF NOT EXISTS gds_english_score real;    -- GDS plain-English compliance score
+
 -- Category display name/identifier (added after initial deploy).
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS slug text;
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS include_child_orgs smallint DEFAULT 0;
