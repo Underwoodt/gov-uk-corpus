@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+
+  {% if saved %}<div class="success">Settings saved.</div>{% endif %}
+
+  <h1>Settings</h1>
+  <p class="lede" style="margin:0 0 30px;">Choose which AI provider the assistant uses. API keys are read from
+    the server env file — the toggle just picks which provider to call.</p>
+
+  <form method="post" action="{{ url_for('save_settings') }}">
+    <div class="field">
+      <label class="q">AI provider</label>
+      <div style="display:flex;flex-direction:column;gap:20px;max-width:640px;margin-top:10px;">
+        {% for p in providers %}
+        <div style="border:1px solid var(--grey-border);padding:15px 18px;">
+          <label class="check" style="font-size:19px;">
+            <input type="radio" name="ai_provider" value="{{ p.key }}" {{ 'checked' if current == p.key }}
+              style="width:22px;height:22px;accent-color:var(--black);">
+            <strong>{{ p.label }}</strong>
+          </label>
+          <p class="secondary" style="margin:8px 0 0 32px;">
+            {% if p.has_key %}<span style="color:var(--green);">✅ API key found</span>{% else %}
+            <span style="color:#d4351c;">⛔ no API key in env</span>{% endif %}
+            · default model <code>{{ p.default_model }}</code>
+            · ${{ p.price_in }}/M in, ${{ p.price_out }}/M out
+          </p>
+          <div style="margin:12px 0 0 32px;">
+            <label class="secondary" for="model_{{ p.key }}" style="display:block;margin-bottom:4px;">
+              Model override (optional)</label>
+            <input id="model_{{ p.key }}" name="model_{{ p.key }}" type="text" class="narrow"
+              value="{{ p.model }}" placeholder="{{ p.default_model }}">
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <button class="btn" type="submit">Save settings</button>
+  </form>
+
+  <p class="secondary" style="margin-top:25px;max-width:640px;">
+    To add a key, put <code>ANTHROPIC_API_KEY=…</code> and/or <code>DEEPSEEK_API_KEY=…</code> in
+    <code>~/gov-uk-corpus.env</code> and restart the service. A provider with no key can be selected but
+    won't work until its key is set.<br>
+    If your Anthropic key is org/"Default"-scoped, also set
+    <code>ANTHROPIC_WORKSPACE_ID=wrkspc_…</code> in the env file.</p>
+{% endblock %}

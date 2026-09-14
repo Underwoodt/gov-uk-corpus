@@ -122,6 +122,12 @@ CREATE TABLE IF NOT EXISTS organisation_hierarchy (
 CREATE INDEX IF NOT EXISTS idx_org_hier_parent ON organisation_hierarchy(parent_slug);
 CREATE INDEX IF NOT EXISTS idx_org_hier_child  ON organisation_hierarchy(child_slug);
 
+-- Small key/value app settings (e.g. which AI provider the UI uses).
+CREATE TABLE IF NOT EXISTS app_settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT
+);
+
 -- Per-page funnel audit for a category. Starting point is the organisation
 -- filter (so we never log the whole corpus): every row passed the org filter,
 -- and `outcome` says where it then dropped, or that it was included.

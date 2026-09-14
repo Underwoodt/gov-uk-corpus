@@ -32,7 +32,7 @@ from starlette.concurrency import run_in_threadpool
 
 from govuk_corpus import audit
 from govuk_corpus import categories as cat
-from govuk_corpus import orgs, shortlist
+from govuk_corpus import orgs, settings, shortlist
 from govuk_corpus.backend import db
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -144,30 +144,60 @@ def ctx(conn, request: Request, **extra) -> dict:
 
 
 # ---- AI Assistant (temporary prototype) ---------------------------------
-# DeepSeek via its Anthropic-compatible API. Config from env:
-#   DEEPSEEK_API_KEY, AI_BASE_URL (default DeepSeek), AI_MODEL (default deepseek-chat)
-AI_BASE_URL = os.getenv("AI_BASE_URL", "https://api.deepseek.com/anthropic")
-AI_MODEL = os.getenv("AI_MODEL", "deepseek-chat")
-# Prices in USD per 1M tokens (DeepSeek deepseek-chat standard rates; override in env).
-AI_PRICE_INPUT_PER_M = float(os.getenv("AI_PRICE_INPUT_PER_M", "0.27"))
-AI_PRICE_OUTPUT_PER_M = float(os.getenv("AI_PRICE_OUTPUT_PER_M", "1.10"))
+# Provider is chosen in the UI (Settings page) and stored in app_settings.
+# API keys still come from env; the toggle just picks which provider to use.
+PROVIDERS = {
+    "anthropic": {"label": "Anthropic (Claude)", "base_url": "",
+                  "model": "claude-haiku-4-5-20251001",
+                  "key_envs": ("ANTHROPIC_API_KEY", "AI_API_KEY"),
+                  "price_in": 1.0, "price_out": 5.0},
+    "deepseek": {"label": "DeepSeek", "base_url": "https://api.deepseek.com/anthropic",
+                 "model": "deepseek-chat",
+                 "key_envs": ("DEEPSEEK_API_KEY", "AI_API_KEY"),
+                 "price_in": 0.27, "price_out": 1.10},
+}
+DEFAULT_PROVIDER = "anthropic"
 
 
-def _ai_reply(system: str, prompt: str) -> dict:
-    key = os.getenv("DEEPSEEK_API_KEY") or os.getenv("AI_API_KEY")
-    if not key:
-        return {"error": "No API key set. Add DEEPSEEK_API_KEY to ~/gov-uk-corpus.env and restart."}
+def _provider_key(provider: str) -> Optional[str]:
+    for env in PROVIDERS[provider]["key_envs"]:
+        v = os.getenv(env)
+        if v:
+            return v
+    return None
+
+
+def _ai_config(conn) -> dict:
+    """Resolve the active AI provider config from settings + env."""
+    prov = settings.get_setting(conn, "ai_provider", os.getenv("AI_PROVIDER", DEFAULT_PROVIDER))
+    if prov not in PROVIDERS:
+        prov = DEFAULT_PROVIDER
+    p = PROVIDERS[prov]
+    model = settings.get_setting(conn, f"ai_model_{prov}", "") or p["model"]
+    return {"provider": prov, "label": p["label"], "base_url": p["base_url"], "model": model,
+            "key": _provider_key(prov), "has_key": _provider_key(prov) is not None,
+            "price_in": p["price_in"], "price_out": p["price_out"]}
+
+
+def _ai_reply(config: dict, system: str, prompt: str) -> dict:
+    if not config.get("key"):
+        return {"error": f"No API key set for {config['label']}. Add its key to "
+                f"~/gov-uk-corpus.env and restart, or pick a provider that has one in Settings."}
     try:
         import anthropic
     except Exception:
         return {"error": "The 'anthropic' package is not installed. Run: pip install -r requirements.txt"}
     try:
-        # Short timeout + no retries so a bad endpoint/hang fails fast and visibly
-        # instead of spinning forever.
-        client = anthropic.Anthropic(api_key=key, base_url=AI_BASE_URL,
-                                     timeout=float(os.getenv("AI_TIMEOUT", "45")),
-                                     max_retries=0)
-        kwargs = dict(model=AI_MODEL, max_tokens=1024,
+        client_kwargs = dict(api_key=config["key"], timeout=float(os.getenv("AI_TIMEOUT", "45")),
+                             max_retries=0)
+        if config["base_url"]:               # empty => anthropic SDK default (Claude API)
+            client_kwargs["base_url"] = config["base_url"]
+        # Org-scoped ("Default") Anthropic keys need the workspace id header.
+        ws = os.getenv("ANTHROPIC_WORKSPACE_ID")
+        if ws and config["provider"] == "anthropic":
+            client_kwargs["default_headers"] = {"anthropic-workspace-id": ws}
+        client = anthropic.Anthropic(**client_kwargs)
+        kwargs = dict(model=config["model"], max_tokens=1024,
                       messages=[{"role": "user", "content": prompt}])
         if system.strip():
             kwargs["system"] = system.strip()
@@ -178,15 +208,14 @@ def _ai_reply(system: str, prompt: str) -> dict:
         out_tok = getattr(usage, "output_tokens", None)
         cost = None
         if in_tok is not None and out_tok is not None:
-            cost = round((in_tok / 1e6) * AI_PRICE_INPUT_PER_M
-                         + (out_tok / 1e6) * AI_PRICE_OUTPUT_PER_M, 6)
-        return {"reply": text, "model": AI_MODEL,
+            cost = round((in_tok / 1e6) * config["price_in"]
+                         + (out_tok / 1e6) * config["price_out"], 6)
+        return {"reply": text, "model": config["model"], "provider": config["provider"],
                 "input_tokens": in_tok, "output_tokens": out_tok, "cost_usd": cost,
-                "price_input_per_m": AI_PRICE_INPUT_PER_M,
-                "price_output_per_m": AI_PRICE_OUTPUT_PER_M}
+                "price_input_per_m": config["price_in"], "price_output_per_m": config["price_out"]}
     except Exception as e:  # network / auth / API errors surfaced to the page
-        logging.getLogger("assistant").exception("AI call failed (base=%s model=%s)",
-                                                 AI_BASE_URL, AI_MODEL)
+        logging.getLogger("assistant").exception("AI call failed (provider=%s model=%s)",
+                                                 config.get("provider"), config.get("model"))
         return {"error": f"{type(e).__name__}: {e}"}
 
 
@@ -562,8 +591,11 @@ def assistant_page(request: Request):
     if not authed(request):
         return login_redirect(request)
     conn = connect()
+    cfg = _ai_config(conn)
     resp = templates.TemplateResponse("assistant.html", ctx(
-        conn, request, active_nav="assistant", model=AI_MODEL, base_url=AI_BASE_URL))
+        conn, request, active_nav="assistant", model=cfg["model"],
+        provider_label=cfg["label"], has_key=cfg["has_key"],
+        base_url=cfg["base_url"] or "api.anthropic.com (Claude default)"))
     conn.close()
     return resp
 
@@ -577,9 +609,46 @@ async def api_assistant(request: Request):
     system = (form.get("system") or "").strip()
     if not prompt:
         return JSONResponse({"error": "Enter a prompt."}, status_code=400)
+    conn = connect()
+    cfg = _ai_config(conn)
+    conn.close()
     # Run the blocking SDK call off the event loop so one slow request can't stall the app.
-    result = await run_in_threadpool(_ai_reply, system, prompt)
+    result = await run_in_threadpool(_ai_reply, cfg, system, prompt)
     return JSONResponse(result)
+
+
+@app.get("/settings", response_class=HTMLResponse)
+def settings_page(request: Request, saved: int = 0):
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    current = settings.get_setting(conn, "ai_provider", DEFAULT_PROVIDER)
+    provs = []
+    for key, p in PROVIDERS.items():
+        provs.append({"key": key, "label": p["label"], "default_model": p["model"],
+                      "model": settings.get_setting(conn, f"ai_model_{key}", "") or "",
+                      "has_key": _provider_key(key) is not None,
+                      "price_in": p["price_in"], "price_out": p["price_out"]})
+    resp = templates.TemplateResponse("settings.html", ctx(
+        conn, request, active_nav="settings", providers=provs, current=current, saved=saved))
+    conn.close()
+    return resp
+
+
+@app.post("/settings")
+async def save_settings(request: Request):
+    if not authed(request):
+        return login_redirect(request)
+    form = await request.form()
+    provider = form.get("ai_provider") or DEFAULT_PROVIDER
+    if provider not in PROVIDERS:
+        provider = DEFAULT_PROVIDER
+    conn = connect()
+    settings.set_setting(conn, "ai_provider", provider)
+    for key in PROVIDERS:
+        settings.set_setting(conn, f"ai_model_{key}", (form.get(f"model_{key}") or "").strip())
+    conn.close()
+    return RedirectResponse(url=str(request.url_for("settings_page")) + "?saved=1", status_code=303)
 
 
 @app.on_event("startup")
