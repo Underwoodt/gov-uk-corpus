@@ -102,7 +102,8 @@
         try {
           const { j, ms } = await timedFetch(`/api/categories/${CID}/funnel?stage=${stage}`);
           row.querySelector(".val").textContent = fmtInt(j.count);
-          row.querySelector(".timing").textContent = fmtSecs(ms);
+          // 'All pages' is a cached copy of the corpus total — no query, so no time.
+          row.querySelector(".timing").textContent = stage === "all" ? "" : fmtSecs(ms);
         } catch (e) {
           row.querySelector(".val").textContent = "error";
         }
