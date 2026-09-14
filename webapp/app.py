@@ -192,6 +192,10 @@ def _ai_reply(config: dict, system: str, prompt: str) -> dict:
                              max_retries=0)
         if config["base_url"]:               # empty => anthropic SDK default (Claude API)
             client_kwargs["base_url"] = config["base_url"]
+        # Org-scoped ("Default") Anthropic keys need the workspace id header.
+        ws = os.getenv("ANTHROPIC_WORKSPACE_ID")
+        if ws and config["provider"] == "anthropic":
+            client_kwargs["default_headers"] = {"anthropic-workspace-id": ws}
         client = anthropic.Anthropic(**client_kwargs)
         kwargs = dict(model=config["model"], max_tokens=1024,
                       messages=[{"role": "user", "content": prompt}])
