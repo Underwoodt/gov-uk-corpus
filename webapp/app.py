@@ -347,7 +347,7 @@ def api_funnel(request: Request, cid: int, stage: str = "all"):
 
 
 @app.get("/api/categories/{cid}/results")
-def api_results(request: Request, cid: int, limit: int = 10):
+def api_results(request: Request, cid: int, limit: int = 10, offset: int = 0):
     if not authed(request):
         return JSONResponse({"error": "auth"}, status_code=401)
     limit = limit if limit in (10, 50, 100) else 10
@@ -357,9 +357,11 @@ def api_results(request: Request, cid: int, limit: int = 10):
         return JSONResponse({"error": "not found"}, status_code=404)
     filters = _effective_filters(conn, category)
     total = cached_count(conn, **filters)
-    rows = shortlist.detail_rows(conn, limit=limit, **filters) if total else []
+    offset = max(0, min(offset, max(0, total - 1)))   # clamp within range
+    rows = shortlist.detail_rows(conn, limit=limit, offset=offset, **filters) if total else []
     conn.close()
-    return JSONResponse({"total": total, "shown": len(rows), "rows": rows})
+    return JSONResponse({"total": total, "shown": len(rows),
+                         "offset": offset, "limit": limit, "rows": rows})
 
 
 @app.get("/categories/{cid}/download")
