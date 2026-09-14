@@ -23,6 +23,8 @@ from .backend import db
 
 _IS_PG = db.__name__.endswith("db_pg")
 _P = "%s" if _IS_PG else "?"   # param placeholder for the active backend
+# Byte size of the stored body text (octet_length on PG, length on SQLite).
+_SIZE_EXPR = "octet_length(c.search_text)" if _IS_PG else "length(c.search_text)"
 
 
 def _keyword_clause(keywords, match, is_pg):
@@ -53,6 +55,7 @@ def build_query(
     include_unfetched: bool = False,    # include rows we have no body for (content_hash NULL)
     count_only: bool = False,
     include_title: bool = False,        # also select c.title (for CSV export)
+    detail: bool = False,               # url + title + size + last-updated (for the results table)
     limit: Optional[int] = None,
 ) -> Tuple[str, list]:
     """Build (sql, params). Pure/deterministic, so it is unit-testable."""
@@ -91,6 +94,9 @@ def build_query(
     # (organisations via EXISTS), so there is no row fan-out and DISTINCT is unneeded.
     if count_only:
         select = "COUNT(*) AS n"
+    elif detail:
+        select = (f"c.url AS url, c.title AS title, {_SIZE_EXPR} AS size_bytes, "
+                  "c.public_updated_at AS updated")
     elif include_title:
         select = "c.url AS url, c.title AS title"
     else:
@@ -159,6 +165,12 @@ def shortlist_rows(conn, **kwargs) -> List[dict]:
     sql, params = build_query(count_only=False, include_title=True, **kwargs)
     return [{"url": r["url"], "title": r["title"]}
             for r in conn.execute(sql, tuple(params)).fetchall()]
+
+
+def detail_rows(conn, **kwargs) -> List[dict]:
+    """Rows for the results table: url, title, size_bytes, updated (last public update)."""
+    sql, params = build_query(detail=True, **kwargs)
+    return [dict(r) for r in conn.execute(sql, tuple(params)).fetchall()]
 
 
 def selection_funnel(conn, organisations: Sequence[str] = (),
