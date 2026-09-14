@@ -163,7 +163,9 @@ def login(request: Request, bad: int = 0):
     body = ("<div class='error-summary'><h2>There is a problem</h2>"
             "<ul><li>Incorrect password.</li></ul></div>" if bad else "")
     return HTMLResponse(
-        f"""<!doctype html><meta charset=utf-8><link rel=stylesheet href='/static/govuk.css'>
+        f"""<!doctype html><meta charset=utf-8>
+        <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M4 1h5l3 3v11H4z' fill='%231d70b8'/><path d='M9 1v3h3z' fill='%23003078'/><g fill='none' stroke='%23fff' stroke-width='1' stroke-linecap='round'><path d='M6 7h5'/><path d='M6 9h5'/><path d='M6 11h4'/></g></svg>">
+        <link rel=stylesheet href='/static/govuk.css'>
         <div class='masthead'><div class='wrap'><span class='brand'>Content Shortlist Builder</span></div></div>
         <div class='wrap body'><h1>Sign in</h1>{body}
         <form method=post action='{request.url_for('do_login')}'>
