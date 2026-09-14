@@ -14,9 +14,14 @@ _ORG_BASE = "/government/organisations/"
 
 
 def _slug_from_base_path(base_path: str) -> str:
+    # The slug is the LAST path element. Some orgs sit under a nested base_path
+    # (e.g. /government/organisations/courts-tribunals/employment-tribunal), and
+    # we want just "employment-tribunal", not "courts-tribunals/employment-tribunal".
     if base_path and base_path.startswith(_ORG_BASE):
-        return base_path[len(_ORG_BASE):].strip("/")
-    return (base_path or "").strip("/")
+        rest = base_path[len(_ORG_BASE):].strip("/")
+    else:
+        rest = (base_path or "").strip("/")
+    return rest.rsplit("/", 1)[-1]
 
 
 def extract_fields(payload: Dict[str, Any]) -> Dict[str, Any]:
