@@ -122,6 +122,18 @@ CREATE TABLE IF NOT EXISTS organisation_hierarchy (
 CREATE INDEX IF NOT EXISTS idx_org_hier_parent ON organisation_hierarchy(parent_slug);
 CREATE INDEX IF NOT EXISTS idx_org_hier_child  ON organisation_hierarchy(child_slug);
 
+-- Per-page funnel audit for a category. Starting point is the organisation
+-- filter (so we never log the whole corpus): every row passed the org filter,
+-- and `outcome` says where it then dropped, or that it was included.
+CREATE TABLE IF NOT EXISTS category_audit (
+    category_id  INTEGER NOT NULL,
+    url          TEXT NOT NULL,
+    outcome      TEXT NOT NULL,   -- included | dropped: document type | dropped: keyword
+    created_at   TEXT,
+    PRIMARY KEY (category_id, url)
+);
+CREATE INDEX IF NOT EXISTS idx_category_audit_outcome ON category_audit(category_id, outcome);
+
 -- Saved shortlist specs ("categories") — CRUD from the Shortlist Builder UI.
 -- The filter fields (dept_slugs, document_type_slugs, keywords) execute against the
 -- corpus; the inference fields are stored for downstream LLM phases.

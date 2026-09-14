@@ -108,6 +108,16 @@ CREATE TABLE IF NOT EXISTS organisation_hierarchy (
 CREATE INDEX IF NOT EXISTS idx_org_hier_parent ON organisation_hierarchy(parent_slug);
 CREATE INDEX IF NOT EXISTS idx_org_hier_child  ON organisation_hierarchy(child_slug);
 
+-- Per-page funnel audit for a category (starting point = organisation filter).
+CREATE TABLE IF NOT EXISTS category_audit (
+    category_id  bigint NOT NULL,
+    url          text NOT NULL,
+    outcome      text NOT NULL,   -- included | dropped: document type | dropped: keyword
+    created_at   text,
+    PRIMARY KEY (category_id, url)
+);
+CREATE INDEX IF NOT EXISTS idx_category_audit_outcome ON category_audit(category_id, outcome);
+
 -- Saved shortlist specs ("categories") — CRUD from the Shortlist Builder UI.
 CREATE TABLE IF NOT EXISTS categories (
     id                            bigint PRIMARY KEY,
