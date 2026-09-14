@@ -80,17 +80,19 @@ class TestStorageAndCandidates(unittest.TestCase):
 
 @unittest.skipUnless(_HAS_WEBAPP, "web app deps (fastapi) not installed")
 class TestRunEvaluationMocked(unittest.TestCase):
-    def test_run_stores_decisions(self):
-        os.environ["CORPUS_DB"] = ":memory:"
+    def _app(self, n=5, cost=0.0002):
+        import tempfile
+        fd, self.path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        os.environ["CORPUS_DB"] = self.path
         os.environ.pop("DB_HOST", None)
         import importlib
         import webapp.app as app
         importlib.reload(app)
-        # shared in-memory DB via one connection
+        from govuk_corpus import categories as cat
         conn = app.connect()
         app.db.init_db(conn)
-        from govuk_corpus import categories as cat
-        for i in range(3):
+        for i in range(n):
             url = f"https://www.gov.uk/p{i}"
             conn.execute("INSERT INTO content (url, document_type, is_redirect, content_hash, search_text, title) "
                          "VALUES (?, 'guidance',0,'h',?,?)", (url, "slurry", f"Title {i}"))
@@ -100,19 +102,46 @@ class TestRunEvaluationMocked(unittest.TestCase):
               "dept_slugs": "environment-agency", "document_type_slugs": "guidance",
               "keywords": "slurry", "inclusion_context": "slurry"})
         conn.commit()
-
-        app.connect = lambda: conn                      # reuse the same in-memory conn
+        conn.close()
         app._ai_config = lambda c: {"provider": "x", "label": "X", "base_url": "", "model": "m",
                                     "key": "k", "has_key": True, "price_in": 1.0, "price_out": 5.0}
         app._ai_reply = lambda cfg, system, prompt: {
             "reply": '{"keep": true, "score": 0.8, "reason": "relevant"}',
-            "input_tokens": 100, "output_tokens": 20, "cost_usd": 0.0002}
+            "input_tokens": 100, "output_tokens": 20, "cost_usd": cost}
+        return app, cid
 
+    def tearDown(self):
+        if getattr(self, "path", None) and os.path.exists(self.path):
+            os.unlink(self.path)
+
+    def _set(self, app, key, value):
+        conn = app.connect()
+        from govuk_corpus import settings as st
+        st.set_setting(conn, key, value)
+        conn.close()
+
+    def test_run_stores_decisions_and_logs_spend(self):
+        app, cid = self._app(n=3)
         result = app._run_evaluation(cid, 2)
         self.assertEqual(result["evaluated_this_run"], 2)
         self.assertEqual(result["kept"], 2)
         self.assertEqual(result["remaining"], 1)
+        conn = app.connect()
+        self.assertGreater(app._daily_spend(conn), 0)     # spend logged to ledger
         conn.close()
+
+    def test_budget_stops_the_run(self):
+        app, cid = self._app(n=5, cost=0.0002)
+        self._set(app, "ai_daily_budget", "0.0003")        # < two calls' cost
+        result = app._run_evaluation(cid, 5)
+        self.assertEqual(result["stopped"], "budget")
+        self.assertLessEqual(result["evaluated_this_run"], 2)
+
+    def test_max_docs_caps_run(self):
+        app, cid = self._app(n=5)
+        self._set(app, "ai_max_docs_per_run", "1")
+        result = app._run_evaluation(cid, 5)
+        self.assertEqual(result["evaluated_this_run"], 1)   # capped to 1 despite asking for 5
 
 
 if __name__ == "__main__":

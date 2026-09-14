@@ -121,6 +121,17 @@ CREATE TABLE IF NOT EXISTS category_evaluation (
 );
 CREATE INDEX IF NOT EXISTS idx_category_eval_keep ON category_evaluation(category_id, keep);
 
+-- AI spend ledger (one row per successful model call) for the daily budget.
+CREATE TABLE IF NOT EXISTS ai_usage (
+    day           text,
+    created_at    text,
+    cost          real,
+    input_tokens  integer,
+    output_tokens integer,
+    kind          text
+);
+CREATE INDEX IF NOT EXISTS idx_ai_usage_day ON ai_usage(day);
+
 -- Small key/value app settings (e.g. which AI provider the UI uses).
 CREATE TABLE IF NOT EXISTS app_settings (
     key   text PRIMARY KEY,

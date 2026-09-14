@@ -36,6 +36,22 @@
       </div>
     </div>
 
+    <h2 style="margin-top:40px;">Execution guardrails</h2>
+    <p class="secondary" style="margin:0 0 6px;">Spent today (all AI calls):
+      <strong>${{ '%.4f'|format(spent_today) }}</strong> of ${{ '%.2f'|format(daily_budget) }} budget.</p>
+    <div class="field">
+      <label class="q" for="ai_daily_budget">Daily AI budget (USD)</label>
+      <p class="hint">Inference warns within 10% and stops when the day's spend reaches this. 0 = no limit.</p>
+      <input id="ai_daily_budget" name="ai_daily_budget" type="number" step="0.01" min="0"
+        class="narrow" value="{{ '%.2f'|format(daily_budget) }}">
+    </div>
+    <div class="field">
+      <label class="q" for="ai_max_docs_per_run">Maximum documents per run</label>
+      <p class="hint">Caps how many pages one AI-evaluation run will process.</p>
+      <input id="ai_max_docs_per_run" name="ai_max_docs_per_run" type="number" min="1"
+        class="narrow" value="{{ max_docs }}">
+    </div>
+
     <button class="btn" type="submit">Save settings</button>
   </form>
 

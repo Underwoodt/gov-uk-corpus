@@ -257,8 +257,12 @@
         if (j.error) {
           st.textContent = "Error: " + j.error;
         } else {
-          st.textContent = `Evaluated ${fmtInt(j.evaluated_this_run)} this run`
+          let msg = `Evaluated ${fmtInt(j.evaluated_this_run)} this run`
             + ` · $${(j.cost_usd || 0).toFixed(6)} · ${fmtInt(j.remaining)} left in shortlist`;
+          if (j.spent_today != null) msg += ` · $${j.spent_today.toFixed(4)}/$${(j.budget||0).toFixed(2)} today`;
+          if (j.stopped === "budget") msg += " · ⛔ stopped: daily budget reached";
+          st.textContent = msg;
+          if (j.warning) { st.textContent += "  ⚠️ " + j.warning; }
         }
         await loadEval("");
       } catch (e) {
