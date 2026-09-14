@@ -57,15 +57,15 @@
       <span id="result-range" class="secondary"></span>
     </div>
 
-    <span class="actions" style="margin-bottom:20px;">
-      <a class="btn secondary-btn" href="{{ url_for('download_category', cid=category.id) }}?fmt=csv">Download CSV (url, title)</a>
-      <a class="btn secondary-btn" href="{{ url_for('download_category', cid=category.id) }}?fmt=txt">Download URLs (.txt)</a>
-    </span>
-
     <table id="results" style="margin-top:20px;">
       <thead><tr><th>Page</th><th class="num">Size</th><th>Last updated</th></tr></thead>
       <tbody><tr><td colspan="3"><span class="spinner"></span> Loading…</td></tr></tbody>
     </table>
+
+    <span class="actions" style="margin-top:20px;">
+      <a class="btn secondary-btn" href="{{ url_for('download_category', cid=category.id) }}?fmt=csv">Download CSV (url, title)</a>
+      <a class="btn secondary-btn" href="{{ url_for('download_category', cid=category.id) }}?fmt=txt">Download URLs (.txt)</a>
+    </span>
 
     <details style="margin-top:30px;"><summary>SQL query that was run</summary>
       <div class="detail" style="max-width:none;"><pre class="mono" style="white-space:pre-wrap;font-size:14px;">{{ sql }}</pre>

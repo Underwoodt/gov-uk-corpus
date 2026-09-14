@@ -164,7 +164,7 @@ def login(request: Request, bad: int = 0):
             "<ul><li>Incorrect password.</li></ul></div>" if bad else "")
     return HTMLResponse(
         f"""<!doctype html><meta charset=utf-8><link rel=stylesheet href='/static/govuk.css'>
-        <div class='masthead'><div class='wrap'><span class='brand'>Defra</span></div></div>
+        <div class='masthead'><div class='wrap'><span class='brand'>Content Shortlist Builder</span></div></div>
         <div class='wrap body'><h1>Sign in</h1>{body}
         <form method=post action='{request.url_for('do_login')}'>
         <div class='field'><label class='q' for='p'>Password</label>
