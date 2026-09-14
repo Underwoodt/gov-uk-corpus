@@ -12,7 +12,8 @@
 
   <div class="navbar"><div class="wrap inner">
     <span class="service">Content Relevance Filters</span>
-    <a href="{{ url_for('list_categories_page') }}" class="active">Categories</a>
+    <a href="{{ url_for('list_categories_page') }}" class="{{ 'active' if active_nav != 'assistant' }}">Categories</a>
+    <a href="{{ url_for('assistant_page') }}" class="{{ 'active' if active_nav == 'assistant' }}">AI Assistant</a>
   </div></div>
 
   <div class="wrap body">

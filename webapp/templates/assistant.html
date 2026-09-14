@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}AI Assistant{% endblock %}
+{% block content %}
+
+  <h1>AI Assistant</h1>
+  <p class="lede" style="margin:0 0 10px;">A scratch prototype for trying prompts against the model,
+    ahead of using AI to evaluate shortlists. This page is temporary.</p>
+  <p class="secondary" style="margin:0 0 30px;">Model: <code>{{ model }}</code> ·
+    via <code>{{ base_url }}</code> (Anthropic-compatible API). Prompts are sent to that service.</p>
+
+  <div class="field">
+    <label class="q" for="system">System prompt <span class="secondary" style="font-weight:400;">(optional)</span></label>
+    <textarea id="system" rows="3" placeholder="You are a helpful assistant that evaluates gov.uk pages…"></textarea>
+  </div>
+
+  <div class="field">
+    <label class="q" for="prompt">Your prompt</label>
+    <textarea id="prompt" rows="6" placeholder="Ask something…"></textarea>
+  </div>
+
+  <button class="btn" id="send">Send</button>
+  <span id="status" class="secondary" style="margin-left:12px;"></span>
+
+  <div class="field" style="margin-top:30px;">
+    <label class="q">Response</label>
+    <pre id="reply" class="mono" style="white-space:pre-wrap;border:1px solid var(--grey-border);
+      padding:15px;min-height:60px;background:var(--light-grey);"></pre>
+  </div>
+
+  <script>
+    const send = document.getElementById("send");
+    const statusEl = document.getElementById("status");
+    const reply = document.getElementById("reply");
+
+    async function ask() {
+      const prompt = document.getElementById("prompt").value.trim();
+      if (!prompt) { statusEl.textContent = "Enter a prompt."; return; }
+      send.disabled = true;
+      statusEl.innerHTML = '<span class="spinner"></span> Thinking…';
+      reply.textContent = "";
+      try {
+        const body = new URLSearchParams({ prompt,
+          system: document.getElementById("system").value });
+        const r = await fetch("/api/assistant", { method: "POST", body });
+        const j = await r.json();
+        if (j.error) { statusEl.textContent = "Error"; reply.textContent = j.error; }
+        else { statusEl.textContent = j.model ? "· " + j.model : ""; reply.textContent = j.reply || "(empty response)"; }
+      } catch (e) {
+        statusEl.textContent = "Error"; reply.textContent = String(e);
+      } finally {
+        send.disabled = false;
+      }
+    }
+    send.addEventListener("click", ask);
+  </script>
+{% endblock %}
