@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Categories{% endblock %}
+{% block content %}
+
+  {% if flash %}<div class="success">{{ flash }}</div>{% endif %}
+
+  <h1>Categories</h1>
+  <p class="lede" style="margin:0 0 30px;">A category is a saved set of rules for finding gov.uk pages
+    about one topic. Choose a category to run it or change it, or create a new one.</p>
+
+  <div style="margin-bottom:30px;">
+    <label class="secondary" for="cat-filter" style="display:block;margin-bottom:5px;">Search categories</label>
+    <input id="cat-filter" type="text" class="narrow" oninput="filterCats(this.value)">
+  </div>
+
+  <p class="secondary" id="count-line" style="margin:0 0 10px;">{{ categories|length }} categor{{ 'y' if categories|length == 1 else 'ies' }}</p>
+
+  {% if categories %}
+  <table id="cat-table">
+    <thead><tr>
+      <th>Category</th><th>Owner</th><th>Last updated</th>
+      <th class="num">Pages kept</th><th>Status</th><th>Action</th>
+    </tr></thead>
+    <tbody>
+      {% for c in categories %}
+      <tr data-name="{{ (c.display_name ~ ' ' ~ (c.slug or '')) | lower }}">
+        <td>
+          <a class="name-link" href="{{ url_for('edit_category_page', cid=c.id) }}">{{ c.display_name }}</a>
+          {% if c.slug %}<span class="sub mono">{{ c.slug }}</span>{% endif %}
+        </td>
+        <td>{{ c.owner_email or '' }}</td>
+        <td>{{ c.updated }}</td>
+        <td class="num">{{ c.pages_kept }}</td>
+        <td>{{ c.status }}</td>
+        <td><span class="actions">
+          <a href="{{ url_for('preview_category_page', cid=c.id) }}">Run</a>
+          <a href="{{ url_for('edit_category_page', cid=c.id) }}">Change</a>
+        </span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="margin:20px 0 40px;">No categories yet. Create one to get started.</p>
+  {% endif %}
+
+  <a class="btn" href="{{ url_for('new_category_page') }}">Create a new category</a>
+
+  <script>
+    function filterCats(q) {
+      q = q.trim().toLowerCase();
+      var rows = document.querySelectorAll('#cat-table tbody tr'), shown = 0;
+      rows.forEach(function (r) {
+        var hit = !q || r.getAttribute('data-name').indexOf(q) !== -1;
+        r.hidden = !hit; if (hit) shown++;
+      });
+      document.getElementById('count-line').textContent =
+        shown + (shown === 1 ? ' category' : ' categories');
+    }
+  </script>
+{% endblock %}

@@ -1,0 +1,17 @@
+[Unit]
+Description=GOV.UK Corpus — Shortlist Builder (FastAPI/GDS)
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/gov-uk-corpus
+# DB_HOST/DB_NAME/DB_USER/DB_PASSWORD + DASHBOARD_PASSWORD live here (chmod 600):
+EnvironmentFile=/home/ubuntu/gov-uk-corpus.env
+# Use the same venv the dashboard uses (adjust path to match):
+ExecStart=/home/ubuntu/gov-uk-corpus/.venv/bin/uvicorn webapp.app:app --host 0.0.0.0 --port 8600
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

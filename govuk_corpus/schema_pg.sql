@@ -92,6 +92,7 @@ CREATE TABLE IF NOT EXISTS categories (
     created_at                    text,
     updated_at                    text,
     status                        text DEFAULT 'draft',
+    slug                          text,
     owner_email                   text,
     description                   text,
     dept_slugs                    text,
@@ -120,3 +121,6 @@ ALTER TABLE content ADD COLUMN IF NOT EXISTS search_tsv tsvector
       coalesce(title, '') || ' ' || coalesce(description, '') || ' ' || coalesce(search_text, ''))
   ) STORED;
 CREATE INDEX IF NOT EXISTS idx_content_search_tsv ON content USING GIN (search_tsv);
+
+-- Category display name/identifier (added after initial deploy).
+ALTER TABLE categories ADD COLUMN IF NOT EXISTS slug text;

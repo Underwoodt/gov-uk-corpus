@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Change' if is_edit else 'Create' }} category{% endblock %}
+{% block content %}
+
+  <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
+
+  <h1 style="margin:20px 0 20px;">{{ 'Change Category' if is_edit else 'Create New Category' }}</h1>
+  <p class="lede" style="margin:0 0 20px;">A category is a saved set of rules for finding gov.uk pages
+    about one topic. These rules build a shortlist of pages, which you can then run.</p>
+
+  {% if errors %}
+  <div class="error-summary" role="alert">
+    <h2>There is a problem</h2>
+    <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+
+  <div class="tabs">
+    <span class="current">Definition</span>
+    {% if is_edit %}<a href="{{ url_for('preview_category_page', cid=category.id) }}">Preview and run</a>
+    {% else %}<a href="#" onclick="return false" style="color:#505a5f;cursor:default;">Preview and run</a>{% endif %}
+  </div>
+
+  <form class="tabpanel" method="post" action="{{ action }}">
+    <h2>Definition</h2>
+
+    <div class="field">
+      <label class="q" for="example">Start from an example</label>
+      <p class="hint">Fills in the fields below, replacing anything you have typed.</p>
+      <select id="example" onchange="applyExample(this.value)">
+        <option value="">—</option>
+        <option value="slurry">slurry</option>
+        <option value="fish">fish</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label class="q" for="owner_email">Your email address</label>
+      <p class="hint">We email you when a run finishes. This is not a login.</p>
+      <input id="owner_email" name="owner_email" type="text" value="{{ v.owner_email or '' }}">
+    </div>
+
+    <div class="field">
+      <label class="q" for="slug">Name for this category</label>
+      <p class="hint">Lowercase letters, numbers and underscores, for example
+        <code>animal_liquid_waste</code>.</p>
+      <input id="slug" name="slug" type="text" class="narrow" placeholder="animal_liquid_waste"
+        value="{{ v.slug or '' }}" {{ 'readonly style=background:#f3f2f1' if is_edit else '' }}>
+      {% if is_edit %}<p class="hint">The name is fixed once created, so results stay comparable.</p>{% endif %}
+    </div>
+
+    <div class="field">
+      <label class="q" for="index">Which version of GOV.UK to search</label>
+      <p class="hint">Leave this as it is. The newest version is already selected.</p>
+      <select id="index" disabled><option>{{ corpus_meta }}</option></select>
+    </div>
+
+    <div class="field">
+      <h3>Organisations <span class="secondary" style="font-weight:400;">(Pre-Inference Filtering: 1)</span></h3>
+      <p class="hint">Tick the organisations whose pages you want to search. Tick none to search all of them.</p>
+      <details><summary>How this narrows your search</summary>
+        <div class="detail"><p>A page is kept if one of the organisations you tick published it or is
+          named on it. Everything after this point looks only at those pages, so a tighter choice means a
+          faster, cheaper run and fewer irrelevant results.</p></div></details>
+      <label class="secondary" for="org-filter" style="display:block;margin-bottom:5px;">Search the list</label>
+      <input id="org-filter" type="text" class="narrow" oninput="filterChecks('org-picker', this.value)">
+      <p class="hint">{{ orgs|length }} organisations</p>
+      <div id="org-picker" class="picker">
+        {% for slug, name in orgs %}
+        <label class="check" data-name="{{ name|lower }} {{ slug }}">
+          <input type="checkbox" name="dept_slugs" value="{{ slug }}" {{ 'checked' if slug in selected_depts }}> {{ name }}
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="field">
+      <h3>Page Types <span class="secondary" style="font-weight:400;">(Pre-Inference Filtering: 2)</span></h3>
+      <p class="hint">Tick the kinds of page you want to search. Tick none to search every kind.</p>
+      <details><summary>How this narrows your search</summary>
+        <div class="detail"><p>A page has to match both an organisation you ticked and a type you ticked.
+          If you are not sure, leave it blank and rule out types after you see what comes back.</p></div></details>
+      <div class="checkgrid">
+        {% for val, name in doc_types %}
+        <label class="check"><input type="checkbox" name="document_type_slugs" value="{{ val }}"
+          {{ 'checked' if val in selected_types }}> {{ name }}</label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="q" for="keywords">Inclusion Keyword(s) <span class="secondary" style="font-weight:400;">(Pre-Inference Filtering: 3)</span></label>
+      <p class="hint">One term per line. A term is a single word, or a pair of words that sit next to each other.</p>
+      <details><summary>How your terms are matched</summary>
+        <div class="detail">
+          <p>This is a word match, not a search for a phrase or an idea. We look through the title and text
+            of every page for the terms you list. A page with none of them is skipped.</p>
+          <p>Each line is one word (<strong>slurry</strong>) or two words that appear together
+            (<strong>catch certificate</strong>). Three or more words never match. Word endings are matched,
+            so <strong>lagoon</strong> also finds lagoons. Capital letters do not matter.</p>
+          <ul style="margin:0;padding-left:20px;">
+            <li>Avoid broad words such as farm, water, waste. They match thousands of pages.</li>
+            <li>Prefer the specific term: slurry, lagoon, catch certificate.</li>
+          </ul>
+        </div></details>
+      <textarea id="keywords" name="keywords" rows="4">{{ v.keywords or '' }}</textarea>
+    </div>
+
+    <div class="field">
+      <label class="q" for="inclusion_context">What to Include <span class="secondary" style="font-weight:400;">(LLM Inference: 1)</span></label>
+      <p class="hint">Describe your topic in your own words. Be generous: this is about keeping anything relevant.</p>
+      <details><summary>How to write this well</summary>
+        <div class="detail">
+          <p>Say what the thing is. Do not insist the page is mainly about your topic — a single mention can
+            still be the page you need. Do not list what you are not interested in; that belongs in "What to exclude".</p>
+          <div class="example"><p style="margin:0;">Slurry is liquid or semi-liquid livestock manure: cattle
+            and pig slurry, dirty water, digestate from farm anaerobic digestion, and silage effluent. Include a
+            page if it mentions slurry in this farming sense anywhere, even once.</p></div>
+        </div></details>
+      <textarea id="inclusion_context" name="inclusion_context" rows="4">{{ v.inclusion_context or '' }}</textarea>
+    </div>
+
+    <div class="field">
+      <label class="q" for="exclusion_context">What to Exclude <span class="secondary" style="font-weight:400;">(LLM Inference: 2)</span></label>
+      <p class="hint">List the things that look relevant but are not. Be as specific as you can.</p>
+      <details><summary>How to write this well</summary>
+        <div class="detail">
+          <p>Words with another meaning (coal slurry), the wrong subject area (sewage sludge when you mean
+            animal slurry), or pages that mention your topic once in passing. Being concrete works better.</p>
+          <div class="example"><p style="margin:0;">Exclude pages where slurry means something other than
+            livestock manure: coal, mining, concrete slurry. Exclude sewage sludge and biosolids.</p></div>
+        </div></details>
+      <textarea id="exclusion_context" name="exclusion_context" rows="4">{{ v.exclusion_context or '' }}</textarea>
+    </div>
+
+    <div class="field">
+      <h3>Examples of tricky pages <span class="secondary" style="font-weight:400;">(LLM Inference: 3, optional)</span></h3>
+      <p class="hint">One example per line. Skip this unless you already know which pages cause trouble.</p>
+      <label class="secondary" for="adjudication_hints_keep" style="display:block;margin-bottom:5px;">Keep</label>
+      <textarea id="adjudication_hints_keep" name="adjudication_hints_keep" rows="3"
+        placeholder="Grant page that funds slurry stores even if the rest is about payments"
+        style="margin-bottom:20px;">{{ v.adjudication_hints_keep or '' }}</textarea>
+      <label class="secondary" for="adjudication_hints_drop" style="display:block;margin-bottom:5px;">Drop</label>
+      <textarea id="adjudication_hints_drop" name="adjudication_hints_drop" rows="3"
+        placeholder="Sewage sludge or biosolids, not animal slurry">{{ v.adjudication_hints_drop or '' }}</textarea>
+    </div>
+
+    <button class="btn" type="submit">{{ 'Save changes' if is_edit else 'Create and preview' }}</button>
+  </form>
+
+  <script>
+    var EXAMPLES = {{ examples_json|safe }};
+    function applyExample(key) {
+      if (!key || !EXAMPLES[key]) return;
+      var ex = EXAMPLES[key];
+      ['slug','keywords','inclusion_context','exclusion_context',
+       'adjudication_hints_keep','adjudication_hints_drop'].forEach(function (id) {
+        if (ex[id] !== undefined && document.getElementById(id) && !document.getElementById(id).readOnly)
+          document.getElementById(id).value = ex[id];
+      });
+      // tick departments / page types
+      tick('dept_slugs', ex.dept_slugs || []);
+      tick('document_type_slugs', ex.document_type_slugs || []);
+    }
+    function tick(name, values) {
+      document.querySelectorAll('input[name="' + name + '"]').forEach(function (el) {
+        el.checked = values.indexOf(el.value) !== -1;
+      });
+    }
+    function filterChecks(containerId, q) {
+      q = q.trim().toLowerCase();
+      document.querySelectorAll('#' + containerId + ' .check').forEach(function (l) {
+        l.hidden = q && l.getAttribute('data-name').indexOf(q) === -1;
+      });
+    }
+  </script>
+{% endblock %}

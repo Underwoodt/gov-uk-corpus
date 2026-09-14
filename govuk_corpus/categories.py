@@ -20,7 +20,7 @@ _P = "%s" if _IS_PG else "?"
 
 # User-editable fields, in storage order.
 USER_FIELDS = [
-    "owner_email", "description", "dept_slugs", "document_type_slugs", "keywords",
+    "slug", "owner_email", "description", "dept_slugs", "document_type_slugs", "keywords",
     "inclusion_context", "exclusion_context", "adjudication_hints_keep",
     "adjudication_hints_drop", "extra_guidance_urls", "only_use_extra_guidance_urls",
     "extra_law_urls", "only_use_extra_law_urls",
@@ -29,13 +29,22 @@ REQUIRED_FIELDS = [
     "owner_email", "description", "dept_slugs", "document_type_slugs", "inclusion_context",
 ]
 MAX_LEN = {
+    "slug": 64,
     "description": 100, "dept_slugs": 2000, "document_type_slugs": 2000, "keywords": 2000,
     "inclusion_context": 2000, "exclusion_context": 2000, "adjudication_hints_keep": 2000,
     "adjudication_hints_drop": 2000, "extra_guidance_urls": 10000, "extra_law_urls": 10000,
 }
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+SLUG_RE = re.compile(r"^[a-z0-9_]+$")
+
+
+def prettify(slug: Optional[str]) -> str:
+    """Turn a slug into a human display name: animal_liquid_waste -> Animal Liquid Waste."""
+    return (slug or "").replace("_", " ").strip().title()
+
 
 _LABELS = {
+    "slug": "Name for this category",
     "owner_email": "Owner Email", "description": "Description", "dept_slugs": "Departments",
     "document_type_slugs": "Document Types", "keywords": "Keyword Search",
     "inclusion_context": "Include description", "exclusion_context": "Exclude description",
@@ -63,6 +72,11 @@ def validate(data: Dict[str, Any]) -> List[str]:
     email = str(data.get("owner_email") or "").strip()
     if email and not _EMAIL_RE.match(email):
         errors.append("Please enter a valid email address.")
+    slug = str(data.get("slug") or "").strip()
+    if "slug" in data and not slug:
+        errors.append("Name for this category is required.")
+    elif slug and not SLUG_RE.match(slug):
+        errors.append("Name must be lowercase letters, numbers and underscores only.")
     for f, limit in MAX_LEN.items():
         v = data.get(f)
         if v and len(str(v)) > limit:
@@ -118,7 +132,8 @@ def get_category(conn, cid: int) -> Optional[Dict[str, Any]]:
 
 def list_categories(conn) -> List[Dict[str, Any]]:
     rows = conn.execute(
-        "SELECT id, description, owner_email, dept_slugs, document_type_slugs, status, created_at "
+        "SELECT id, slug, description, owner_email, dept_slugs, document_type_slugs, "
+        "status, created_at, updated_at "
         "FROM categories ORDER BY created_at DESC"
     ).fetchall()
     return [dict(r) for r in rows]

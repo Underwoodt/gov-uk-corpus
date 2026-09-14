@@ -100,6 +100,7 @@ CREATE TABLE IF NOT EXISTS categories (
     created_at                    TEXT,
     updated_at                    TEXT,
     status                        TEXT DEFAULT 'draft',  -- draft | published | archived
+    slug                          TEXT,                  -- lowercase_underscores identifier/name
     owner_email                   TEXT,
     description                   TEXT,
     dept_slugs                    TEXT,
