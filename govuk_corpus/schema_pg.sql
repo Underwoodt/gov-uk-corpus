@@ -146,3 +146,14 @@ CREATE INDEX IF NOT EXISTS idx_content_search_tsv ON content USING GIN (search_t
 
 -- Category display name/identifier (added after initial deploy).
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS slug text;
+
+-- Partial indexes over the "usable page" guard (is_redirect=0 AND content_hash
+-- IS NOT NULL) that every shortlist count carries. Lets the total count do an
+-- index-only scan and the document-type count skip the dead rows.
+-- NOTE: built without CONCURRENTLY here (schema runs on startup), so this briefly
+-- locks `content` while it builds — a minute or two on ~877k rows. To avoid the
+-- lock, create them once by hand with CREATE INDEX CONCURRENTLY before deploying.
+CREATE INDEX IF NOT EXISTS idx_content_usable
+  ON content (url) WHERE is_redirect = 0 AND content_hash IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_content_usable_doctype
+  ON content (document_type) WHERE is_redirect = 0 AND content_hash IS NOT NULL;

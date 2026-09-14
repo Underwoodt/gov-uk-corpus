@@ -56,6 +56,11 @@ CREATE TABLE IF NOT EXISTS content (
 );
 CREATE INDEX IF NOT EXISTS idx_content_document_type ON content(document_type);
 CREATE INDEX IF NOT EXISTS idx_content_source ON content(source);
+-- Partial indexes over the "usable page" guard every shortlist count carries.
+CREATE INDEX IF NOT EXISTS idx_content_usable
+  ON content(url) WHERE is_redirect = 0 AND content_hash IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_content_usable_doctype
+  ON content(document_type) WHERE is_redirect = 0 AND content_hash IS NOT NULL;
 
 -- The sitemap frontier.
 CREATE TABLE IF NOT EXISTS sitemap (
