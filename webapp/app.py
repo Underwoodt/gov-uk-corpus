@@ -28,7 +28,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from govuk_corpus import categories as cat
-from govuk_corpus import shortlist
+from govuk_corpus import orgs, shortlist
 from govuk_corpus.backend import db
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -152,6 +152,7 @@ def form_values(form) -> dict:
          ("slug", "owner_email", "dept_slugs", "document_type_slugs", "keywords",
           "inclusion_context", "exclusion_context",
           "adjudication_hints_keep", "adjudication_hints_drop")}
+    d["include_child_orgs"] = form.get("include_child_orgs")  # checkbox: "on" or absent
     d["description"] = cat.prettify(d.get("slug"))  # keep the Streamlit list name sensible
     return d
 
@@ -283,6 +284,15 @@ def _filters(category) -> dict:
     )
 
 
+def _effective_filters(conn, category) -> dict:
+    """Filters actually applied: when 'include child organisations' is set, expand
+    the chosen orgs to include their child departments (all descendants)."""
+    f = _filters(category)
+    if category.get("include_child_orgs") and f["organisations"]:
+        f["organisations"] = orgs.expand_with_children(conn, f["organisations"], recursive=True)
+    return f
+
+
 _FUNNEL_STAGES = {  # stage -> (label, which filters apply)
     "all":     ("All pages", ()),
     "org":     ("After organisation filter", ("organisations",)),
@@ -301,7 +311,7 @@ def preview_category_page(request: Request, cid: int):
     if not category:
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
     category["display_name"] = cat.prettify(category.get("slug")) or (category.get("description") or "Untitled")
-    filters = _filters(category)
+    filters = _effective_filters(conn, category)
     # The specific filter values applied at each funnel step (for the collapsed rows).
     stage_value_key = {"all": None, "org": "organisations",
                        "doctype": "document_types", "keyword": "keywords"}
@@ -327,7 +337,7 @@ def api_funnel(request: Request, cid: int, stage: str = "all"):
     if not category:
         return JSONResponse({"error": "not found"}, status_code=404)
     label, applies = _FUNNEL_STAGES[stage]
-    filters = _filters(category)
+    filters = _effective_filters(conn, category)
     kw = {k: filters[k] for k in applies}
     if "keywords" in kw:
         kw["match"] = "any"
@@ -345,7 +355,7 @@ def api_results(request: Request, cid: int, limit: int = 10):
     category = cat.get_category(conn, cid)
     if not category:
         return JSONResponse({"error": "not found"}, status_code=404)
-    filters = _filters(category)
+    filters = _effective_filters(conn, category)
     total = cached_count(conn, **filters)
     rows = shortlist.detail_rows(conn, limit=limit, **filters) if total else []
     conn.close()
@@ -360,7 +370,7 @@ def download_category(request: Request, cid: int, fmt: str = "csv"):
     category = cat.get_category(conn, cid)
     if not category:
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
-    rows = shortlist.shortlist_rows(conn, limit=100000, **_filters(category))
+    rows = shortlist.shortlist_rows(conn, limit=100000, **_effective_filters(conn, category))
     conn.close()
     name = category.get("slug") or f"category-{cid}"
     if fmt == "txt":

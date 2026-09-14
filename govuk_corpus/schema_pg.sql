@@ -118,6 +118,7 @@ CREATE TABLE IF NOT EXISTS categories (
     owner_email                   text,
     description                   text,
     dept_slugs                    text,
+    include_child_orgs            smallint DEFAULT 0,
     document_type_slugs           text,
     keywords                      text,
     inclusion_context             text,
@@ -146,6 +147,7 @@ CREATE INDEX IF NOT EXISTS idx_content_search_tsv ON content USING GIN (search_t
 
 -- Category display name/identifier (added after initial deploy).
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS slug text;
+ALTER TABLE categories ADD COLUMN IF NOT EXISTS include_child_orgs smallint DEFAULT 0;
 
 -- Partial indexes over the "usable page" guard (is_redirect=0 AND content_hash
 -- IS NOT NULL) that every shortlist count carries. Lets the total count do an
