@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+#
+# restart_dashboard — update code, verify the DB, and restart the dashboard service.
+#
+#   ./restart_dashboard
+#
+# Steps: git pull -> DB health check -> stop (if running) -> start.
+# Aborts before restarting if the database is unreachable.
+
+set -uo pipefail
+
+REPO="$(cd "$(dirname "$0")" && pwd)"
+ENV_FILE="$HOME/gov-uk-corpus.env"
+SERVICE="corpus-dashboard"
+
+echo "==> 1/5 Updating code (git pull)"
+git -C "$REPO" pull
+echo
+
+echo "==> 2/5 Checking database..."
+if [[ -f "$ENV_FILE" ]]; then
+    set -a; . "$ENV_FILE"; set +a
+else
+    echo "    ERROR: $ENV_FILE not found (needs DB_USER/DB_PASSWORD/DB_NAME)." >&2
+    exit 1
+fi
+DB_HOST="${DB_HOST:-localhost}"
+if rows=$(PGPASSWORD="${DB_PASSWORD:-}" psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" \
+            -tAc "SELECT count(*) FROM content" 2>/dev/null); then
+    echo "    Database healthy — ${rows} content rows."
+else
+    echo "    ERROR: cannot query the database ($DB_NAME on $DB_HOST as $DB_USER). Aborting." >&2
+    exit 1
+fi
+echo
+
+echo "==> 3/5 Checking service ($SERVICE)..."
+if systemctl is-active --quiet "$SERVICE"; then
+    running=1
+    echo "    $SERVICE is currently RUNNING."
+else
+    running=0
+    echo "    $SERVICE is currently STOPPED."
+fi
+
+echo "==> 4/5 Stopping service (if running)..."
+if [[ "$running" -eq 1 ]]; then
+    sudo systemctl stop "$SERVICE"
+    echo "    Stopped $SERVICE."
+else
+    echo "    Nothing to stop."
+fi
+
+echo "==> 5/5 Starting service..."
+sudo systemctl start "$SERVICE"
+sleep 1
+if systemctl is-active --quiet "$SERVICE"; then
+    echo "    $SERVICE is now RUNNING."
+    echo
+    echo "Done. Dashboard: http://$(hostname -I | awk '{print $1}'):8501"
+else
+    echo "    ERROR: $SERVICE failed to start." >&2
+    echo "    See: journalctl -u $SERVICE -n 30 --no-pager" >&2
+    exit 1
+fi
