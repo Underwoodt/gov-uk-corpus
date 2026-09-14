@@ -56,6 +56,7 @@ def build_query(
     count_only: bool = False,
     include_title: bool = False,        # also select c.title (for CSV export)
     detail: bool = False,               # url + title + size + last-updated (for the results table)
+    select_expr: Optional[str] = None,  # explicit SELECT list (for custom exports)
     limit: Optional[int] = None,
     offset: Optional[int] = None,       # skip N rows (pagination)
 ) -> Tuple[str, list]:
@@ -95,6 +96,8 @@ def build_query(
     # (organisations via EXISTS), so there is no row fan-out and DISTINCT is unneeded.
     if count_only:
         select = "COUNT(*) AS n"
+    elif select_expr:
+        select = select_expr
     elif detail:
         select = (f"c.url AS url, c.title AS title, {_SIZE_EXPR} AS size_bytes, "
                   "c.public_updated_at AS updated")
@@ -175,6 +178,31 @@ def detail_rows(conn, **kwargs) -> List[dict]:
     """Rows for the results table: url, title, size_bytes, updated (last public update)."""
     sql, params = build_query(detail=True, **kwargs)
     return [dict(r) for r in conn.execute(sql, tuple(params)).fetchall()]
+
+
+# Exportable fields: key -> (SQL expression, human label). 'url' is mandatory.
+EXPORT_FIELDS = {
+    "url": ("c.url", "URL"),
+    "title": ("c.title", "Title"),
+    "size": (_SIZE_EXPR, "Size (bytes)"),
+    "readability": ("c.reading_age", "Readability (reading age)"),
+    "gds_issues": ("c.gds_english_score", "GDS issues (count)"),
+    "gds_findings": ("c.gds_findings", "GDS issues (text)"),
+    "content": ("c.content", "Content (raw JSON)"),
+    "first_published_at": ("c.first_published_at", "First published at"),
+    "public_updated_at": ("c.public_updated_at", "Public updated at"),
+}
+
+
+def export_rows(conn, fields: Sequence[str], *, limit: Optional[int] = 100000,
+                **filters) -> Tuple[List[str], List[dict]]:
+    """(ordered field keys, rows) for the chosen fields. 'url' is always included first."""
+    keys = [f for f in fields if f in EXPORT_FIELDS and f != "url"]
+    keys = ["url"] + keys
+    select_expr = ", ".join(f"{EXPORT_FIELDS[k][0]} AS {k}" for k in keys)
+    sql, params = build_query(select_expr=select_expr, limit=limit, **filters)
+    rows = [dict(r) for r in conn.execute(sql, tuple(params)).fetchall()]
+    return keys, rows
 
 
 def selection_funnel(conn, organisations: Sequence[str] = (),

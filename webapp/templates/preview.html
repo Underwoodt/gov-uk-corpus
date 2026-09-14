@@ -63,8 +63,7 @@
     </table>
 
     <span class="actions" style="margin-top:20px;">
-      <a class="btn secondary-btn" href="{{ url_for('download_category', cid=category.id) }}?fmt=csv">Download CSV (url, title)</a>
-      <a class="btn secondary-btn" href="{{ url_for('download_category', cid=category.id) }}?fmt=txt">Download URLs (.txt)</a>
+      <a class="btn secondary-btn" href="{{ url_for('download_page', cid=category.id) }}">Download…</a>
     </span>
 
     <h2 style="margin-top:30px;">Funnel audit (per-page log)</h2>

@@ -23,7 +23,7 @@ import threading
 import time
 from typing import Dict, List, Optional
 
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, Form, Query, Request
 from fastapi.responses import (HTMLResponse, JSONResponse, PlainTextResponse,
                                RedirectResponse, Response)
 from fastapi.staticfiles import StaticFiles
@@ -428,25 +428,82 @@ def api_results(request: Request, cid: int, limit: int = 10, offset: int = 0):
                          "offset": offset, "limit": limit, "rows": rows})
 
 
-@app.get("/categories/{cid}/download")
-def download_category(request: Request, cid: int, fmt: str = "csv"):
+# ---- download page (choose format + fields) -----------------------------
+# (key, label, default_on, disabled, warning)
+_DOWNLOAD_FIELDS = [
+    ("url", "URL", True, True, None),
+    ("title", "Title", True, False, None),
+    ("size", "Size", True, False, None),
+    ("readability", "Readability score", False, False, None),
+    ("gds_issues", "GDS number of issues", False, False, None),
+    ("gds_findings", "GDS issues text", False, False, None),
+    ("content", "Content", False, False, "warning: may make the download very large"),
+    ("first_published_at", "First published at", False, False, None),
+    ("public_updated_at", "Public updated at", False, False, None),
+]
+
+
+@app.get("/categories/{cid}/download", response_class=HTMLResponse)
+def download_page(request: Request, cid: int):
     if not authed(request):
         return login_redirect(request)
     conn = connect()
     category = cat.get_category(conn, cid)
     if not category:
+        conn.close()
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
-    rows = shortlist.shortlist_rows(conn, limit=100000, **_effective_filters(conn, category))
+    category["display_name"] = cat.prettify(category.get("slug")) or (category.get("description") or "Untitled")
+    total = cached_count(conn, **_effective_filters(conn, category))
+    resp = templates.TemplateResponse("download.html", ctx(
+        conn, request, category=category, total=total, fields=_DOWNLOAD_FIELDS))
     conn.close()
+    return resp
+
+
+@app.get("/categories/{cid}/export")
+def export_category(request: Request, cid: int, format: str = "csv",
+                    fields: List[str] = Query(default=[])):
+    """Build the chosen-format, chosen-field export. Sync route -> runs in a
+    threadpool so a large export doesn't block the event loop."""
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    category = cat.get_category(conn, cid)
+    if not category:
+        conn.close()
+        return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
+    keys, rows = shortlist.export_rows(conn, fields, **_effective_filters(conn, category))
+    conn.close()
+    labels = [shortlist.EXPORT_FIELDS[k][1] for k in keys]
     name = category.get("slug") or f"category-{cid}"
-    if fmt == "txt":
-        return PlainTextResponse("\n".join(r["url"] for r in rows),
-                                 headers={"Content-Disposition": f'attachment; filename="{name}.txt"'})
+
+    if format == "json":
+        payload = [{k: r.get(k) for k in keys} for r in rows]
+        return Response(json.dumps(payload, indent=2, default=str), media_type="application/json",
+                        headers={"Content-Disposition": f'attachment; filename="{name}.json"'})
+    if format == "xlsx":
+        try:
+            import openpyxl
+        except Exception:
+            return JSONResponse({"error": "Excel export needs openpyxl (pip install -r requirements.txt)."},
+                                status_code=500)
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "shortlist"
+        ws.append(labels)
+        for r in rows:
+            ws.append([r.get(k) for k in keys])
+        bio = io.BytesIO()
+        wb.save(bio)
+        return Response(bio.getvalue(),
+                        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        headers={"Content-Disposition": f'attachment; filename="{name}.xlsx"'})
+    # default CSV
     buf = io.StringIO()
-    import csv
-    w = csv.writer(buf); w.writerow(["url", "title"])
+    w = csv.writer(buf)
+    w.writerow(labels)
     for r in rows:
-        w.writerow([r["url"], r["title"] or ""])
+        w.writerow([r.get(k) for k in keys])
     return Response(buf.getvalue(), media_type="text/csv",
                     headers={"Content-Disposition": f'attachment; filename="{name}.csv"'})
 

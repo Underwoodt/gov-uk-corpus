@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Download{% endblock %}
+{% block content %}
+
+  <a class="back" href="{{ url_for('preview_category_page', cid=category.id) }}">‹ Back to results</a>
+
+  <h1 style="margin:20px 0 5px;">Download shortlist</h1>
+  <p class="secondary" style="margin:0 0 25px;">{{ category.display_name }}
+    (<span class="mono">{{ category.slug or '' }}</span>) · {{ '{:,}'.format(total) }} pages</p>
+
+  <form method="get" action="{{ url_for('export_category', cid=category.id) }}">
+    <div class="field">
+      <label class="q" for="format">Format</label>
+      <select id="format" name="format">
+        <option value="csv">CSV (.csv)</option>
+        <option value="xlsx">Excel (.xlsx)</option>
+        <option value="json">JSON (.json)</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label class="q">Fields to include</label>
+      <p class="hint">URL is always included.</p>
+      <div style="display:flex;flex-direction:column;gap:12px;max-width:640px;">
+        {% for key, label, default_on, disabled, warning in fields %}
+        <label class="check">
+          <input type="checkbox" name="fields" value="{{ key }}"
+            {{ 'checked' if default_on }} {{ 'disabled' if disabled }}>
+          {{ label }}{% if warning %} <span class="secondary">— {{ warning }}</span>{% endif %}
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <button class="btn" type="submit">Download</button>
+  </form>
+{% endblock %}
