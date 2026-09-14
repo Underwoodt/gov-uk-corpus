@@ -134,9 +134,37 @@ def corpus_meta(conn) -> str:
 
 
 def ctx(conn, request: Request, **extra) -> dict:
-    base = {"request": request, "corpus_meta": corpus_meta(conn)}
+    base = {"request": request, "corpus_meta": corpus_meta(conn), "active_nav": "categories"}
     base.update(extra)
     return base
+
+
+# ---- AI Assistant (temporary prototype) ---------------------------------
+# DeepSeek via its Anthropic-compatible API. Config from env:
+#   DEEPSEEK_API_KEY, AI_BASE_URL (default DeepSeek), AI_MODEL (default deepseek-chat)
+AI_BASE_URL = os.getenv("AI_BASE_URL", "https://api.deepseek.com/anthropic")
+AI_MODEL = os.getenv("AI_MODEL", "deepseek-chat")
+
+
+def _ai_reply(system: str, prompt: str) -> dict:
+    key = os.getenv("DEEPSEEK_API_KEY") or os.getenv("AI_API_KEY")
+    if not key:
+        return {"error": "No API key set. Add DEEPSEEK_API_KEY to ~/gov-uk-corpus.env and restart."}
+    try:
+        import anthropic
+    except Exception:
+        return {"error": "The 'anthropic' package is not installed. Run: pip install -r requirements.txt"}
+    try:
+        client = anthropic.Anthropic(api_key=key, base_url=AI_BASE_URL)
+        kwargs = dict(model=AI_MODEL, max_tokens=1024,
+                      messages=[{"role": "user", "content": prompt}])
+        if system.strip():
+            kwargs["system"] = system.strip()
+        msg = client.messages.create(**kwargs)
+        text = "".join(getattr(b, "text", "") for b in msg.content)
+        return {"reply": text, "model": AI_MODEL}
+    except Exception as e:  # network / auth / API errors surfaced to the page
+        return {"error": f"{type(e).__name__}: {e}"}
 
 
 def authed(request: Request) -> bool:
@@ -398,6 +426,29 @@ def download_category(request: Request, cid: int, fmt: str = "csv"):
         w.writerow([r["url"], r["title"] or ""])
     return Response(buf.getvalue(), media_type="text/csv",
                     headers={"Content-Disposition": f'attachment; filename="{name}.csv"'})
+
+
+@app.get("/assistant", response_class=HTMLResponse)
+def assistant_page(request: Request):
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    resp = templates.TemplateResponse("assistant.html", ctx(
+        conn, request, active_nav="assistant", model=AI_MODEL, base_url=AI_BASE_URL))
+    conn.close()
+    return resp
+
+
+@app.post("/api/assistant")
+async def api_assistant(request: Request):
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    form = await request.form()
+    prompt = (form.get("prompt") or "").strip()
+    system = (form.get("system") or "").strip()
+    if not prompt:
+        return JSONResponse({"error": "Enter a prompt."}, status_code=400)
+    return JSONResponse(_ai_reply(system, prompt))
 
 
 @app.on_event("startup")
