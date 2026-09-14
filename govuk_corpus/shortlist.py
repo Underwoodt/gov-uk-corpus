@@ -123,6 +123,28 @@ def interpolate_sql(sql: str, params, is_pg: bool = _IS_PG) -> str:
     return "".join(out)
 
 
+_SQL_BREAK_KEYWORDS = (
+    "LEFT JOIN", "RIGHT JOIN", "INNER JOIN", "JOIN", "FROM", "WHERE",
+    "GROUP BY", "ORDER BY", "LIMIT", "HAVING", " AND ", " OR ",
+)
+
+
+def pretty_sql(sql: str) -> str:
+    """Reindent SQL for display. Uses sqlparse when available; otherwise falls back
+    to a dependency-free reformat (newline before the major clause keywords) so the
+    query never collapses onto a single line when sqlparse is missing."""
+    try:
+        import sqlparse
+        return sqlparse.format(sql, reindent=True, keyword_case="upper")
+    except Exception:
+        pass
+    out = " ".join(sql.split())   # collapse existing whitespace first
+    for kw in _SQL_BREAK_KEYWORDS:
+        bare = kw.strip()
+        out = out.replace(f" {bare} ", f"\n{bare} ")
+    return out.strip()
+
+
 def shortlist(conn, **kwargs) -> List[str]:
     sql, params = build_query(count_only=False, **kwargs)
     return [r["url"] for r in conn.execute(sql, tuple(params)).fetchall()]

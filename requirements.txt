@@ -6,3 +6,4 @@ uvicorn==0.24.0
 pydantic==2.5.0
 APScheduler==3.10.4
 html2text==2024.2.26
+sqlparse==0.5.5
