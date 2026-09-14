@@ -16,6 +16,7 @@ import hashlib
 import hmac
 import io
 import json
+import logging
 import os
 import threading
 import time
@@ -26,6 +27,7 @@ from fastapi.responses import (HTMLResponse, JSONResponse, PlainTextResponse,
                                RedirectResponse, Response)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.concurrency import run_in_threadpool
 
 from govuk_corpus import categories as cat
 from govuk_corpus import orgs, shortlist
@@ -158,7 +160,11 @@ def _ai_reply(system: str, prompt: str) -> dict:
     except Exception:
         return {"error": "The 'anthropic' package is not installed. Run: pip install -r requirements.txt"}
     try:
-        client = anthropic.Anthropic(api_key=key, base_url=AI_BASE_URL)
+        # Short timeout + no retries so a bad endpoint/hang fails fast and visibly
+        # instead of spinning forever.
+        client = anthropic.Anthropic(api_key=key, base_url=AI_BASE_URL,
+                                     timeout=float(os.getenv("AI_TIMEOUT", "45")),
+                                     max_retries=0)
         kwargs = dict(model=AI_MODEL, max_tokens=1024,
                       messages=[{"role": "user", "content": prompt}])
         if system.strip():
@@ -177,6 +183,8 @@ def _ai_reply(system: str, prompt: str) -> dict:
                 "price_input_per_m": AI_PRICE_INPUT_PER_M,
                 "price_output_per_m": AI_PRICE_OUTPUT_PER_M}
     except Exception as e:  # network / auth / API errors surfaced to the page
+        logging.getLogger("assistant").exception("AI call failed (base=%s model=%s)",
+                                                 AI_BASE_URL, AI_MODEL)
         return {"error": f"{type(e).__name__}: {e}"}
 
 
@@ -461,7 +469,9 @@ async def api_assistant(request: Request):
     system = (form.get("system") or "").strip()
     if not prompt:
         return JSONResponse({"error": "Enter a prompt."}, status_code=400)
-    return JSONResponse(_ai_reply(system, prompt))
+    # Run the blocking SDK call off the event loop so one slow request can't stall the app.
+    result = await run_in_threadpool(_ai_reply, system, prompt)
+    return JSONResponse(result)
 
 
 @app.on_event("startup")
