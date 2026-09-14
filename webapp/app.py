@@ -32,7 +32,7 @@ from starlette.concurrency import run_in_threadpool
 
 from govuk_corpus import audit
 from govuk_corpus import categories as cat
-from govuk_corpus import orgs, settings, shortlist
+from govuk_corpus import evaluate, orgs, settings, shortlist
 from govuk_corpus.backend import db
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -165,6 +165,41 @@ def _provider_key(provider: str) -> Optional[str]:
         if v:
             return v
     return None
+
+
+DEFAULT_DAILY_BUDGET = 20.0     # USD/day
+DEFAULT_MAX_DOCS = 600          # documents per evaluation run
+
+
+def _budget(conn) -> float:
+    try:
+        return float(settings.get_setting(conn, "ai_daily_budget", str(DEFAULT_DAILY_BUDGET)))
+    except (TypeError, ValueError):
+        return DEFAULT_DAILY_BUDGET
+
+
+def _max_docs(conn) -> int:
+    try:
+        return int(settings.get_setting(conn, "ai_max_docs_per_run", str(DEFAULT_MAX_DOCS)))
+    except (TypeError, ValueError):
+        return DEFAULT_MAX_DOCS
+
+
+def _daily_spend(conn) -> float:
+    day = db.now_iso()[:10]
+    row = conn.execute(f"SELECT COALESCE(SUM(cost), 0) AS c FROM ai_usage WHERE day = {'%s' if _is_pg() else '?'}",
+                       (day,)).fetchone()
+    return float(row["c"] or 0.0)
+
+
+def _log_ai_usage(conn, cost, in_tok, out_tok, kind: str) -> None:
+    ts = db.now_iso()
+    ph = "%s" if _is_pg() else "?"
+    conn.execute(
+        f"INSERT INTO ai_usage (day, created_at, cost, input_tokens, output_tokens, kind) "
+        f"VALUES ({ph},{ph},{ph},{ph},{ph},{ph})",
+        (ts[:10], ts, cost or 0.0, in_tok or 0, out_tok or 0, kind))
+    conn.commit()
 
 
 def _ai_config(conn) -> dict:
@@ -457,6 +492,104 @@ def api_results(request: Request, cid: int, limit: int = 10, offset: int = 0):
                          "offset": offset, "limit": limit, "rows": rows})
 
 
+# ---- AI evaluation (inclusion pass over the shortlist) ------------------
+def _run_evaluation(cid: int, limit: int) -> dict:
+    conn = connect()
+    try:
+        category = cat.get_category(conn, cid)
+        if not category:
+            return {"error": "Category not found."}
+        cfg = _ai_config(conn)
+        if not cfg["key"]:
+            return {"error": f"No API key for {cfg['label']} — set one in Settings."}
+        budget = _budget(conn)
+        spent = _daily_spend(conn)
+        # Hard stop if already at/over budget.
+        if budget > 0 and spent >= budget:
+            s = evaluate.summary(conn, cid)
+            return {"error": f"Daily AI budget of ${budget:.2f} reached (${spent:.4f} spent today). "
+                    f"Raise it in Settings or try again tomorrow.",
+                    "spent_today": round(spent, 4), "budget": budget, "stopped": "budget", **s}
+
+        limit = min(limit, _max_docs(conn))       # guardrail: max documents per run
+        filters = _effective_filters(conn, category)
+        inclusion = category.get("inclusion_context") or ""
+        exclusion = category.get("exclusion_context") or ""
+        rows = evaluate.candidates(conn, cid, limit, **filters)
+        done = tin = tout = 0
+        cost = 0.0
+        stopped = None
+        for r in rows:
+            if budget > 0 and spent >= budget:    # stop at (estimated) budget
+                stopped = "budget"
+                break
+            prompt = evaluate.build_prompt(inclusion, exclusion, r["title"], r["description"], r["body"])
+            res = _ai_reply(cfg, "", prompt)
+            if res.get("error"):    # stop early — likely auth/quota, don't burn N calls
+                s = evaluate.summary(conn, cid)
+                return {"error": res["error"], "evaluated_this_run": done,
+                        "cost_usd": round(cost, 6), "spent_today": round(spent, 4),
+                        "budget": budget, **s}
+            evaluate.save_result(conn, cid, r["url"],
+                                 evaluate.parse_decision(res.get("reply", "")), cfg["model"])
+            c = res.get("cost_usd") or 0.0
+            _log_ai_usage(conn, c, res.get("input_tokens"), res.get("output_tokens"), "evaluate")
+            done += 1
+            tin += res.get("input_tokens") or 0
+            tout += res.get("output_tokens") or 0
+            cost += c
+            spent += c
+        total = cached_count(conn, **filters)
+        s = evaluate.summary(conn, cid)
+        warning = (f"Within 10% of the ${budget:.2f} daily budget (${spent:.4f} spent today)."
+                   if budget > 0 and spent >= 0.9 * budget else None)
+        return {"evaluated_this_run": done, "input_tokens": tin, "output_tokens": tout,
+                "cost_usd": round(cost, 6), "model": cfg["model"],
+                "spent_today": round(spent, 4), "budget": budget,
+                "warning": warning, "stopped": stopped,
+                "remaining": max(0, total - s["evaluated"]), **s}
+    finally:
+        conn.close()
+
+
+@app.post("/api/categories/{cid}/evaluate")
+async def api_evaluate(request: Request, cid: int, limit: int = 10):
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    limit = max(1, min(limit, 50))
+    result = await run_in_threadpool(_run_evaluation, cid, limit)
+    return JSONResponse(result)
+
+
+@app.get("/api/categories/{cid}/evaluate/results")
+def api_evaluate_results(request: Request, cid: int, keep: str = ""):
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    k = int(keep) if keep in ("0", "1") else None
+    conn = connect()
+    out = {"summary": evaluate.summary(conn, cid),
+           "rows": evaluate.results(conn, cid, keep=k, limit=500)}
+    conn.close()
+    return JSONResponse(out)
+
+
+@app.get("/categories/{cid}/evaluate/download")
+def download_evaluation(request: Request, cid: int):
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    rows = evaluate.results(conn, cid)
+    conn.close()
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["url", "decision", "score", "reason"])
+    for r in rows:
+        decision = "keep" if r["keep"] == 1 else "drop" if r["keep"] == 0 else "unparseable"
+        w.writerow([r["url"], decision, r["score"], r["reason"]])
+    return Response(buf.getvalue(), media_type="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="evaluation-{cid}.csv"'})
+
+
 # ---- download page (choose format + fields) -----------------------------
 # (key, label, default_on, disabled, warning)
 _DOWNLOAD_FIELDS = [
@@ -611,9 +744,19 @@ async def api_assistant(request: Request):
         return JSONResponse({"error": "Enter a prompt."}, status_code=400)
     conn = connect()
     cfg = _ai_config(conn)
+    budget = _budget(conn)
+    spent = _daily_spend(conn)
     conn.close()
+    if budget > 0 and spent >= budget:
+        return JSONResponse({"error": f"Daily AI budget of ${budget:.2f} reached "
+                             f"(${spent:.4f} spent today). Raise it in Settings."})
     # Run the blocking SDK call off the event loop so one slow request can't stall the app.
     result = await run_in_threadpool(_ai_reply, cfg, system, prompt)
+    if not result.get("error"):
+        conn = connect()
+        _log_ai_usage(conn, result.get("cost_usd"), result.get("input_tokens"),
+                      result.get("output_tokens"), "assistant")
+        conn.close()
     return JSONResponse(result)
 
 
@@ -630,7 +773,8 @@ def settings_page(request: Request, saved: int = 0):
                       "has_key": _provider_key(key) is not None,
                       "price_in": p["price_in"], "price_out": p["price_out"]})
     resp = templates.TemplateResponse("settings.html", ctx(
-        conn, request, active_nav="settings", providers=provs, current=current, saved=saved))
+        conn, request, active_nav="settings", providers=provs, current=current, saved=saved,
+        daily_budget=_budget(conn), max_docs=_max_docs(conn), spent_today=round(_daily_spend(conn), 4)))
     conn.close()
     return resp
 
@@ -647,6 +791,15 @@ async def save_settings(request: Request):
     settings.set_setting(conn, "ai_provider", provider)
     for key in PROVIDERS:
         settings.set_setting(conn, f"ai_model_{key}", (form.get(f"model_{key}") or "").strip())
+    # Guardrails
+    try:
+        settings.set_setting(conn, "ai_daily_budget", str(float(form.get("ai_daily_budget") or DEFAULT_DAILY_BUDGET)))
+    except ValueError:
+        pass
+    try:
+        settings.set_setting(conn, "ai_max_docs_per_run", str(int(float(form.get("ai_max_docs_per_run") or DEFAULT_MAX_DOCS))))
+    except ValueError:
+        pass
     conn.close()
     return RedirectResponse(url=str(request.url_for("settings_page")) + "?saved=1", status_code=303)
 
