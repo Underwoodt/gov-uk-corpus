@@ -57,6 +57,7 @@ def build_query(
     include_title: bool = False,        # also select c.title (for CSV export)
     detail: bool = False,               # url + title + size + last-updated (for the results table)
     limit: Optional[int] = None,
+    offset: Optional[int] = None,       # skip N rows (pagination)
 ) -> Tuple[str, list]:
     """Build (sql, params). Pure/deterministic, so it is unit-testable."""
     params: list = []
@@ -107,6 +108,9 @@ def build_query(
         if limit:
             sql += f" LIMIT {_P}"
             params.append(limit)
+        if offset:
+            sql += f" OFFSET {_P}"
+            params.append(offset)
     return sql, params
 
 
@@ -195,6 +199,7 @@ def selection_funnel(conn, organisations: Sequence[str] = (),
 
 def count(conn, **kwargs) -> int:
     kwargs.pop("limit", None)
+    kwargs.pop("offset", None)
     sql, params = build_query(count_only=True, **kwargs)
     return conn.execute(sql, tuple(params)).fetchone()["n"]
 

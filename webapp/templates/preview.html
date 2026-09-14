@@ -51,6 +51,11 @@
       <span id="result-total" class="secondary"></span>
       <span id="result-time" class="timing"></span>
     </div>
+    <div class="controls" id="pager">
+      <button type="button" class="btn secondary-btn" id="prev-page" disabled>‹ Previous</button>
+      <button type="button" class="btn secondary-btn" id="next-page" disabled>Next ›</button>
+      <span id="result-range" class="secondary"></span>
+    </div>
 
     <span class="actions" style="margin-bottom:20px;">
       <a class="btn secondary-btn" href="{{ url_for('download_category', cid=category.id) }}?fmt=csv">Download CSV (url, title)</a>
@@ -104,23 +109,34 @@
       }
     }
 
+    let offset = 0;
+
+    function pageSize() { return parseInt(document.getElementById("page-size").value, 10); }
+
     async function loadResults() {
-      const size = document.getElementById("page-size").value;
+      const size = pageSize();
       const tbody = document.querySelector("#results tbody");
       tbody.innerHTML = '<tr><td colspan="3"><span class="spinner"></span> Loading…</td></tr>';
       document.getElementById("result-time").textContent = "";
       document.getElementById("result-total").textContent = "";
+      document.getElementById("prev-page").disabled = true;
+      document.getElementById("next-page").disabled = true;
       try {
-        const { j, ms } = await timedFetch(`/api/categories/${CID}/results?limit=${size}`);
+        const { j, ms } = await timedFetch(`/api/categories/${CID}/results?limit=${size}&offset=${offset}`);
+        offset = j.offset;   // server clamps
         document.getElementById("result-time").textContent = fmtSecs(ms);
-        document.getElementById("result-total").textContent =
-          fmtInt(j.total) + " pages" + (j.total > j.shown ? " (showing first " + fmtInt(j.shown) + ")" : "");
+        document.getElementById("result-total").textContent = fmtInt(j.total) + " pages in this shortlist";
+        // range label + prev/next state
+        const from = j.total ? offset + 1 : 0, to = offset + j.shown;
+        document.getElementById("result-range").textContent =
+          j.total ? `Showing ${fmtInt(from)}–${fmtInt(to)} of ${fmtInt(j.total)}` : "";
+        document.getElementById("prev-page").disabled = offset <= 0;
+        document.getElementById("next-page").disabled = to >= j.total;
         if (!j.rows.length) {
           tbody.innerHTML = '<tr><td colspan="3">No pages match these filters.</td></tr>';
           return;
         }
         tbody.innerHTML = "";
-        // Fill rows one at a time as they render.
         for (const r of j.rows) {
           const tr = document.createElement("tr");
           const label = r.title ? r.title : r.url;   // title if present, else url
@@ -135,7 +151,13 @@
       }
     }
 
-    document.getElementById("page-size").addEventListener("change", loadResults);
+    document.getElementById("page-size").addEventListener("change", () => { offset = 0; loadResults(); });
+    document.getElementById("prev-page").addEventListener("click", () => {
+      offset = Math.max(0, offset - pageSize()); loadResults();
+    });
+    document.getElementById("next-page").addEventListener("click", () => {
+      offset += pageSize(); loadResults();
+    });
     runFunnel();
     loadResults();
   </script>
