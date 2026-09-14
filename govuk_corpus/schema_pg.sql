@@ -148,6 +148,7 @@ CREATE INDEX IF NOT EXISTS idx_content_search_tsv ON content USING GIN (search_t
 -- Readability / plain-English analysis of the body text (populated by a later job).
 ALTER TABLE content ADD COLUMN IF NOT EXISTS reading_age real;          -- estimated reading age (years)
 ALTER TABLE content ADD COLUMN IF NOT EXISTS gds_english_score real;    -- GDS plain-English compliance score
+ALTER TABLE content ADD COLUMN IF NOT EXISTS gds_findings text;         -- readable summary of the GDS issues
 
 -- Category display name/identifier (added after initial deploy).
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS slug text;

@@ -67,22 +67,49 @@ _AVOID_PHRASES = [
 ]
 
 
+def _gds_scan(text: str):
+    """Single scan -> (issue_count, findings_text). Findings is a readable summary
+    of what was flagged, so the count and the text always agree."""
+    if not text:
+        return 0, ""
+    low = text.lower()
+    word_hits = {}
+    for w in _AVOID_WORDS:
+        n = len(re.findall(r"\b" + re.escape(w) + r"\b", low))
+        if n:
+            word_hits[w] = n
+    phrase_hits = {}
+    for p in _AVOID_PHRASES:
+        n = low.count(p)
+        if n:
+            phrase_hits[p] = n
+    long_sentences = sum(1 for s in _SENT_SPLIT.split(text)
+                         if len(_WORD.findall(s)) > _LONG_SENTENCE_WORDS)
+
+    count = sum(word_hits.values()) + sum(phrase_hits.values()) + long_sentences
+    parts = []
+    if word_hits:
+        parts.append("Words to avoid: "
+                     + ", ".join(f"{w} ({n})" for w, n in sorted(word_hits.items())))
+    if phrase_hits:
+        parts.append("Phrases to avoid: "
+                     + ", ".join(f"{p} ({n})" for p, n in sorted(phrase_hits.items())))
+    if long_sentences:
+        parts.append(f"Over-long sentences (>{_LONG_SENTENCE_WORDS} words): {long_sentences}")
+    return count, "; ".join(parts)
+
+
 def gds_issue_count(text: str) -> int:
     """Count GDS plain-English red flags. 0 = clean; higher = more issues."""
-    if not text:
-        return 0
-    low = text.lower()
-    count = 0
-    for w in _AVOID_WORDS:
-        count += len(re.findall(r"\b" + re.escape(w) + r"\b", low))
-    for p in _AVOID_PHRASES:
-        count += low.count(p)
-    for sentence in _SENT_SPLIT.split(text):
-        if len(_WORD.findall(sentence)) > _LONG_SENTENCE_WORDS:
-            count += 1
-    return count
+    return _gds_scan(text)[0]
+
+
+def gds_findings(text: str) -> str:
+    """Readable summary of the GDS red flags found ('' when clean)."""
+    return _gds_scan(text)[1]
 
 
 def analyse(text: str):
-    """Return (reading_age, gds_issue_count) for a body of text."""
-    return reading_age(text), gds_issue_count(text)
+    """Return (reading_age, gds_issue_count, gds_findings) for a body of text."""
+    count, findings = _gds_scan(text)
+    return reading_age(text), count, findings

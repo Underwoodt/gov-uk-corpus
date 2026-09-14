@@ -46,6 +46,14 @@ class TestReadability(unittest.TestCase):
         self.assertEqual(r.gds_issue_count(""), 0)
         self.assertIsNone(r.reading_age(""))
 
+    def test_findings_text_lists_flags_and_agrees_with_count(self):
+        text = "We will utilise this in order to leverage best practice."
+        findings = r.gds_findings(text)
+        self.assertIn("Words to avoid", findings)
+        self.assertIn("Phrases to avoid", findings)
+        self.assertEqual(r.gds_findings(""), "")   # clean/empty -> no findings
+        self.assertEqual(r.gds_findings("Pay within 5 days."), "")
+
 
 class TestBackfill(unittest.TestCase):
     def test_backfill_writes_and_marks_done(self):
@@ -63,9 +71,10 @@ class TestBackfill(unittest.TestCase):
         counters = build(conn)
         self.assertEqual(counters["scanned"], 2)
 
-        a = conn.execute("SELECT reading_age, gds_english_score FROM content WHERE url='https://www.gov.uk/a'").fetchone()
+        a = conn.execute("SELECT reading_age, gds_english_score, gds_findings FROM content WHERE url='https://www.gov.uk/a'").fetchone()
         self.assertIsNotNone(a["reading_age"])
         self.assertGreaterEqual(a["gds_english_score"], 2)   # utilise, in order to, leverage
+        self.assertIn("utilise", a["gds_findings"])          # findings text describes the flags
         b = conn.execute("SELECT reading_age, gds_english_score FROM content WHERE url='https://www.gov.uk/b'").fetchone()
         self.assertIsNone(b["reading_age"])
         self.assertEqual(b["gds_english_score"], 0)
