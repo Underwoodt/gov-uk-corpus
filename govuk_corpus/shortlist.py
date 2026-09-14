@@ -57,6 +57,8 @@ def build_query(
     include_title: bool = False,        # also select c.title (for CSV export)
     detail: bool = False,               # url + title + size + last-updated (for the results table)
     select_expr: Optional[str] = None,  # explicit SELECT list (for custom exports)
+    extra_where: Optional[str] = None,  # extra AND clause (e.g. exclude evaluated urls)
+    extra_params: Sequence = (),        # params for extra_where
     limit: Optional[int] = None,
     offset: Optional[int] = None,       # skip N rows (pagination)
 ) -> Tuple[str, list]:
@@ -82,6 +84,10 @@ def build_query(
         clause, kw_params = _keyword_clause(keywords, match, _IS_PG)
         where.append(clause)
         params.extend(kw_params)
+
+    if extra_where:
+        where.append(extra_where)
+        params.extend(extra_params)
 
     if not include_redirects:
         where.append("c.is_redirect = 0")

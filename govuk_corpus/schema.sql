@@ -122,6 +122,19 @@ CREATE TABLE IF NOT EXISTS organisation_hierarchy (
 CREATE INDEX IF NOT EXISTS idx_org_hier_parent ON organisation_hierarchy(parent_slug);
 CREATE INDEX IF NOT EXISTS idx_org_hier_child  ON organisation_hierarchy(child_slug);
 
+-- AI inclusion-pass evaluation of a category's shortlisted pages.
+CREATE TABLE IF NOT EXISTS category_evaluation (
+    category_id  INTEGER NOT NULL,
+    url          TEXT NOT NULL,
+    keep         INTEGER,          -- 1 keep, 0 drop, NULL if unparseable
+    score        REAL,             -- 0..1 relevance
+    reason       TEXT,
+    model        TEXT,
+    created_at   TEXT,
+    PRIMARY KEY (category_id, url)
+);
+CREATE INDEX IF NOT EXISTS idx_category_eval_keep ON category_evaluation(category_id, keep);
+
 -- Small key/value app settings (e.g. which AI provider the UI uses).
 CREATE TABLE IF NOT EXISTS app_settings (
     key   TEXT PRIMARY KEY,

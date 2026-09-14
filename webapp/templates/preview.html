@@ -77,6 +77,29 @@
       <tbody></tbody>
     </table>
 
+    <h2 style="margin-top:30px;">AI evaluation (inclusion pass)</h2>
+    <p class="hint" style="margin-top:-20px;">Ask the AI to judge each shortlisted page against this category's
+      <em>Include</em> / <em>Exclude</em> context — keep or drop, with a score and reason. Runs a capped batch
+      each time (resumable); uses the provider set in Settings and spends API credit.</p>
+    <div class="controls">
+      <label>Evaluate next
+        <input id="eval-n" type="number" value="10" min="1" max="50" style="width:70px;padding:4px;border:2px solid var(--black);">
+        pages</label>
+      <button type="button" class="btn secondary-btn" id="run-eval">Evaluate</button>
+      <span id="eval-status" class="secondary"></span>
+    </div>
+    <div class="controls" id="eval-controls" hidden>
+      <span id="eval-summary" class="secondary"></span>
+      <a href="#" id="eval-filter-all" onclick="loadEval('');return false">All</a>
+      <a href="#" id="eval-filter-keep" onclick="loadEval('1');return false">Keep</a>
+      <a href="#" id="eval-filter-drop" onclick="loadEval('0');return false">Drop</a>
+      <a href="{{ url_for('download_evaluation', cid=category.id) }}">Download CSV</a>
+    </div>
+    <table id="eval-results" hidden style="margin-top:12px;">
+      <thead><tr><th>Page</th><th>Decision</th><th class="num">Score</th><th>Reason</th></tr></thead>
+      <tbody></tbody>
+    </table>
+
     <details style="margin-top:30px;"><summary>SQL query that was run</summary>
       <div class="detail" style="max-width:none;"><pre class="mono" style="white-space:pre-wrap;font-size:14px;">{{ sql }}</pre>
         <p class="secondary">Values shown inline for readability; the app executes with safe parameter
@@ -197,6 +220,55 @@
       }
     }
     buildAuditBtn.addEventListener("click", buildAudit);
+
+    // AI evaluation
+    const runEvalBtn = document.getElementById("run-eval");
+    function decisionText(k) { return k === 1 ? "keep" : k === 0 ? "drop" : "—"; }
+    async function loadEval(keep) {
+      const r = await fetch(`/api/categories/${CID}/evaluate/results?keep=${keep}`);
+      const j = await r.json();
+      const s = j.summary;
+      document.getElementById("eval-controls").hidden = false;
+      document.getElementById("eval-summary").textContent =
+        `${fmtInt(s.evaluated)} evaluated · ${fmtInt(s.kept)} keep · ${fmtInt(s.dropped)} drop`
+        + (s.unparseable ? ` · ${fmtInt(s.unparseable)} unparseable` : "");
+      const table = document.getElementById("eval-results");
+      const tbody = table.querySelector("tbody");
+      tbody.innerHTML = "";
+      for (const row of j.rows) {
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          `<td><a href="${esc(row.url)}">${esc(row.url)}</a></td>` +
+          `<td>${decisionText(row.keep)}</td>` +
+          `<td class="num">${row.score == null ? "—" : row.score.toFixed(2)}</td>` +
+          `<td>${esc(row.reason || "")}</td>`;
+        tbody.appendChild(tr);
+      }
+      table.hidden = j.rows.length === 0;
+    }
+    async function runEval() {
+      const n = document.getElementById("eval-n").value;
+      const st = document.getElementById("eval-status");
+      runEvalBtn.disabled = true;
+      st.innerHTML = '<span class="spinner"></span> Evaluating…';
+      try {
+        const r = await fetch(`/api/categories/${CID}/evaluate?limit=${n}`, { method: "POST" });
+        const j = await r.json();
+        if (j.error) {
+          st.textContent = "Error: " + j.error;
+        } else {
+          st.textContent = `Evaluated ${fmtInt(j.evaluated_this_run)} this run`
+            + ` · $${(j.cost_usd || 0).toFixed(6)} · ${fmtInt(j.remaining)} left in shortlist`;
+        }
+        await loadEval("");
+      } catch (e) {
+        st.textContent = "Could not run evaluation.";
+      } finally {
+        runEvalBtn.disabled = false;
+      }
+    }
+    runEvalBtn.addEventListener("click", runEval);
+    loadEval("");   // show any existing results on load
 
     document.getElementById("page-size").addEventListener("change", () => { offset = 0; loadResults(); });
     document.getElementById("prev-page").addEventListener("click", () => {

@@ -32,7 +32,7 @@ from starlette.concurrency import run_in_threadpool
 
 from govuk_corpus import audit
 from govuk_corpus import categories as cat
-from govuk_corpus import orgs, settings, shortlist
+from govuk_corpus import evaluate, orgs, settings, shortlist
 from govuk_corpus.backend import db
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -455,6 +455,82 @@ def api_results(request: Request, cid: int, limit: int = 10, offset: int = 0):
     conn.close()
     return JSONResponse({"total": total, "shown": len(rows),
                          "offset": offset, "limit": limit, "rows": rows})
+
+
+# ---- AI evaluation (inclusion pass over the shortlist) ------------------
+def _run_evaluation(cid: int, limit: int) -> dict:
+    conn = connect()
+    try:
+        category = cat.get_category(conn, cid)
+        if not category:
+            return {"error": "Category not found."}
+        cfg = _ai_config(conn)
+        if not cfg["key"]:
+            return {"error": f"No API key for {cfg['label']} — set one in Settings."}
+        filters = _effective_filters(conn, category)
+        inclusion = category.get("inclusion_context") or ""
+        exclusion = category.get("exclusion_context") or ""
+        rows = evaluate.candidates(conn, cid, limit, **filters)
+        done = tin = tout = 0
+        cost = 0.0
+        for r in rows:
+            prompt = evaluate.build_prompt(inclusion, exclusion, r["title"], r["description"], r["body"])
+            res = _ai_reply(cfg, "", prompt)
+            if res.get("error"):    # stop early — likely auth/quota, don't burn N calls
+                s = evaluate.summary(conn, cid)
+                return {"error": res["error"], "evaluated_this_run": done,
+                        "cost_usd": round(cost, 6), **s}
+            evaluate.save_result(conn, cid, r["url"],
+                                 evaluate.parse_decision(res.get("reply", "")), cfg["model"])
+            done += 1
+            tin += res.get("input_tokens") or 0
+            tout += res.get("output_tokens") or 0
+            cost += res.get("cost_usd") or 0.0
+        total = cached_count(conn, **filters)
+        s = evaluate.summary(conn, cid)
+        return {"evaluated_this_run": done, "input_tokens": tin, "output_tokens": tout,
+                "cost_usd": round(cost, 6), "model": cfg["model"],
+                "remaining": max(0, total - s["evaluated"]), **s}
+    finally:
+        conn.close()
+
+
+@app.post("/api/categories/{cid}/evaluate")
+async def api_evaluate(request: Request, cid: int, limit: int = 10):
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    limit = max(1, min(limit, 50))
+    result = await run_in_threadpool(_run_evaluation, cid, limit)
+    return JSONResponse(result)
+
+
+@app.get("/api/categories/{cid}/evaluate/results")
+def api_evaluate_results(request: Request, cid: int, keep: str = ""):
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    k = int(keep) if keep in ("0", "1") else None
+    conn = connect()
+    out = {"summary": evaluate.summary(conn, cid),
+           "rows": evaluate.results(conn, cid, keep=k, limit=500)}
+    conn.close()
+    return JSONResponse(out)
+
+
+@app.get("/categories/{cid}/evaluate/download")
+def download_evaluation(request: Request, cid: int):
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    rows = evaluate.results(conn, cid)
+    conn.close()
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["url", "decision", "score", "reason"])
+    for r in rows:
+        decision = "keep" if r["keep"] == 1 else "drop" if r["keep"] == 0 else "unparseable"
+        w.writerow([r["url"], decision, r["score"], r["reason"]])
+    return Response(buf.getvalue(), media_type="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="evaluation-{cid}.csv"'})
 
 
 # ---- download page (choose format + fields) -----------------------------
