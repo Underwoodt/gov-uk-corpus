@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}{{ category.display_name }} — preview{% endblock %}
+{% block content %}
+
+  <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
+
+  <h1 style="margin:20px 0 5px;">{{ category.display_name }}</h1>
+  <p class="secondary" style="margin:0 0 20px;">
+    <span class="mono">{{ category.slug or '' }}</span> · Owner: {{ category.owner_email or '—' }}
+    · Status: {{ category.status }}</p>
+
+  <div class="tabs">
+    <a href="{{ url_for('edit_category_page', cid=category.id) }}">Definition</a>
+    <span class="current">Preview and run</span>
+  </div>
+
+  <div class="tabpanel">
+    <h2>Selection funnel</h2>
+    <p class="hint" style="margin-top:-20px;">How each filter narrows the corpus (fast indexed counts;
+      keyword via the full-text index).</p>
+    <table>
+      <thead><tr><th>Selection criterion</th><th class="num">Rows returned</th></tr></thead>
+      <tbody>
+        {% for label, n in funnel %}
+        <tr><td>{{ label }}</td><td class="num">{{ '{:,}'.format(n) }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <h2 style="margin-top:10px;">Result</h2>
+    <p><span class="metric">{{ '{:,}'.format(total) }}</span></p>
+    <p class="metric-label" style="margin:0 0 25px;">pages in this shortlist</p>
+
+    {% if total %}
+    <span class="actions" style="margin-bottom:25px;">
+      <a class="btn secondary-btn" href="{{ url_for('download_category', cid=category.id) }}?fmt=csv">Download CSV (url, title)</a>
+      <a class="btn secondary-btn" href="{{ url_for('download_category', cid=category.id) }}?fmt=txt">Download URLs (.txt)</a>
+    </span>
+    <table style="margin-top:25px;">
+      <thead><tr><th>URL</th><th>Title</th></tr></thead>
+      <tbody>
+        {% for r in rows %}
+        <tr><td><a href="{{ r.url }}">{{ r.url }}</a></td><td>{{ r.title or '' }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if truncated %}<p class="secondary">Showing first {{ rows|length }} of {{ '{:,}'.format(total) }}.
+      Download for the full list.</p>{% endif %}
+    {% else %}
+    <p>No pages match these filters yet. Loosen the organisations, page types or keywords in the
+      <a href="{{ url_for('edit_category_page', cid=category.id) }}">Definition</a>.</p>
+    {% endif %}
+
+    <details style="margin-top:30px;"><summary>SQL query that was run</summary>
+      <div class="detail" style="max-width:none;"><pre class="mono" style="white-space:pre-wrap;font-size:14px;">{{ sql }}</pre>
+        <p class="secondary">Values shown inline for readability; the app executes with safe parameter
+          binding. Keyword terms are stemmed by Postgres at query time.</p></div></details>
+  </div>
+{% endblock %}

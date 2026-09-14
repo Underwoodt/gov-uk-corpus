@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Shortlist Builder{% endblock %} — Defra</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='govuk.css') }}">
+</head>
+<body>
+  <div class="masthead"><div class="wrap"><span class="brand">Defra</span></div></div>
+
+  <div class="navbar"><div class="wrap inner">
+    <span class="service">Guidance Relevance Filter</span>
+    <a href="{{ url_for('list_categories_page') }}" class="active">Categories</a>
+  </div></div>
+
+  <div class="wrap body">
+    <div class="phase">
+      <span class="tag">Alpha</span>
+      <span class="meta">{{ corpus_meta }}</span>
+    </div>
+    {% block content %}{% endblock %}
+  </div>
+</body>
+</html>
