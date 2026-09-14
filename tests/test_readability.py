@@ -84,6 +84,37 @@ class TestBackfill(unittest.TestCase):
         self.assertEqual(again["scanned"], 0)
         conn.close()
 
+    def test_poison_row_is_isolated_and_not_retried(self):
+        import govuk_corpus.build_readability as br
+        conn = db.connect(":memory:")
+        db.init_db(conn)
+        for url, text in [("https://www.gov.uk/good", "The cat sat on the mat and had a good day today."),
+                          ("https://www.gov.uk/bad", "BOOM")]:
+            conn.execute("INSERT INTO content (url, content_hash, search_text) VALUES (?,?,?)",
+                         (url, "h", text))
+        conn.commit()
+
+        real = br.analyse
+        def flaky(text):
+            if text == "BOOM":
+                raise RuntimeError("kaboom")
+            return real(text)
+        br.analyse = flaky
+        try:
+            counters = br.build(conn)          # must NOT raise despite the poison row
+        finally:
+            br.analyse = real
+
+        self.assertEqual(counters["scanned"], 2)
+        self.assertEqual(counters["errors"], 1)
+        bad = conn.execute("SELECT gds_english_score, gds_findings FROM content "
+                            "WHERE url='https://www.gov.uk/bad'").fetchone()
+        self.assertEqual(bad["gds_english_score"], 0)          # marked done
+        self.assertIn("analysis error", bad["gds_findings"])
+        # re-run does not revisit the poison row
+        self.assertEqual(br.build(conn)["scanned"], 0)
+        conn.close()
+
 
 if __name__ == "__main__":
     unittest.main()
