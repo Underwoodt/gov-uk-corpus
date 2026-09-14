@@ -112,6 +112,8 @@ td { padding: 12px 15px 12px 0; border-bottom: 1px solid var(--grey-border); ver
 td.num.timing, th.num { font-variant-numeric: tabular-nums; }
 .controls { display: flex; gap: 20px; align-items: baseline; flex-wrap: wrap; margin: 0 0 15px; }
 .controls select { font-size: 16px; padding: 4px; border: 2px solid var(--black); }
-.filter-values { margin: 4px 0 0; }
-.filter-values summary { font-size: 14px; margin: 0; }
+.filter-values { display: inline; }
+.filter-values summary { display: inline; font-size: 14px; margin-left: 12px; }
 .filter-values .detail { font-size: 14px; margin: 6px 0 0; padding: 6px 0 6px 12px; }
+/* inline <details> loses the native closed-hiding, so collapse it ourselves */
+.filter-values:not([open]) .detail { display: none; }
