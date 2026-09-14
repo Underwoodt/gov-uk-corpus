@@ -16,44 +16,118 @@
 
   <div class="tabpanel">
     <h2>Selection funnel</h2>
-    <p class="hint" style="margin-top:-20px;">How each filter narrows the corpus (fast indexed counts;
-      keyword via the full-text index).</p>
-    <table>
-      <thead><tr><th>Selection criterion</th><th class="num">Rows returned</th></tr></thead>
+    <p class="hint" style="margin-top:-20px;">How each filter narrows the corpus. Each row is timed as it runs.</p>
+    <table id="funnel">
+      <thead><tr><th>Selection criterion</th><th class="num">Rows returned</th><th class="num">Time</th></tr></thead>
       <tbody>
-        {% for label, n in funnel %}
-        <tr><td>{{ label }}</td><td class="num">{{ '{:,}'.format(n) }}</td></tr>
+        {% for stage, label in stages %}
+        <tr data-stage="{{ stage }}">
+          <td>{{ label }}</td>
+          <td class="num val"><span class="spinner"></span></td>
+          <td class="num timing"></td>
+        </tr>
         {% endfor %}
       </tbody>
     </table>
 
     <h2 style="margin-top:10px;">Result</h2>
-    <p><span class="metric">{{ '{:,}'.format(total) }}</span></p>
-    <p class="metric-label" style="margin:0 0 25px;">pages in this shortlist</p>
+    <div class="controls">
+      <label>Show
+        <select id="page-size">
+          <option value="10">10</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select> per page
+      </label>
+      <span id="result-total" class="secondary"></span>
+      <span id="result-time" class="timing"></span>
+    </div>
 
-    {% if total %}
-    <span class="actions" style="margin-bottom:25px;">
+    <span class="actions" style="margin-bottom:20px;">
       <a class="btn secondary-btn" href="{{ url_for('download_category', cid=category.id) }}?fmt=csv">Download CSV (url, title)</a>
       <a class="btn secondary-btn" href="{{ url_for('download_category', cid=category.id) }}?fmt=txt">Download URLs (.txt)</a>
     </span>
-    <table style="margin-top:25px;">
-      <thead><tr><th>URL</th><th>Title</th></tr></thead>
-      <tbody>
-        {% for r in rows %}
-        <tr><td><a href="{{ r.url }}">{{ r.url }}</a></td><td>{{ r.title or '' }}</td></tr>
-        {% endfor %}
-      </tbody>
+
+    <table id="results" style="margin-top:20px;">
+      <thead><tr><th>Page</th><th class="num">Size</th><th>Last updated</th></tr></thead>
+      <tbody><tr><td colspan="3"><span class="spinner"></span> Loading…</td></tr></tbody>
     </table>
-    {% if truncated %}<p class="secondary">Showing first {{ rows|length }} of {{ '{:,}'.format(total) }}.
-      Download for the full list.</p>{% endif %}
-    {% else %}
-    <p>No pages match these filters yet. Loosen the organisations, page types or keywords in the
-      <a href="{{ url_for('edit_category_page', cid=category.id) }}">Definition</a>.</p>
-    {% endif %}
 
     <details style="margin-top:30px;"><summary>SQL query that was run</summary>
       <div class="detail" style="max-width:none;"><pre class="mono" style="white-space:pre-wrap;font-size:14px;">{{ sql }}</pre>
         <p class="secondary">Values shown inline for readability; the app executes with safe parameter
           binding. Keyword terms are stemmed by Postgres at query time.</p></div></details>
   </div>
+
+  <script>
+    const CID = {{ category.id }};
+    const STAGES = [{% for stage, label in stages %}"{{ stage }}"{{ "," if not loop.last }}{% endfor %}];
+
+    const fmtSecs = ms => (ms / 1000).toFixed(ms < 1000 ? 2 : 1) + "s";
+    const fmtInt  = n => Number(n).toLocaleString();
+    function fmtSize(b) {
+      if (b == null) return "—";
+      if (b < 1024) return b + " B";
+      if (b < 1048576) return (b / 1024).toFixed(0) + " KB";
+      return (b / 1048576).toFixed(1) + " MB";
+    }
+    const fmtDate = s => s ? String(s).slice(0, 10) : "—";
+    function esc(s) { const d = document.createElement("div"); d.textContent = s == null ? "" : s; return d.innerHTML; }
+
+    async function timedFetch(url) {
+      const t = performance.now();
+      const r = await fetch(url, { headers: { "Accept": "application/json" } });
+      const j = await r.json();
+      return { j, ms: performance.now() - t };
+    }
+
+    // Funnel: fill one row at a time, timing each.
+    async function runFunnel() {
+      for (const stage of STAGES) {
+        const row = document.querySelector(`#funnel tr[data-stage="${stage}"]`);
+        try {
+          const { j, ms } = await timedFetch(`/api/categories/${CID}/funnel?stage=${stage}`);
+          row.querySelector(".val").textContent = fmtInt(j.count);
+          row.querySelector(".timing").textContent = fmtSecs(ms);
+        } catch (e) {
+          row.querySelector(".val").textContent = "error";
+        }
+      }
+    }
+
+    async function loadResults() {
+      const size = document.getElementById("page-size").value;
+      const tbody = document.querySelector("#results tbody");
+      tbody.innerHTML = '<tr><td colspan="3"><span class="spinner"></span> Loading…</td></tr>';
+      document.getElementById("result-time").textContent = "";
+      document.getElementById("result-total").textContent = "";
+      try {
+        const { j, ms } = await timedFetch(`/api/categories/${CID}/results?limit=${size}`);
+        document.getElementById("result-time").textContent = fmtSecs(ms);
+        document.getElementById("result-total").textContent =
+          fmtInt(j.total) + " pages" + (j.total > j.shown ? " (showing first " + fmtInt(j.shown) + ")" : "");
+        if (!j.rows.length) {
+          tbody.innerHTML = '<tr><td colspan="3">No pages match these filters.</td></tr>';
+          return;
+        }
+        tbody.innerHTML = "";
+        // Fill rows one at a time as they render.
+        for (const r of j.rows) {
+          const tr = document.createElement("tr");
+          const label = r.title ? r.title : r.url;   // title if present, else url
+          tr.innerHTML =
+            `<td><a href="${esc(r.url)}">${esc(label)}</a></td>` +
+            `<td class="num">${fmtSize(r.size_bytes)}</td>` +
+            `<td>${fmtDate(r.updated)}</td>`;
+          tbody.appendChild(tr);
+        }
+      } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="3">Could not load results.</td></tr>';
+      }
+    }
+
+    document.getElementById("page-size").addEventListener("change", loadResults);
+    runFunnel();
+    loadResults();
+  </script>
 {% endblock %}

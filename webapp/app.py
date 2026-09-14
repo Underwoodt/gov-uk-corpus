@@ -20,7 +20,8 @@ import os
 from typing import Dict, List
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
+from fastapi.responses import (HTMLResponse, JSONResponse, PlainTextResponse,
+                               RedirectResponse, Response)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -249,8 +250,17 @@ def _filters(category) -> dict:
     )
 
 
+_FUNNEL_STAGES = {  # stage -> (label, which filters apply)
+    "all":     ("All pages", ()),
+    "org":     ("After organisation filter", ("organisations",)),
+    "doctype": ("After document-type filter", ("organisations", "document_types")),
+    "keyword": ("After keyword filter", ("organisations", "document_types", "keywords")),
+}
+
+
 @app.get("/categories/{cid}", response_class=HTMLResponse)
 def preview_category_page(request: Request, cid: int):
+    """Fast shell — the funnel and results load progressively via the JSON API below."""
     if not authed(request):
         return login_redirect(request)
     conn = connect()
@@ -258,18 +268,49 @@ def preview_category_page(request: Request, cid: int):
     if not category:
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
     category["display_name"] = cat.prettify(category.get("slug")) or (category.get("description") or "Untitled")
-    filters = _filters(category)
-    funnel = shortlist.selection_funnel(
-        conn, organisations=filters["organisations"],
-        document_types=filters["document_types"], keywords=filters["keywords"])
-    total = shortlist.count(conn, **filters)
-    rows = shortlist.shortlist_rows(conn, limit=500, **filters) if total else []
-    sql, params = shortlist.build_query(include_title=True, limit=10000, **filters)
+    # SQL preview is cheap (no DB hit) — render it inline.
+    sql, params = shortlist.build_query(include_title=True, limit=10000, **_filters(category))
     pretty = shortlist.pretty_sql(shortlist.interpolate_sql(sql, params))
     conn.close()
     return templates.TemplateResponse("preview.html", ctx(
-        connect(), request, category=category, funnel=funnel, total=total,
-        rows=rows, truncated=total > len(rows), sql=pretty))
+        connect(), request, category=category, sql=pretty,
+        stages=[(k, v[0]) for k, v in _FUNNEL_STAGES.items()]))
+
+
+@app.get("/api/categories/{cid}/funnel")
+def api_funnel(request: Request, cid: int, stage: str = "all"):
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    if stage not in _FUNNEL_STAGES:
+        return JSONResponse({"error": "unknown stage"}, status_code=404)
+    conn = connect()
+    category = cat.get_category(conn, cid)
+    if not category:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    label, applies = _FUNNEL_STAGES[stage]
+    filters = _filters(category)
+    kw = {k: filters[k] for k in applies}
+    if "keywords" in kw:
+        kw["match"] = "any"
+    n = shortlist.count(conn, **kw)
+    conn.close()
+    return JSONResponse({"stage": stage, "label": label, "count": n})
+
+
+@app.get("/api/categories/{cid}/results")
+def api_results(request: Request, cid: int, limit: int = 10):
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    limit = limit if limit in (10, 50, 100) else 10
+    conn = connect()
+    category = cat.get_category(conn, cid)
+    if not category:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    filters = _filters(category)
+    total = shortlist.count(conn, **filters)
+    rows = shortlist.detail_rows(conn, limit=limit, **filters) if total else []
+    conn.close()
+    return JSONResponse({"total": total, "shown": len(rows), "rows": rows})
 
 
 @app.get("/categories/{cid}/download")

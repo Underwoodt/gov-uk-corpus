@@ -102,3 +102,13 @@ td { padding: 12px 15px 12px 0; border-bottom: 1px solid var(--grey-border); ver
 .success { border-left: 5px solid var(--green); background: #f3f8fb; padding: 12px 15px; margin: 0 0 30px; }
 .metric { font-size: 48px; font-weight: 700; line-height: 1; }
 .metric-label { font-size: 16px; color: var(--grey-text); }
+
+/* ---- spinner + timings ---- */
+.spinner { display: inline-block; width: 16px; height: 16px; vertical-align: -3px;
+  border: 3px solid var(--grey-border); border-top-color: var(--blue); border-radius: 50%;
+  animation: spin 0.7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.timing { font-size: 14px; color: var(--grey-text); font-variant-numeric: tabular-nums; }
+td.num.timing, th.num { font-variant-numeric: tabular-nums; }
+.controls { display: flex; gap: 20px; align-items: baseline; flex-wrap: wrap; margin: 0 0 15px; }
+.controls select { font-size: 16px; padding: 4px; border: 2px solid var(--black); }
