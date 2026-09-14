@@ -268,13 +268,19 @@ def preview_category_page(request: Request, cid: int):
     if not category:
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
     category["display_name"] = cat.prettify(category.get("slug")) or (category.get("description") or "Untitled")
+    filters = _filters(category)
+    # The specific filter values applied at each funnel step (for the collapsed rows).
+    stage_value_key = {"all": None, "org": "organisations",
+                       "doctype": "document_types", "keyword": "keywords"}
+    stages = [{"stage": k, "label": v[0],
+               "vals": filters[stage_value_key[k]] if stage_value_key[k] else []}
+              for k, v in _FUNNEL_STAGES.items()]
     # SQL preview is cheap (no DB hit) — render it inline.
-    sql, params = shortlist.build_query(include_title=True, limit=10000, **_filters(category))
+    sql, params = shortlist.build_query(include_title=True, limit=10000, **filters)
     pretty = shortlist.pretty_sql(shortlist.interpolate_sql(sql, params))
     conn.close()
     return templates.TemplateResponse("preview.html", ctx(
-        connect(), request, category=category, sql=pretty,
-        stages=[(k, v[0]) for k, v in _FUNNEL_STAGES.items()]))
+        connect(), request, category=category, sql=pretty, stages=stages))
 
 
 @app.get("/api/categories/{cid}/funnel")

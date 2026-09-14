@@ -20,9 +20,18 @@
     <table id="funnel">
       <thead><tr><th>Selection criterion</th><th class="num">Rows returned</th><th class="num">Time</th></tr></thead>
       <tbody>
-        {% for stage, label in stages %}
-        <tr data-stage="{{ stage }}">
-          <td>{{ label }}</td>
+        {% for s in stages %}
+        <tr data-stage="{{ s.stage }}">
+          <td>{{ s.label }}
+            {% if s.vals %}
+            <details class="filter-values">
+              <summary>{{ s.vals|length }} value{{ '' if s.vals|length == 1 else 's' }}</summary>
+              <div class="detail" style="max-width:none;">{{ s.vals|join(', ') }}</div>
+            </details>
+            {% elif s.stage != 'all' %}
+            <span class="secondary" style="font-size:14px;">(no filter — all pages)</span>
+            {% endif %}
+          </td>
           <td class="num val"><span class="spinner"></span></td>
           <td class="num timing"></td>
         </tr>
@@ -61,7 +70,7 @@
 
   <script>
     const CID = {{ category.id }};
-    const STAGES = [{% for stage, label in stages %}"{{ stage }}"{{ "," if not loop.last }}{% endfor %}];
+    const STAGES = [{% for s in stages %}"{{ s.stage }}"{{ "," if not loop.last }}{% endfor %}];
 
     const fmtSecs = ms => (ms / 1000).toFixed(ms < 1000 ? 2 : 1) + "s";
     const fmtInt  = n => Number(n).toLocaleString();
