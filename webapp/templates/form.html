@@ -65,6 +65,13 @@
           run and fewer irrelevant results. Use the exact slug (the last part of the org's gov.uk path).</p></div></details>
       <textarea id="dept_slugs" name="dept_slugs" rows="3"
         placeholder="environment-agency&#10;rural-payments-agency">{{ v.dept_slugs or '' }}</textarea>
+      <label class="check" style="margin-top:12px;">
+        <input type="checkbox" name="include_child_orgs" value="1" {{ 'checked' if v.include_child_orgs }}>
+        Include child organisations
+      </label>
+      <p class="hint" style="margin-top:6px;">Also search the pages of any department that sits under
+        an organisation above (e.g. ticking this with <code>department-for-environment-food-rural-affairs</code>
+        also searches Environment Agency, Natural England, Rural Payments Agency, and the rest).</p>
     </div>
 
     <div class="field">

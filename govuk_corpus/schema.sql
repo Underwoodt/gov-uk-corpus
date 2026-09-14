@@ -131,6 +131,7 @@ CREATE TABLE IF NOT EXISTS categories (
     owner_email                   TEXT,
     description                   TEXT,
     dept_slugs                    TEXT,
+    include_child_orgs            INTEGER DEFAULT 0,     -- expand orgs to child departments
     document_type_slugs           TEXT,
     keywords                      TEXT,
     inclusion_context             TEXT,

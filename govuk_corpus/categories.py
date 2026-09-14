@@ -20,7 +20,8 @@ _P = "%s" if _IS_PG else "?"
 
 # User-editable fields, in storage order.
 USER_FIELDS = [
-    "slug", "owner_email", "description", "dept_slugs", "document_type_slugs", "keywords",
+    "slug", "owner_email", "description", "dept_slugs", "include_child_orgs",
+    "document_type_slugs", "keywords",
     "inclusion_context", "exclusion_context", "adjudication_hints_keep",
     "adjudication_hints_drop", "extra_guidance_urls", "only_use_extra_guidance_urls",
     "extra_law_urls", "only_use_extra_law_urls",
@@ -46,6 +47,7 @@ def prettify(slug: Optional[str]) -> str:
 _LABELS = {
     "slug": "Name for this category",
     "owner_email": "Owner Email", "description": "Description", "dept_slugs": "Departments",
+    "include_child_orgs": "Include child organisations",
     "document_type_slugs": "Document Types", "keywords": "Keyword Search",
     "inclusion_context": "Include description", "exclusion_context": "Exclude description",
     "adjudication_hints_keep": "Keep Keywords", "adjudication_hints_drop": "Drop Keywords",
@@ -92,7 +94,7 @@ def validate(data: Dict[str, Any]) -> List[str]:
 
 def _coerce(data: Dict[str, Any]) -> Dict[str, Any]:
     out = dict(data)
-    for b in ("only_use_extra_guidance_urls", "only_use_extra_law_urls"):
+    for b in ("only_use_extra_guidance_urls", "only_use_extra_law_urls", "include_child_orgs"):
         out[b] = 1 if str(data.get(b) or "0") in ("1", "Y", "y", "True", "true", "on") else 0
     return out
 
