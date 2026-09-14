@@ -19,7 +19,7 @@ import json
 import os
 import threading
 import time
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import (HTMLResponse, JSONResponse, PlainTextResponse,
@@ -116,16 +116,21 @@ def _is_pg() -> bool:
     return db.__name__.endswith("db_pg")
 
 
-def corpus_meta(conn) -> str:
-    if "s" not in _META_CACHE:
+def corpus_total(conn) -> Optional[int]:
+    """Total usable pages — computed once and cached (also drives the top banner)."""
+    if "n" not in _META_CACHE:
         try:
-            n = conn.execute(
+            _META_CACHE["n"] = conn.execute(
                 "SELECT COUNT(*) AS n FROM content WHERE is_redirect = 0 AND content_hash IS NOT NULL"
             ).fetchone()["n"]
-            _META_CACHE["s"] = f"Newest snapshot · {n:,} pages"
         except Exception:
-            _META_CACHE["s"] = "Newest snapshot"
-    return _META_CACHE["s"]
+            _META_CACHE["n"] = None
+    return _META_CACHE["n"]
+
+
+def corpus_meta(conn) -> str:
+    n = corpus_total(conn)
+    return f"Newest snapshot · {n:,} pages" if n is not None else "Newest snapshot"
 
 
 def ctx(conn, request: Request, **extra) -> dict:
@@ -339,11 +344,17 @@ def api_funnel(request: Request, cid: int, stage: str = "all"):
     if not category:
         return JSONResponse({"error": "not found"}, status_code=404)
     label, applies = _FUNNEL_STAGES[stage]
-    filters = _effective_filters(conn, category)
-    kw = {k: filters[k] for k in applies}
-    if "keywords" in kw:
-        kw["match"] = "any"
-    n = cached_count(conn, **kw)
+    if stage == "all":
+        # Same number as the top banner — reuse the cached corpus total, no query.
+        n = corpus_total(conn)
+        if n is None:
+            n = cached_count(conn)
+    else:
+        filters = _effective_filters(conn, category)
+        kw = {k: filters[k] for k in applies}
+        if "keywords" in kw:
+            kw["match"] = "any"
+        n = cached_count(conn, **kw)
     conn.close()
     return JSONResponse({"stage": stage, "label": label, "count": n})
 
