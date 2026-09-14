@@ -100,6 +100,29 @@ def build_query(
     return sql, params
 
 
+def _quote_literal(v) -> str:
+    if v is None:
+        return "NULL"
+    if isinstance(v, bool):
+        return "TRUE" if v else "FALSE"
+    if isinstance(v, (int, float)):
+        return str(v)
+    return "'" + str(v).replace("'", "''") + "'"   # escape single quotes
+
+
+def interpolate_sql(sql: str, params, is_pg: bool = _IS_PG) -> str:
+    """Substitute params into placeholders, quoting values — for a readable, copy-
+    pasteable query. (The executed query still uses safe parameter binding; this is
+    display only.)"""
+    placeholder = "%s" if is_pg else "?"
+    segments = sql.split(placeholder)
+    out = [segments[0]]
+    for i, seg in enumerate(segments[1:]):
+        out.append(_quote_literal(params[i]) if i < len(params) else placeholder)
+        out.append(seg)
+    return "".join(out)
+
+
 def shortlist(conn, **kwargs) -> List[str]:
     sql, params = build_query(count_only=False, **kwargs)
     return [r["url"] for r in conn.execute(sql, tuple(params)).fetchall()]

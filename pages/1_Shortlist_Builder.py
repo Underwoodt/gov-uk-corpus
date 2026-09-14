@@ -138,8 +138,15 @@ def tab_run(c):
 
     with st.expander("SQL query that was run"):
         sql, params = shortlist.build_query(include_title=True, limit=10000, **filters)
-        st.code(sql, language="sql")
-        st.caption(f"Parameters: {params}")
+        readable = shortlist.interpolate_sql(sql, params)
+        try:
+            import sqlparse
+            readable = sqlparse.format(readable, reindent=True, keyword_case="upper")
+        except Exception:
+            pass
+        st.code(readable, language="sql")
+        st.caption("Values shown inline for readability; the app executes with safe "
+                   "parameter binding. Keyword terms are stemmed by Postgres at query time.")
 
 
 # ================================================================= LIST
