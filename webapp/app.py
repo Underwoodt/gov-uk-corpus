@@ -144,6 +144,9 @@ def ctx(conn, request: Request, **extra) -> dict:
 #   DEEPSEEK_API_KEY, AI_BASE_URL (default DeepSeek), AI_MODEL (default deepseek-chat)
 AI_BASE_URL = os.getenv("AI_BASE_URL", "https://api.deepseek.com/anthropic")
 AI_MODEL = os.getenv("AI_MODEL", "deepseek-chat")
+# Prices in USD per 1M tokens (DeepSeek deepseek-chat standard rates; override in env).
+AI_PRICE_INPUT_PER_M = float(os.getenv("AI_PRICE_INPUT_PER_M", "0.27"))
+AI_PRICE_OUTPUT_PER_M = float(os.getenv("AI_PRICE_OUTPUT_PER_M", "1.10"))
 
 
 def _ai_reply(system: str, prompt: str) -> dict:
@@ -162,7 +165,17 @@ def _ai_reply(system: str, prompt: str) -> dict:
             kwargs["system"] = system.strip()
         msg = client.messages.create(**kwargs)
         text = "".join(getattr(b, "text", "") for b in msg.content)
-        return {"reply": text, "model": AI_MODEL}
+        usage = getattr(msg, "usage", None)
+        in_tok = getattr(usage, "input_tokens", None)
+        out_tok = getattr(usage, "output_tokens", None)
+        cost = None
+        if in_tok is not None and out_tok is not None:
+            cost = round((in_tok / 1e6) * AI_PRICE_INPUT_PER_M
+                         + (out_tok / 1e6) * AI_PRICE_OUTPUT_PER_M, 6)
+        return {"reply": text, "model": AI_MODEL,
+                "input_tokens": in_tok, "output_tokens": out_tok, "cost_usd": cost,
+                "price_input_per_m": AI_PRICE_INPUT_PER_M,
+                "price_output_per_m": AI_PRICE_OUTPUT_PER_M}
     except Exception as e:  # network / auth / API errors surfaced to the page
         return {"error": f"{type(e).__name__}: {e}"}
 

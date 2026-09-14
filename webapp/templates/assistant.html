@@ -25,12 +25,26 @@
     <label class="q">Response</label>
     <pre id="reply" class="mono" style="white-space:pre-wrap;border:1px solid var(--grey-border);
       padding:15px;min-height:60px;background:var(--light-grey);"></pre>
+    <p id="usage" class="secondary" style="margin-top:8px;"></p>
   </div>
 
   <script>
     const send = document.getElementById("send");
     const statusEl = document.getElementById("status");
     const reply = document.getElementById("reply");
+    const usage = document.getElementById("usage");
+
+    function showUsage(j) {
+      if (j.input_tokens == null) { usage.textContent = ""; return; }
+      const total = j.input_tokens + j.output_tokens;
+      let s = `Tokens — input: ${j.input_tokens.toLocaleString()}, `
+            + `output: ${j.output_tokens.toLocaleString()}, total: ${total.toLocaleString()}`;
+      if (j.cost_usd != null) {
+        s += ` · estimated cost: $${j.cost_usd.toFixed(6)}`
+           + ` (@ $${j.price_input_per_m}/M in, $${j.price_output_per_m}/M out)`;
+      }
+      usage.textContent = s;
+    }
 
     async function ask() {
       const prompt = document.getElementById("prompt").value.trim();
@@ -38,13 +52,18 @@
       send.disabled = true;
       statusEl.innerHTML = '<span class="spinner"></span> Thinking…';
       reply.textContent = "";
+      usage.textContent = "";
       try {
         const body = new URLSearchParams({ prompt,
           system: document.getElementById("system").value });
         const r = await fetch("/api/assistant", { method: "POST", body });
         const j = await r.json();
         if (j.error) { statusEl.textContent = "Error"; reply.textContent = j.error; }
-        else { statusEl.textContent = j.model ? "· " + j.model : ""; reply.textContent = j.reply || "(empty response)"; }
+        else {
+          statusEl.textContent = j.model ? "· " + j.model : "";
+          reply.textContent = j.reply || "(empty response)";
+          showUsage(j);
+        }
       } catch (e) {
         statusEl.textContent = "Error"; reply.textContent = String(e);
       } finally {
