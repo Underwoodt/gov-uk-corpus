@@ -144,29 +144,34 @@ def ctx(conn, request: Request, **extra) -> dict:
 
 
 # ---- AI Assistant (temporary prototype) ---------------------------------
-# DeepSeek via its Anthropic-compatible API. Config from env:
-#   DEEPSEEK_API_KEY, AI_BASE_URL (default DeepSeek), AI_MODEL (default deepseek-chat)
-AI_BASE_URL = os.getenv("AI_BASE_URL", "https://api.deepseek.com/anthropic")
-AI_MODEL = os.getenv("AI_MODEL", "deepseek-chat")
-# Prices in USD per 1M tokens (DeepSeek deepseek-chat standard rates; override in env).
-AI_PRICE_INPUT_PER_M = float(os.getenv("AI_PRICE_INPUT_PER_M", "0.27"))
-AI_PRICE_OUTPUT_PER_M = float(os.getenv("AI_PRICE_OUTPUT_PER_M", "1.10"))
+# Uses the anthropic SDK. Defaults to the real Claude API; point AI_BASE_URL at
+# any Anthropic-compatible endpoint (e.g. DeepSeek's) to switch provider.
+#   Key:  ANTHROPIC_API_KEY | AI_API_KEY | DEEPSEEK_API_KEY  (first set wins)
+#   AI_BASE_URL  empty => Anthropic default (api.anthropic.com); set to override
+#   AI_MODEL     default claude-haiku-4-5 (fast + cheap)
+#   AI_PRICE_*   USD per 1M tokens (defaults ~ Claude Haiku; override per model)
+AI_BASE_URL = os.getenv("AI_BASE_URL", "").strip()
+AI_MODEL = os.getenv("AI_MODEL", "claude-haiku-4-5-20251001")
+AI_PRICE_INPUT_PER_M = float(os.getenv("AI_PRICE_INPUT_PER_M", "1.0"))
+AI_PRICE_OUTPUT_PER_M = float(os.getenv("AI_PRICE_OUTPUT_PER_M", "5.0"))
 
 
 def _ai_reply(system: str, prompt: str) -> dict:
-    key = os.getenv("DEEPSEEK_API_KEY") or os.getenv("AI_API_KEY")
+    key = (os.getenv("ANTHROPIC_API_KEY") or os.getenv("AI_API_KEY")
+           or os.getenv("DEEPSEEK_API_KEY"))
     if not key:
-        return {"error": "No API key set. Add DEEPSEEK_API_KEY to ~/gov-uk-corpus.env and restart."}
+        return {"error": "No API key set. Add ANTHROPIC_API_KEY to ~/gov-uk-corpus.env and restart."}
     try:
         import anthropic
     except Exception:
         return {"error": "The 'anthropic' package is not installed. Run: pip install -r requirements.txt"}
     try:
-        # Short timeout + no retries so a bad endpoint/hang fails fast and visibly
-        # instead of spinning forever.
-        client = anthropic.Anthropic(api_key=key, base_url=AI_BASE_URL,
-                                     timeout=float(os.getenv("AI_TIMEOUT", "45")),
-                                     max_retries=0)
+        # Short timeout + no retries so a hang fails fast and visibly.
+        client_kwargs = dict(api_key=key, timeout=float(os.getenv("AI_TIMEOUT", "45")),
+                             max_retries=0)
+        if AI_BASE_URL:                      # empty => anthropic SDK default (Claude API)
+            client_kwargs["base_url"] = AI_BASE_URL
+        client = anthropic.Anthropic(**client_kwargs)
         kwargs = dict(model=AI_MODEL, max_tokens=1024,
                       messages=[{"role": "user", "content": prompt}])
         if system.strip():
@@ -563,7 +568,8 @@ def assistant_page(request: Request):
         return login_redirect(request)
     conn = connect()
     resp = templates.TemplateResponse("assistant.html", ctx(
-        conn, request, active_nav="assistant", model=AI_MODEL, base_url=AI_BASE_URL))
+        conn, request, active_nav="assistant", model=AI_MODEL,
+        base_url=AI_BASE_URL or "api.anthropic.com (Claude default)"))
     conn.close()
     return resp
 
