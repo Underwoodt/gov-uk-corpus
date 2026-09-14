@@ -12,6 +12,7 @@ On the server (Postgres):
 """
 from __future__ import annotations
 
+import csv
 import hashlib
 import hmac
 import io
@@ -29,6 +30,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 
+from govuk_corpus import audit
 from govuk_corpus import categories as cat
 from govuk_corpus import orgs, shortlist
 from govuk_corpus.backend import db
@@ -447,6 +449,55 @@ def download_category(request: Request, cid: int, fmt: str = "csv"):
         w.writerow([r["url"], r["title"] or ""])
     return Response(buf.getvalue(), media_type="text/csv",
                     headers={"Content-Disposition": f'attachment; filename="{name}.csv"'})
+
+
+# ---- funnel audit (per-page log) ----------------------------------------
+def _build_audit(cid: int, filters: dict) -> dict:
+    conn = connect()
+    try:
+        return audit.build_audit(conn, cid, filters["organisations"],
+                                 filters["document_types"], filters["keywords"])
+    finally:
+        conn.close()
+
+
+@app.post("/api/categories/{cid}/audit")
+async def api_build_audit(request: Request, cid: int):
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    conn = connect()
+    category = cat.get_category(conn, cid)
+    if not category:
+        conn.close()
+        return JSONResponse({"error": "not found"}, status_code=404)
+    filters = _effective_filters(conn, category)
+    conn.close()
+    if not filters["organisations"]:
+        return JSONResponse({"error": "Set at least one organisation — the audit starts "
+                             "at the organisation filter."}, status_code=400)
+    counters = await run_in_threadpool(_build_audit, cid, filters)
+    summary = [{"outcome": o, "count": n} for o, n in
+               [(audit.OUTCOME_INCLUDED, counters[audit.OUTCOME_INCLUDED]),
+                (audit.OUTCOME_DOCTYPE, counters[audit.OUTCOME_DOCTYPE]),
+                (audit.OUTCOME_KEYWORD, counters[audit.OUTCOME_KEYWORD])]]
+    return JSONResponse({"total": counters["total"], "summary": summary})
+
+
+@app.get("/categories/{cid}/audit/download")
+def download_audit(request: Request, cid: int, outcome: str = ""):
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    rows = audit.audit_rows(conn, cid, outcome=outcome or None)
+    conn.close()
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["url", "outcome"])
+    for r in rows:
+        w.writerow([r["url"], r["outcome"]])
+    tag = (outcome or "all").replace(":", "").replace(" ", "-")
+    return Response(buf.getvalue(), media_type="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="audit-{cid}-{tag}.csv"'})
 
 
 @app.get("/assistant", response_class=HTMLResponse)

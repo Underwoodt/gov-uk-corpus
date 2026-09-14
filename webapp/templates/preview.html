@@ -67,6 +67,17 @@
       <a class="btn secondary-btn" href="{{ url_for('download_category', cid=category.id) }}?fmt=txt">Download URLs (.txt)</a>
     </span>
 
+    <h2 style="margin-top:30px;">Funnel audit (per-page log)</h2>
+    <p class="hint" style="margin-top:-20px;">Logs every page that passes the organisation filter and where
+      it then drops (document type / keyword) or is included. The organisation filter is the starting point,
+      so this never spans the whole corpus — set at least one organisation.</p>
+    <button type="button" class="btn secondary-btn" id="build-audit">Build / refresh audit log</button>
+    <span id="audit-status" class="secondary" style="margin-left:12px;"></span>
+    <table id="audit-summary" hidden style="margin-top:20px;">
+      <thead><tr><th>Outcome</th><th class="num">Pages</th><th>Export</th></tr></thead>
+      <tbody></tbody>
+    </table>
+
     <details style="margin-top:30px;"><summary>SQL query that was run</summary>
       <div class="detail" style="max-width:none;"><pre class="mono" style="white-space:pre-wrap;font-size:14px;">{{ sql }}</pre>
         <p class="secondary">Values shown inline for readability; the app executes with safe parameter
@@ -151,6 +162,42 @@
         tbody.innerHTML = '<tr><td colspan="3">Could not load results.</td></tr>';
       }
     }
+
+    // Funnel audit
+    const buildAuditBtn = document.getElementById("build-audit");
+    async function buildAudit() {
+      const st = document.getElementById("audit-status");
+      const table = document.getElementById("audit-summary");
+      buildAuditBtn.disabled = true;
+      st.innerHTML = '<span class="spinner"></span> Building log…';
+      table.hidden = true;
+      try {
+        const r = await fetch(`/api/categories/${CID}/audit`, { method: "POST" });
+        const j = await r.json();
+        if (j.error) { st.textContent = j.error; return; }
+        st.textContent = `${fmtInt(j.total)} pages logged (from the organisation filter).`;
+        const tbody = table.querySelector("tbody");
+        tbody.innerHTML = "";
+        for (const s of j.summary) {
+          const href = `/categories/${CID}/audit/download?outcome=${encodeURIComponent(s.outcome)}`;
+          const tr = document.createElement("tr");
+          tr.innerHTML = `<td>${esc(s.outcome)}</td><td class="num">${fmtInt(s.count)}</td>` +
+            `<td><a href="${href}">Download CSV</a></td>`;
+          tbody.appendChild(tr);
+        }
+        const all = document.createElement("tr");
+        all.innerHTML = `<td><strong>All (from organisation level)</strong></td>` +
+          `<td class="num"><strong>${fmtInt(j.total)}</strong></td>` +
+          `<td><a href="/categories/${CID}/audit/download">Download CSV</a></td>`;
+        tbody.appendChild(all);
+        table.hidden = false;
+      } catch (e) {
+        st.textContent = "Could not build the audit log.";
+      } finally {
+        buildAuditBtn.disabled = false;
+      }
+    }
+    buildAuditBtn.addEventListener("click", buildAudit);
 
     document.getElementById("page-size").addEventListener("change", () => { offset = 0; loadResults(); });
     document.getElementById("prev-page").addEventListener("click", () => {
