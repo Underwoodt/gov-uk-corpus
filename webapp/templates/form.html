@@ -56,36 +56,25 @@
     </div>
 
     <div class="field">
-      <h3>Organisations <span class="secondary" style="font-weight:400;">(Pre-Inference Filtering: 1)</span></h3>
-      <p class="hint">Tick the organisations whose pages you want to search. Tick none to search all of them.</p>
+      <label class="q" for="dept_slugs">Organisations <span class="secondary" style="font-weight:400;">(Pre-Inference Filtering: 1)</span></label>
+      <p class="hint">Organisation slugs, comma-separated or one per line (e.g. <code>environment-agency</code>).
+        Leave blank to search all organisations.</p>
       <details><summary>How this narrows your search</summary>
-        <div class="detail"><p>A page is kept if one of the organisations you tick published it or is
-          named on it. Everything after this point looks only at those pages, so a tighter choice means a
-          faster, cheaper run and fewer irrelevant results.</p></div></details>
-      <label class="secondary" for="org-filter" style="display:block;margin-bottom:5px;">Search the list</label>
-      <input id="org-filter" type="text" class="narrow" oninput="filterChecks('org-picker', this.value)">
-      <p class="hint">{{ orgs|length }} organisations</p>
-      <div id="org-picker" class="picker">
-        {% for slug, name in orgs %}
-        <label class="check" data-name="{{ name|lower }} {{ slug }}">
-          <input type="checkbox" name="dept_slugs" value="{{ slug }}" {{ 'checked' if slug in selected_depts }}> {{ name }}
-        </label>
-        {% endfor %}
-      </div>
+        <div class="detail"><p>A page is kept if one of these organisations published it or is named on it.
+          Everything after this point looks only at those pages, so a tighter choice means a faster, cheaper
+          run and fewer irrelevant results. Use the exact slug (the last part of the org's gov.uk path).</p></div></details>
+      <textarea id="dept_slugs" name="dept_slugs" rows="3"
+        placeholder="environment-agency&#10;rural-payments-agency">{{ v.dept_slugs or '' }}</textarea>
     </div>
 
     <div class="field">
-      <h3>Page Types <span class="secondary" style="font-weight:400;">(Pre-Inference Filtering: 2)</span></h3>
-      <p class="hint">Tick the kinds of page you want to search. Tick none to search every kind.</p>
+      <label class="q" for="document_type_slugs">Page Types <span class="secondary" style="font-weight:400;">(Pre-Inference Filtering: 2)</span></label>
+      <p class="hint">Document type slugs, comma-separated or one per line. Prefilled with the common
+        guidance types below — edit or clear as needed.</p>
       <details><summary>How this narrows your search</summary>
-        <div class="detail"><p>A page has to match both an organisation you ticked and a type you ticked.
-          If you are not sure, leave it blank and rule out types after you see what comes back.</p></div></details>
-      <div class="checkgrid">
-        {% for val, name in doc_types %}
-        <label class="check"><input type="checkbox" name="document_type_slugs" value="{{ val }}"
-          {{ 'checked' if val in selected_types }}> {{ name }}</label>
-        {% endfor %}
-      </div>
+        <div class="detail"><p>A page has to match both an organisation (if you set any) and one of these
+          types. Clear the box to search every kind.</p></div></details>
+      <textarea id="document_type_slugs" name="document_type_slugs" rows="5">{{ v.document_type_slugs or default_doc_types }}</textarea>
     </div>
 
     <div class="field">
@@ -145,33 +134,25 @@
         placeholder="Sewage sludge or biosolids, not animal slurry">{{ v.adjudication_hints_drop or '' }}</textarea>
     </div>
 
-    <button class="btn" type="submit">{{ 'Save changes' if is_edit else 'Create and preview' }}</button>
+    <button class="btn" type="submit">{{ 'Save changes' if is_edit else 'Create category' }}</button>
   </form>
 
   <script>
     var EXAMPLES = {{ examples_json|safe }};
+    function setField(id, val) {
+      var el = document.getElementById(id);
+      if (el && !el.readOnly) el.value = val;
+    }
     function applyExample(key) {
       if (!key || !EXAMPLES[key]) return;
       var ex = EXAMPLES[key];
       ['slug','keywords','inclusion_context','exclusion_context',
        'adjudication_hints_keep','adjudication_hints_drop'].forEach(function (id) {
-        if (ex[id] !== undefined && document.getElementById(id) && !document.getElementById(id).readOnly)
-          document.getElementById(id).value = ex[id];
+        if (ex[id] !== undefined) setField(id, ex[id]);
       });
-      // tick departments / page types
-      tick('dept_slugs', ex.dept_slugs || []);
-      tick('document_type_slugs', ex.document_type_slugs || []);
-    }
-    function tick(name, values) {
-      document.querySelectorAll('input[name="' + name + '"]').forEach(function (el) {
-        el.checked = values.indexOf(el.value) !== -1;
-      });
-    }
-    function filterChecks(containerId, q) {
-      q = q.trim().toLowerCase();
-      document.querySelectorAll('#' + containerId + ' .check').forEach(function (l) {
-        l.hidden = q && l.getAttribute('data-name').indexOf(q) === -1;
-      });
+      // slug lists -> newline-separated text
+      setField('dept_slugs', (ex.dept_slugs || []).join('\n'));
+      setField('document_type_slugs', (ex.document_type_slugs || []).join('\n'));
     }
   </script>
 {% endblock %}
