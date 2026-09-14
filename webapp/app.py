@@ -25,7 +25,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from govuk_corpus import categories as cat
-from govuk_corpus import facets, shortlist
+from govuk_corpus import shortlist
 from govuk_corpus.backend import db
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -65,6 +65,12 @@ EXAMPLES: Dict[str, dict] = {
 }
 
 _META_CACHE: Dict[str, str] = {}
+
+# Prefilled into the Page Types box on a new category (edit/clear as needed).
+DEFAULT_DOC_TYPES = "\n".join([
+    "guidance", "detailed_guide", "statutory_guidance", "document_collection",
+    "manual_section", "html_publication", "guide", "manual",
+])
 
 
 # ---- helpers -------------------------------------------------------------
@@ -107,12 +113,11 @@ def login_redirect(request: Request) -> RedirectResponse:
 
 
 def form_values(form) -> dict:
-    """Flatten a submitted form into a category data dict (checkbox lists -> newline text)."""
+    """Flatten a submitted form into a category data dict."""
     d = {k: (form.get(k) or "").strip() for k in
-         ("slug", "owner_email", "keywords", "inclusion_context", "exclusion_context",
+         ("slug", "owner_email", "dept_slugs", "document_type_slugs", "keywords",
+          "inclusion_context", "exclusion_context",
           "adjudication_hints_keep", "adjudication_hints_drop")}
-    d["dept_slugs"] = "\n".join(form.getlist("dept_slugs"))
-    d["document_type_slugs"] = "\n".join(form.getlist("document_type_slugs"))
     d["description"] = cat.prettify(d.get("slug"))  # keep the Streamlit list name sensible
     return d
 
@@ -185,7 +190,7 @@ async def create_category(request: Request):
         return templates.TemplateResponse("form.html", _form_ctx(conn, request, None, data, errors))
     cid = cat.create_category(conn, data)
     conn.close()
-    return RedirectResponse(url=str(request.url_for("preview_category_page", cid=cid)), status_code=303)
+    return RedirectResponse(url=str(request.url_for("edit_category_page", cid=cid)), status_code=303)
 
 
 # ---- edit ---------------------------------------------------------------
@@ -217,7 +222,7 @@ async def update_category(request: Request, cid: int):
         return templates.TemplateResponse("form.html", _form_ctx(conn, request, category, merged, errors))
     cat.update_category(conn, cid, data)
     conn.close()
-    return RedirectResponse(url=str(request.url_for("preview_category_page", cid=cid)), status_code=303)
+    return RedirectResponse(url=str(request.url_for("edit_category_page", cid=cid)), status_code=303)
 
 
 def _form_ctx(conn, request, category, values, errors) -> dict:
@@ -228,10 +233,7 @@ def _form_ctx(conn, request, category, values, errors) -> dict:
         action=(str(request.url_for("update_category", cid=category["id"])) if category
                 else str(request.url_for("create_category"))),
         v=values or {},
-        orgs=facets.organisations(conn),
-        doc_types=facets.document_types(conn),
-        selected_depts=set(cat.parse_list((values or {}).get("dept_slugs"))),
-        selected_types=set(cat.parse_list((values or {}).get("document_type_slugs"))),
+        default_doc_types=DEFAULT_DOC_TYPES,
         errors=errors,
         examples_json=json.dumps(EXAMPLES),
     )
