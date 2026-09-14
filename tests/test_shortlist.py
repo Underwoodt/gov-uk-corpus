@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from govuk_corpus import db
 from govuk_corpus.shortlist import (build_query, count, shortlist, shortlist_rows,
-                                    selection_funnel, _keyword_clause)
+                                    selection_funnel, _keyword_clause, interpolate_sql)
 
 
 class TestBuildQuery(unittest.TestCase):
@@ -59,6 +59,15 @@ class TestBuildQuery(unittest.TestCase):
         self.assertIn("&&", pg_all)
         pg_any, _ = _keyword_clause(["a", "b"], "any", is_pg=True)
         self.assertIn("||", pg_any)
+
+    def test_interpolate_sql_substitutes_and_quotes(self):
+        out = interpolate_sql("WHERE a IN (%s,%s) AND n = %s AND x IS %s",
+                              ["environment-agency", "de'fra", 10000, None], is_pg=True)
+        self.assertIn("'environment-agency'", out)
+        self.assertIn("'de''fra'", out)   # single quote escaped
+        self.assertIn("= 10000", out)     # number unquoted
+        self.assertIn("IS NULL", out)     # None -> NULL
+        self.assertNotIn("%s", out)
 
 
 class TestShortlistResults(unittest.TestCase):
