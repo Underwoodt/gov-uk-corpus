@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS content (
     search_text        TEXT,                 -- HTML-stripped body for keyword search
     reading_age        REAL,                 -- estimated reading age (years) of search_text
     gds_english_score  REAL,                 -- GDS plain-English compliance score for search_text
+    gds_findings       TEXT,                 -- readable summary of the GDS issues found
     source             TEXT,                 -- sitemap | attachment | redirect | seed | other
     document_type      TEXT,
     schema_name        TEXT,

@@ -33,10 +33,11 @@ def _batch(conn, after_url: str, size: int):
     return conn.execute(q, (after_url,)).fetchall()
 
 
-def _write(conn, url: str, reading_age: Optional[float], gds: int) -> None:
+def _write(conn, url: str, reading_age: Optional[float], gds: int, findings: str) -> None:
     conn.execute(
-        f"UPDATE content SET reading_age = {_P}, gds_english_score = {_P} WHERE url = {_P}",
-        (reading_age, gds, url))
+        f"UPDATE content SET reading_age = {_P}, gds_english_score = {_P}, "
+        f"gds_findings = {_P} WHERE url = {_P}",
+        (reading_age, gds, findings or None, url))
 
 
 def build(conn, limit: Optional[int] = None, batch: int = 300, after: str = "") -> Dict[str, int]:
@@ -48,8 +49,8 @@ def build(conn, limit: Optional[int] = None, batch: int = 300, after: str = "") 
         for row in rows:
             counters["scanned"] += 1
             after = row["url"]
-            ra, gds = analyse(row["search_text"] or "")
-            _write(conn, row["url"], ra, gds)
+            ra, gds, findings = analyse(row["search_text"] or "")
+            _write(conn, row["url"], ra, gds, findings)
             counters["scored" if ra is not None else "too_short"] += 1
         conn.commit()
         print(f"  ...{counters['scanned']} scanned / {counters['scored']} scored "
