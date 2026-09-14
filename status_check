@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+#
+# status_check — plain-English tour of what's running on the corpus box.
+#
+#   ./status_check
+#
+# It walks each service and job one at a time, telling you what it is about to
+# look at and then whether it is up. No jargon, no wall of output.
+
+ENV_FILE="$HOME/gov-uk-corpus.env"
+
+# Colours (fall back to plain text if not a terminal).
+if [[ -t 1 ]]; then
+    G=$'\e[32m'; R=$'\e[31m'; Y=$'\e[33m'; B=$'\e[1m'; DIM=$'\e[2m'; N=$'\e[0m'
+else
+    G=""; R=""; Y=""; B=""; DIM=""; N=""
+fi
+OK="${G}✅ RUNNING${N}"; DOWN="${R}⛔ STOPPED${N}"; WARN="${Y}⚠️  CHECK${N}"
+
+line() { printf '%s\n' "----------------------------------------------------------------------"; }
+say()  { printf '  → %s' "$1"; }                       # start a check (no newline)
+dots() { local n=$((44 - ${#1})); ((n<1)) && n=1; printf '%*s' "$n" "" | tr ' ' '.'; }
+
+check_service() {   # $1=unit  $2=friendly description
+    local unit="$1" desc="$2"
+    say "Checking ${desc}"; printf '%s ' "$(dots "$desc")"
+    if ! systemctl list-unit-files "$unit" >/dev/null 2>&1 || \
+       ! systemctl cat "$unit" >/dev/null 2>&1; then
+        printf '%s %s\n' "$WARN" "${DIM}(not installed)${N}"; return
+    fi
+    if systemctl is-active --quiet "$unit"; then
+        local since; since=$(systemctl show -p ActiveEnterTimestamp --value "$unit" 2>/dev/null)
+        printf '%s %s\n' "$OK" "${DIM}since ${since:-?}${N}"
+    else
+        printf '%s\n' "$DOWN"
+    fi
+}
+
+check_port() {      # $1=port  $2=friendly
+    local port="$1" desc="$2"
+    say "Is ${desc} listening on port ${port}"; printf '%s ' "$(dots "$desc $port")"
+    if (command -v ss >/dev/null && ss -ltn 2>/dev/null | grep -q ":${port} ") || \
+       (command -v netstat >/dev/null && netstat -ltn 2>/dev/null | grep -q ":${port} "); then
+        printf '%s\n' "${G}✅ YES${N}"
+    else
+        printf '%s\n' "${R}⛔ NO${N}"
+    fi
+}
+
+check_job() {       # $1=pattern  $2=friendly
+    local pat="$1" desc="$2"
+    say "Any ${desc} running"; printf '%s ' "$(dots "$desc")"
+    local pids; pids=$(pgrep -f "$pat" 2>/dev/null | tr '\n' ' ')
+    if [[ -n "$pids" ]]; then
+        printf '%s %s\n' "${Y}▶ YES${N}" "${DIM}pid ${pids}${N}"
+    else
+        printf '%s\n' "${DIM}— no${N}"
+    fi
+}
+
+echo
+printf '%s\n' "${B}======================================================================${N}"
+printf '%s\n' "${B} GOV.UK Corpus — what's running?   $(date '+%a %d %b %Y, %H:%M')${N}"
+printf '%s\n' "${B}======================================================================${N}"
+
+# ---------------------------------------------------------------- 1. services
+echo; printf '%s\n' "${B}[1/4] Background services (should stay up on their own)${N}"; line
+check_service "postgresql.service"       "PostgreSQL database"
+check_service "corpus-dashboard.service" "Ops dashboard (Streamlit :8501)"
+check_service "corpus-shortlist.service" "Shortlist Builder (FastAPI :8600)"
+
+# ---------------------------------------------------------------- 2. ports
+echo; printf '%s\n' "${B}[2/4] Network ports (so you can actually reach them)${N}"; line
+check_port 5432 "PostgreSQL"
+check_port 8501 "Ops dashboard"
+check_port 8600 "Shortlist Builder"
+
+# ---------------------------------------------------------------- 3. one-off jobs
+echo; printf '%s\n' "${B}[3/4] One-off jobs (only running while you're doing a task)${N}"; line
+check_job "govuk_corpus.build_search_text"     "body-text backfill"
+check_job "govuk_corpus.backfill_organisations" "organisations backfill"
+check_job "govuk_corpus.run_all"               "crawl cycle (run_all)"
+check_job "govuk_corpus.reconcile"             "reconcile job"
+
+# ---------------------------------------------------------------- 4. database
+echo; printf '%s\n' "${B}[4/4] Database health (can we query it, and is it full?)${N}"; line
+say "Reading database credentials"; printf '%s ' "$(dots 'credentials')"
+if [[ -f "$ENV_FILE" ]]; then
+    set -a; . "$ENV_FILE"; set +a
+    printf '%s\n' "${G}✅ found${N} ${DIM}($ENV_FILE)${N}"
+    DB_HOST="${DB_HOST:-localhost}"
+    say "Connecting and counting rows"; printf '%s ' "$(dots 'query')"
+    row=$(PGPASSWORD="${DB_PASSWORD:-}" psql -h "$DB_HOST" -U "${DB_USER:-corpus}" -d "${DB_NAME:-gov_uk_corpus}" -tA \
+          -c "SELECT count(*) FROM content" 2>/dev/null)
+    if [[ -n "$row" ]]; then
+        printf '%s %s\n' "${G}✅ OK${N}" "${DIM}${row} content rows${N}"
+        printf '%s\n' "${DIM}     (organisations / categories / body-indexed pages:)${N}"
+        PGPASSWORD="${DB_PASSWORD:-}" psql -h "$DB_HOST" -U "${DB_USER:-corpus}" -d "${DB_NAME:-gov_uk_corpus}" \
+          -c "SELECT (SELECT count(*) FROM organisations) AS organisations, (SELECT count(*) FROM categories) AS categories, (SELECT count(search_text) FROM content) AS body_indexed;" 2>/dev/null | sed 's/^/     /'
+    else
+        printf '%s\n' "${R}⛔ cannot query the database${N}"
+    fi
+else
+    printf '%s\n' "${R}⛔ not found${N} ${DIM}($ENV_FILE)${N}"
+fi
+
+# ---------------------------------------------------------------- machine
+echo; printf '%s\n' "${B}Machine (memory / swap / disk)${N}"; line
+free -h 2>/dev/null | sed 's/^/  /'
+df -h / 2>/dev/null | sed 's/^/  /'
+
+echo
+printf '%s\n' "${DIM}Tip: restart a service with  sudo systemctl restart <name>  (e.g. corpus-dashboard).${N}"
+echo
