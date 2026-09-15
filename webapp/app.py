@@ -32,7 +32,7 @@ from starlette.concurrency import run_in_threadpool
 
 from govuk_corpus import ai_models, audit
 from govuk_corpus import categories as cat
-from govuk_corpus import evaluate, orgs, peak_schedule, settings, shortlist
+from govuk_corpus import evaluate, orgs, peak_schedule, pricing, settings, shortlist
 from govuk_corpus.backend import db
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -221,7 +221,8 @@ def _ai_config(conn) -> dict:
     return {"provider": provider, "label": p["label"], "base_url": p["base_url"],
             "model": m["model_id"], "key": _provider_key(provider),
             "has_key": _provider_key(provider) is not None,
-            "price_in": m["input_per_m"], "price_out": m["output_per_m"]}
+            "price_in": m["input_per_m"], "price_out": m["output_per_m"],
+            "grid": dict(m), "peak_bitmap": peak_schedule.get_bitmap(conn, provider)}
 
 
 def _ai_reply(config: dict, system: str, prompt: str) -> dict:
@@ -252,12 +253,19 @@ def _ai_reply(config: dict, system: str, prompt: str) -> dict:
         usage = getattr(msg, "usage", None)
         in_tok = getattr(usage, "input_tokens", None)
         out_tok = getattr(usage, "output_tokens", None)
+        cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
+        # Peak or off-peak for this supplier at the moment the call ran (UTC).
+        peak = pricing.is_peak_now(config.get("peak_bitmap"))
         cost = None
         if in_tok is not None and out_tok is not None:
-            cost = round((in_tok / 1e6) * config["price_in"]
-                         + (out_tok / 1e6) * config["price_out"], 6)
+            grid = config.get("grid")
+            if grid:   # tiered price grid × peak schedule
+                cost = pricing.call_cost(grid, peak, in_tok, out_tok, cache_read)
+            if cost is None:   # fall back to the flat standard rate
+                cost = round((in_tok / 1e6) * config["price_in"]
+                             + (out_tok / 1e6) * config["price_out"], 6)
         return {"reply": text, "model": config["model"], "actual_model": actual_model,
-                "provider": config["provider"],
+                "provider": config["provider"], "peak": peak, "cache_read_tokens": cache_read,
                 "input_tokens": in_tok, "output_tokens": out_tok, "cost_usd": cost,
                 "price_input_per_m": config["price_in"], "price_output_per_m": config["price_out"]}
     except Exception as e:  # network / auth / API errors surfaced to the page
@@ -515,7 +523,9 @@ def _cfg_for(conn, provider: str, model: str) -> dict:
     price_out = row["output_per_m"] if row else p["price_out"]
     return {"provider": provider, "label": p["label"], "base_url": p["base_url"],
             "model": model or p["model"], "key": _provider_key(provider),
-            "price_in": price_in, "price_out": price_out}
+            "price_in": price_in, "price_out": price_out,
+            "grid": dict(row) if row else None,
+            "peak_bitmap": peak_schedule.get_bitmap(conn, provider)}
 
 
 def _active_run(conn, cid: int) -> str:
