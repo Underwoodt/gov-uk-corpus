@@ -127,6 +127,7 @@ CREATE TABLE IF NOT EXISTS evaluation_runs (
     run_id       TEXT PRIMARY KEY,
     category_id  INTEGER,
     name         TEXT,             -- human label, e.g. "Test-1" (editable)
+    source_run_id TEXT,            -- the run this one builds on (exclusion → its inclusion run)
     phase        TEXT DEFAULT 'Phase 1 - Inclusion',   -- Phase 1 Inclusion | 2 Exclusion | 3 Adjudication
     provider     TEXT,             -- supplier: anthropic | deepseek | …
     model        TEXT,             -- requested/configured model id

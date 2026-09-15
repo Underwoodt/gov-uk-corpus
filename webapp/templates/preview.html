@@ -364,21 +364,28 @@
             + `elapsed ${elapsed.toFixed(0)}s · total $${cost.toFixed(6)}`;
         }
       }
+      let phaseLabel = "Inclusion";
       try {
+        // Loop until the user's target is met; if inclusion finishes and the server
+        // auto-starts the Exclusion phase, keep going through it (target grows).
         while (doneTotal < target) {
           const n = Math.min(EVAL_CHUNK, target - doneTotal);
-          st.innerHTML = `<span class="spinner"></span> Evaluating… ${fmtInt(doneTotal)}/${fmtInt(target)}`;
+          st.innerHTML = `<span class="spinner"></span> ${phaseLabel} — evaluating… ${fmtInt(doneTotal)}/${fmtInt(target)}`;
           const r = await fetch(`/api/categories/${CID}/evaluate?limit=${n}`, { method: "POST" });
           const j = await r.json();
           if (j.error) { st.textContent = "Error: " + j.error; last = j; break; }
           doneTotal += j.evaluated_this_run;
           cost += j.cost_usd || 0;
           last = j;
+          if (j.advanced) {              // inclusion done → exclusion started over its keeps
+            phaseLabel = "Exclusion";
+            target += j.advanced.remaining || 0;   // extend so the pass runs to completion
+          }
           updateProgress();
           await loadRuns();
           if (last.run_id) await loadRunResults(last.run_id, "");
           if (j.stopped === "budget") break;
-          if (j.evaluated_this_run === 0 || j.remaining === 0) break;   // shortlist exhausted for this run
+          if (!j.advanced && (j.evaluated_this_run === 0 || j.remaining === 0)) break;   // this phase exhausted
         }
         if (last && !last.error) {
           let msg = `Evaluated ${fmtInt(doneTotal)} · $${cost.toFixed(6)} · ${fmtInt(last.remaining)} left in shortlist`;

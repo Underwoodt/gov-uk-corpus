@@ -68,6 +68,29 @@
     </table>
     </div>
 
+    <h2 style="margin-top:30px;">Model per phase</h2>
+    <p class="hint">Each evaluation phase runs on its own model (the current pipeline uses a cheap,
+      recall-first model for Inclusion and a stronger model for Exclusion). Pick a model per phase;
+      leave as "Use active model" to fall back to the selected active model above.</p>
+    <table>
+      <thead><tr><th>Phase</th><th>Model</th></tr></thead>
+      <tbody>
+        {% for pm in phase_models %}
+        <tr>
+          <td>{{ pm.phase }}</td>
+          <td>
+            <select name="{{ pm.key }}" style="font-size:14px;padding:4px;border:2px solid var(--black);min-width:280px;">
+              <option value="">Use active model</option>
+              {% for m in models %}
+              <option value="{{ m.id }}" {{ 'selected' if pm.current == (m.id|string) }}>{{ m.provider }} / {{ m.model_id }}</option>
+              {% endfor %}
+            </select>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
     <h2 style="margin-top:30px;">Execution guardrails</h2>
     <p class="secondary" style="margin:0 0 6px;">Spent today (all AI calls):
       <strong>${{ '%.4f'|format(spent_today) }}</strong> of ${{ '%.2f'|format(daily_budget) }} budget.</p>

@@ -136,6 +136,55 @@ class TestRuns(unittest.TestCase):
         self.assertEqual([r["url"] for r in keep], ["https://www.gov.uk/p0"])
 
 
+class TestExclusion(unittest.TestCase):
+    def setUp(self):
+        self.conn = db.connect(":memory:")
+        db.init_db(self.conn)
+
+    def tearDown(self):
+        self.conn.close()
+
+    def test_exclusion_prompt_has_criteria_and_defaults_keep(self):
+        p = evaluate.build_exclusion_prompt(
+            "Slurry", "slurry storage", "sewage sludge is out of scope",
+            "keep planning permission pages", "drop homonym 'slurry pump' catalogue",
+            "Title", "x" * 9000, "pass 1 said relevant", body_limit=100)
+        self.assertIn("sewage sludge is out of scope", p)
+        self.assertIn("pass 1 said relevant", p)
+        self.assertIn("Default to KEEP", p)
+        self.assertIn("x" * 100, p)
+        self.assertNotIn("x" * 101, p)
+
+    def test_parse_exclusion_tags_hit(self):
+        d = evaluate.parse_exclusion('{"keep": false, "exclusion_hit": "homonym", "reason": "wrong slurry"}')
+        self.assertEqual(d["keep"], 0)
+        self.assertIn("[homonym]", d["reason"])
+        keep = evaluate.parse_exclusion('{"keep": true, "exclusion_hit": "none", "reason": "on topic"}')
+        self.assertEqual(keep["keep"], 1)
+        self.assertNotIn("[", keep["reason"])
+        self.assertIsNone(evaluate.parse_exclusion("garbage"))
+
+    def test_exclusion_candidates_are_source_keeps_only(self):
+        for i in range(3):
+            self.conn.execute("INSERT INTO content (url, title, description, search_text) VALUES (?,?,?,?)",
+                              (f"https://www.gov.uk/p{i}", f"T{i}", f"D{i}", f"body {i}"))
+        inc = evaluate.create_run(self.conn, 1, "m", "anthropic")
+        evaluate.save_page(self.conn, inc, 1, "https://www.gov.uk/p0", {"keep": 1, "score": .9, "reason": "keep0"}, 1)
+        evaluate.save_page(self.conn, inc, 1, "https://www.gov.uk/p1", {"keep": 0, "score": .1, "reason": "drop1"}, 1)
+        evaluate.save_page(self.conn, inc, 1, "https://www.gov.uk/p2", {"keep": 1, "score": .8, "reason": "keep2"}, 1)
+        exc = evaluate.create_run(self.conn, 1, "m2", "anthropic",
+                                  phase=evaluate.PHASE_EXCLUSION, source_run_id=inc)
+        cands = evaluate.exclusion_candidates(self.conn, exc, inc, 10)
+        urls = sorted(c["url"] for c in cands)
+        self.assertEqual(urls, ["https://www.gov.uk/p0", "https://www.gov.uk/p2"])  # only the keeps
+        self.assertEqual(cands[0]["pass1_reason"], "keep0")
+        # After evaluating p0 in the exclusion run, it is no longer a candidate.
+        evaluate.save_page(self.conn, exc, 1, "https://www.gov.uk/p0", {"keep": 1, "score": None, "reason": "ok"}, 1)
+        left = evaluate.exclusion_candidates(self.conn, exc, inc, 10)
+        self.assertEqual([c["url"] for c in left], ["https://www.gov.uk/p2"])
+        self.assertEqual(evaluate.kept_count(self.conn, inc), 2)
+
+
 @unittest.skipUnless(_HAS_WEBAPP, "web app deps (fastapi) not installed")
 class TestRunEvaluationMocked(unittest.TestCase):
     def _app(self, n=5, cost=0.0002):
