@@ -83,8 +83,9 @@
       each time (resumable); uses the provider set in Settings and spends API credit.</p>
     <div class="controls">
       <label>Evaluate next
-        <input id="eval-n" type="number" value="10" min="1" max="50" style="width:70px;padding:4px;border:2px solid var(--black);">
+        <input id="eval-n" type="number" value="10" min="1" max="{{ eval_max_docs }}" style="width:80px;padding:4px;border:2px solid var(--black);">
         pages</label>
+      <span class="secondary">(max {{ eval_max_docs }}/run — Settings)</span>
       <button type="button" class="btn secondary-btn" id="run-eval">Evaluate</button>
       <span id="eval-status" class="secondary"></span>
     </div>
@@ -246,25 +247,35 @@
       }
       table.hidden = j.rows.length === 0;
     }
+    const EVAL_MAX_DOCS = {{ eval_max_docs }};
+    const EVAL_CHUNK = 25;   // pages per request (short calls); loop to reach the target
     async function runEval() {
-      const n = document.getElementById("eval-n").value;
       const st = document.getElementById("eval-status");
+      const target = Math.min(parseInt(document.getElementById("eval-n").value, 10) || 0, EVAL_MAX_DOCS);
+      if (target < 1) { st.textContent = "Enter how many pages to evaluate."; return; }
       runEvalBtn.disabled = true;
-      st.innerHTML = '<span class="spinner"></span> Evaluating…';
+      let doneTotal = 0, cost = 0, last = null;
       try {
-        const r = await fetch(`/api/categories/${CID}/evaluate?limit=${n}`, { method: "POST" });
-        const j = await r.json();
-        if (j.error) {
-          st.textContent = "Error: " + j.error;
-        } else {
-          let msg = `Evaluated ${fmtInt(j.evaluated_this_run)} this run`
-            + ` · $${(j.cost_usd || 0).toFixed(6)} · ${fmtInt(j.remaining)} left in shortlist`;
-          if (j.spent_today != null) msg += ` · $${j.spent_today.toFixed(4)}/$${(j.budget||0).toFixed(2)} today`;
-          if (j.stopped === "budget") msg += " · ⛔ stopped: daily budget reached";
-          st.textContent = msg;
-          if (j.warning) { st.textContent += "  ⚠️ " + j.warning; }
+        while (doneTotal < target) {
+          const n = Math.min(EVAL_CHUNK, target - doneTotal);
+          st.innerHTML = `<span class="spinner"></span> Evaluating… ${fmtInt(doneTotal)}/${fmtInt(target)}`;
+          const r = await fetch(`/api/categories/${CID}/evaluate?limit=${n}`, { method: "POST" });
+          const j = await r.json();
+          if (j.error) { st.textContent = "Error: " + j.error; last = j; break; }
+          doneTotal += j.evaluated_this_run;
+          cost += j.cost_usd || 0;
+          last = j;
+          await loadEval("");                       // refresh results as we go
+          if (j.stopped === "budget") break;
+          if (j.evaluated_this_run === 0 || j.remaining === 0) break;   // shortlist exhausted
         }
-        await loadEval("");
+        if (last && !last.error) {
+          let msg = `Evaluated ${fmtInt(doneTotal)} · $${cost.toFixed(6)} · ${fmtInt(last.remaining)} left in shortlist`;
+          if (last.spent_today != null) msg += ` · $${last.spent_today.toFixed(4)}/$${(last.budget||0).toFixed(2)} today`;
+          if (last.stopped === "budget") msg += " · ⛔ stopped: daily budget reached";
+          st.textContent = msg;
+          if (last.warning) st.textContent += "  ⚠️ " + last.warning;
+        }
       } catch (e) {
         st.textContent = "Could not run evaluation.";
       } finally {
