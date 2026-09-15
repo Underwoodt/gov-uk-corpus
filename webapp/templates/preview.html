@@ -89,6 +89,12 @@
       <button type="button" class="btn secondary-btn" id="run-eval">Evaluate</button>
       <span id="eval-status" class="secondary"></span>
     </div>
+    <div id="eval-progress-wrap" hidden style="max-width:640px;margin:0 0 15px;">
+      <div style="height:18px;border:1px solid var(--grey-border);background:var(--white);">
+        <div id="eval-progress-bar" style="height:100%;width:0%;background:var(--blue);transition:width .2s;"></div>
+      </div>
+      <p id="eval-averages" class="secondary timing" style="margin:6px 0 0;"></p>
+    </div>
     <div class="controls" id="eval-controls" hidden>
       <span id="eval-summary" class="secondary"></span>
       <a href="#" id="eval-filter-all" onclick="loadEval('');return false">All</a>
@@ -255,6 +261,24 @@
       if (target < 1) { st.textContent = "Enter how many pages to evaluate."; return; }
       runEvalBtn.disabled = true;
       let doneTotal = 0, cost = 0, last = null;
+      const start = performance.now();
+      const wrap = document.getElementById("eval-progress-wrap");
+      const bar = document.getElementById("eval-progress-bar");
+      const avgs = document.getElementById("eval-averages");
+      wrap.hidden = false;
+      bar.style.width = "0%";
+      function updateProgress() {
+        const pct = target ? Math.min(100, (doneTotal / target) * 100) : 0;
+        bar.style.width = pct.toFixed(1) + "%";
+        const elapsed = (performance.now() - start) / 1000;
+        if (doneTotal > 0) {
+          avgs.textContent =
+            `${fmtInt(doneTotal)}/${fmtInt(target)} (${pct.toFixed(0)}%) · `
+            + `avg ${(elapsed / doneTotal).toFixed(1)}s/page · `
+            + `avg $${(cost / doneTotal).toFixed(6)}/page · `
+            + `elapsed ${elapsed.toFixed(0)}s · total $${cost.toFixed(6)}`;
+        }
+      }
       try {
         while (doneTotal < target) {
           const n = Math.min(EVAL_CHUNK, target - doneTotal);
@@ -265,6 +289,7 @@
           doneTotal += j.evaluated_this_run;
           cost += j.cost_usd || 0;
           last = j;
+          updateProgress();
           await loadEval("");                       // refresh results as we go
           if (j.stopped === "budget") break;
           if (j.evaluated_this_run === 0 || j.remaining === 0) break;   // shortlist exhausted
