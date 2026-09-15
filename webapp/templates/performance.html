@@ -36,6 +36,8 @@
         <tr data-metric="avgcost"><td>Average Evaluation Cost (per 100)</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="avgtime"><td>Average Evaluation Elapsed (min:sec)</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="intokens"><td>Total Input Tokens</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="hittokens"><td>&nbsp;&nbsp;of which cache hit</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="misstokens"><td>&nbsp;&nbsp;of which cache miss</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="outtokens"><td>Total Output Tokens</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="totalcost"><td>Total Evaluation Cost</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="totaltime"><td>Total Evaluation Time</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
@@ -64,7 +66,7 @@
       const runId = document.getElementById(`pick-${col}`).value;
       const r = byId[runId];
       const set = (metric, v) => { cell(metric, col).textContent = v; };
-      if (!r) { ["datetime","phase","model","total","avgcost","avgtime","intokens","outtokens","totalcost","totaltime"].forEach(m => set(m, "—")); return; }
+      if (!r) { ["datetime","phase","model","total","avgcost","avgtime","intokens","hittokens","misstokens","outtokens","totalcost","totaltime"].forEach(m => set(m, "—")); return; }
       const pages = r.pages || 0;
       const secsTotal = (r.total_ms || 0) / 1000;
       set("datetime", fmtDate(r.started_at));
@@ -74,6 +76,8 @@
       set("avgcost", pages ? "$" + ((r.cost || 0) / pages * 100).toFixed(4) : "—");
       set("avgtime", pages ? fmtMS(secsTotal / pages) : "—");
       set("intokens", (r.in_tokens || 0).toLocaleString());
+      set("hittokens", (r.hit_tokens || 0).toLocaleString());
+      set("misstokens", (r.miss_tokens || 0).toLocaleString());
       set("outtokens", (r.out_tokens || 0).toLocaleString());
       set("totalcost", "$" + (r.cost || 0).toFixed(6));
       set("totaltime", fmtMS(secsTotal));

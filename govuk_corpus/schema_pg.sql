@@ -123,8 +123,10 @@ CREATE TABLE IF NOT EXISTS evaluation_runs (
     dropped      integer DEFAULT 0,
     unparseable  integer DEFAULT 0,
     cost         real DEFAULT 0,
-    in_tokens    bigint DEFAULT 0,   -- total input tokens billed across the run
+    in_tokens    bigint DEFAULT 0,   -- total input tokens billed across the run (hit + miss)
     out_tokens   bigint DEFAULT 0,   -- total output tokens billed across the run
+    hit_tokens   bigint DEFAULT 0,   -- input tokens served from cache (cache-hit rate)
+    miss_tokens  bigint DEFAULT 0,   -- input tokens NOT from cache (cache-miss rate)
     total_ms     integer DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_eval_runs_cat ON evaluation_runs(category_id);
@@ -250,6 +252,8 @@ ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS phase text DEFAULT 'Phase 1
 -- Per-run token totals (added after evaluation_runs shipped). Existing rows start at 0.
 ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS in_tokens  bigint DEFAULT 0;
 ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS out_tokens bigint DEFAULT 0;
+ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS hit_tokens  bigint DEFAULT 0;
+ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS miss_tokens bigint DEFAULT 0;
 
 -- Tiered model pricing (added after ai_models shipped with a single input/output rate).
 -- Backfill each tier from the existing standard rate; users then edit the real grid.

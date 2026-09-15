@@ -137,8 +137,10 @@ CREATE TABLE IF NOT EXISTS evaluation_runs (
     dropped      INTEGER DEFAULT 0,
     unparseable  INTEGER DEFAULT 0,
     cost         REAL DEFAULT 0,
-    in_tokens    INTEGER DEFAULT 0,   -- total input tokens billed across the run
+    in_tokens    INTEGER DEFAULT 0,   -- total input tokens billed across the run (hit + miss)
     out_tokens   INTEGER DEFAULT 0,   -- total output tokens billed across the run
+    hit_tokens   INTEGER DEFAULT 0,   -- input tokens served from cache (cache-hit rate)
+    miss_tokens  INTEGER DEFAULT 0,   -- input tokens NOT from cache (cache-miss rate)
     total_ms     INTEGER DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_eval_runs_cat ON evaluation_runs(category_id);
