@@ -607,6 +607,21 @@ async def api_evaluate(request: Request, cid: int, limit: int = 10):
     return JSONResponse(result)
 
 
+@app.get("/categories/{cid}/performance", response_class=HTMLResponse)
+def performance_page(request: Request, cid: int):
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    category = cat.get_category(conn, cid)
+    if not category:
+        conn.close()
+        return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
+    category["display_name"] = cat.prettify(category.get("slug")) or (category.get("description") or "Untitled")
+    resp = templates.TemplateResponse("performance.html", ctx(conn, request, category=category))
+    conn.close()
+    return resp
+
+
 @app.get("/api/categories/{cid}/runs")
 def api_list_runs(request: Request, cid: int):
     if not authed(request):

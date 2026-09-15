@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}{{ category.display_name }} — run performance{% endblock %}
+{% block content %}
+
+  <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
+
+  <h1 style="margin:20px 0 5px;">{{ category.display_name }}</h1>
+  <p class="secondary" style="margin:0 0 20px;"><span class="mono">{{ category.slug or '' }}</span></p>
+
+  <div class="tabs">
+    <a href="{{ url_for('edit_category_page', cid=category.id) }}">Definition</a>
+    <a href="{{ url_for('preview_category_page', cid=category.id) }}">Preview and run</a>
+    <span class="current">Run performance</span>
+  </div>
+
+  <div class="tabpanel">
+    <h2>Compare runs</h2>
+    <p class="hint" style="margin-top:-20px;">Pick up to three evaluation runs to compare their model, cost and time.</p>
+
+    <div class="controls" id="run-pickers">
+      <label>Run 1 <select id="pick-0" class="run-pick"></select></label>
+      <label>Run 2 <select id="pick-1" class="run-pick"></select></label>
+      <label>Run 3 <select id="pick-2" class="run-pick"></select></label>
+    </div>
+
+    <p id="perf-empty" class="secondary" hidden>No runs yet — evaluate a category on the
+      <a href="{{ url_for('preview_category_page', cid=category.id) }}">Preview and run</a> tab first.</p>
+
+    <table id="perf-table">
+      <thead><tr><th>Run characteristic</th><th>Run 1</th><th>Run 2</th><th>Run 3</th></tr></thead>
+      <tbody>
+        <tr data-metric="datetime"><td>Run Date/Time</td><td></td><td></td><td></td></tr>
+        <tr data-metric="model"><td>Model</td><td></td><td></td><td></td></tr>
+        <tr data-metric="total"><td>Total Evaluations</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="avgcost"><td>Average Evaluation Cost (per 100)</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="avgtime"><td>Average Evaluation Elapsed (min:sec)</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="totalcost"><td>Total Evaluation Cost</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="totaltime"><td>Total Evaluation Time</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    const CID = {{ category.id }};
+    let RUNS = [];
+    const byId = {};
+
+    function fmtDate(s) { return s ? String(s).slice(0, 19).replace("T", " ") : "—"; }
+    function fmtMS(seconds) {
+      if (seconds == null || isNaN(seconds)) return "—";
+      const m = Math.floor(seconds / 60), s = Math.round(seconds % 60);
+      return `${m}:${String(s).padStart(2, "0")}`;
+    }
+
+    function cell(metric, col) { return document.querySelector(`#perf-table tr[data-metric="${metric}"] td:nth-child(${col + 2})`); }
+
+    function renderColumn(col) {
+      const runId = document.getElementById(`pick-${col}`).value;
+      const r = byId[runId];
+      const set = (metric, v) => { cell(metric, col).textContent = v; };
+      if (!r) { ["datetime","model","total","avgcost","avgtime","totalcost","totaltime"].forEach(m => set(m, "—")); return; }
+      const pages = r.pages || 0;
+      const secsTotal = (r.total_ms || 0) / 1000;
+      set("datetime", fmtDate(r.started_at));
+      set("model", `${r.provider || ""} / ${r.actual_model || r.model || ""}`);
+      set("total", pages.toLocaleString());
+      set("avgcost", pages ? "$" + ((r.cost || 0) / pages * 100).toFixed(4) : "—");
+      set("avgtime", pages ? fmtMS(secsTotal / pages) : "—");
+      set("totalcost", "$" + (r.cost || 0).toFixed(6));
+      set("totaltime", fmtMS(secsTotal));
+    }
+    function renderAll() { [0, 1, 2].forEach(renderColumn); }
+
+    async function load() {
+      const j = await (await fetch(`/api/categories/${CID}/runs`)).json();
+      RUNS = j.runs || [];
+      RUNS.forEach(r => byId[r.run_id] = r);
+      document.getElementById("perf-empty").hidden = RUNS.length !== 0;
+      document.getElementById("perf-table").hidden = RUNS.length === 0;
+      [0, 1, 2].forEach(col => {
+        const sel = document.getElementById(`pick-${col}`);
+        sel.innerHTML = '<option value="">—</option>' + RUNS.map(r =>
+          `<option value="${r.run_id}">${fmtDate(r.started_at)} · ${r.actual_model || r.model || ""}</option>`).join("");
+        if (RUNS[col]) sel.value = RUNS[col].run_id;   // default: three most recent
+        sel.addEventListener("change", () => renderColumn(col));
+      });
+      renderAll();
+    }
+    load();
+  </script>
+{% endblock %}
