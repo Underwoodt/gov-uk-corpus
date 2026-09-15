@@ -158,6 +158,7 @@ class TestRunEvaluationMocked(unittest.TestCase):
         run = evaluate.get_run(conn, result["run_id"])
         self.assertEqual(run["pages"], 2)
         self.assertEqual(run["kept"], 2)
+        self.assertEqual(run["phase"], evaluate.PHASE_INCLUSION)             # phase tracked
         self.assertEqual(run["provider"], "anthropic")                       # supplier tracked
         self.assertEqual(run["actual_model"], "claude-haiku-4-5-20251001-actual")  # served model tracked
         self.assertGreater(app._daily_spend(conn), 0)
