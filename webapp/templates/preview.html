@@ -110,10 +110,11 @@
     </table>
     <p id="link-gaps-empty" class="secondary" hidden>No missing links found in the scanned pages.</p>
 
-    <details style="margin-top:30px;"><summary>SQL query that was run</summary>
+    <details style="margin-top:30px;"><summary>SQL queries that were run (per funnel stage)</summary>
       <div class="detail" style="max-width:none;"><pre class="mono" style="white-space:pre-wrap;font-size:14px;">{{ sql }}</pre>
-        <p class="secondary">Values shown inline for readability; the app executes with safe parameter
-          binding. Keyword terms are stemmed by Postgres at query time.</p></div></details>
+        <p class="secondary">The COUNT(*) query behind each funnel row, then the shortlist SELECT — separated by
+          comment lines. Values shown inline for readability; the app executes with safe parameter binding.
+          Keyword terms are stemmed by Postgres at query time.</p></div></details>
     </section>
 
     <section id="tab-semantic" class="subpanel" role="tabpanel" hidden>
