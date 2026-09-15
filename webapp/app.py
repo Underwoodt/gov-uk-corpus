@@ -599,9 +599,28 @@ def preview_category_page(request: Request, cid: int):
     stages = [{"stage": k, "label": v[0],
                "vals": filters[stage_value_key[k]] if stage_value_key[k] else []}
               for k, v in _FUNNEL_STAGES.items()]
-    # SQL preview is cheap (no DB hit) — render it inline.
-    sql, params = shortlist.build_query(include_title=True, limit=10000, **filters)
-    pretty = shortlist.pretty_sql(shortlist.interpolate_sql(sql, params))
+    # SQL preview is cheap (no DB hit) — render the per-stage COUNT queries the funnel
+    # runs, plus the shortlist SELECT, with comment separators.
+    def _pretty(sql_, params_):
+        return shortlist.pretty_sql(shortlist.interpolate_sql(sql_, params_))
+
+    stage_specs = [
+        ("All pages", {}),
+        ("After organisation filter", {"organisations": filters["organisations"]}),
+        ("After document-type filter",
+         {"organisations": filters["organisations"], "document_types": filters["document_types"]}),
+        ("After keyword filter",
+         {"organisations": filters["organisations"], "document_types": filters["document_types"],
+          "keywords": filters["keywords"], "match": "any"}),
+    ]
+    blocks = ["-- ===== Funnel counts: one COUNT(*) per stage (the numbers in the table above) ====="]
+    for label, kw in stage_specs:
+        cs, cp = shortlist.build_query(count_only=True, **kw)
+        blocks.append(f"-- {label}\n{_pretty(cs, cp)};")
+    sel_sql, sel_params = shortlist.build_query(include_title=True, limit=10000, **filters)
+    blocks.append("-- ===== Shortlist rows: the pages returned (results table / download) =====\n"
+                  + f"{_pretty(sel_sql, sel_params)};")
+    pretty = "\n\n".join(blocks)
     eval_max_docs = _max_docs(conn)
     conn.close()
     return templates.TemplateResponse("preview.html", ctx(
