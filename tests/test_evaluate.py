@@ -76,12 +76,13 @@ class TestRuns(unittest.TestCase):
         run = evaluate.create_run(self.conn, 1, "m", "anthropic")
         evaluate.save_page(self.conn, run, 1, "https://www.gov.uk/p0", {"keep": 1, "score": 0.9, "reason": "a"}, 100)
         evaluate.save_page(self.conn, run, 1, "https://www.gov.uk/p1", {"keep": 0, "score": 0.2, "reason": "b"}, 300)
-        evaluate.add_run_cost(self.conn, run, 0.0025, 1200, 60)
-        evaluate.add_run_cost(self.conn, run, 0.0015, 800, 40)
+        evaluate.add_run_cost(self.conn, run, 0.0025, 1200, 60, hit_tokens=200, miss_tokens=1000)
+        evaluate.add_run_cost(self.conn, run, 0.0015, 800, 40, hit_tokens=300, miss_tokens=500)
         r = evaluate.get_run(self.conn, run)
         self.assertEqual((r["pages"], r["kept"], r["dropped"], r["total_ms"]), (2, 1, 1, 400))
         self.assertAlmostEqual(r["cost"], 0.0040, places=6)
         self.assertEqual((r["in_tokens"], r["out_tokens"]), (2000, 100))
+        self.assertEqual((r["hit_tokens"], r["miss_tokens"]), (500, 1500))
 
     def test_compare_runs(self):
         a = evaluate.create_run(self.conn, 1, "m", "anthropic")

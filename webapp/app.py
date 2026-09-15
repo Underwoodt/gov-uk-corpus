@@ -257,6 +257,7 @@ def _ai_reply(config: dict, system: str, prompt: str) -> dict:
         in_tok = u["in_total"] if u else None
         out_tok = u["out"] if u else None
         cache_hit = u["hit"] if u else 0
+        cache_miss = u["miss"] if u else 0
         cost = None
         if u is not None:
             grid = config.get("grid")
@@ -266,7 +267,8 @@ def _ai_reply(config: dict, system: str, prompt: str) -> dict:
                 cost = round((in_tok / 1e6) * config["price_in"]
                              + (out_tok / 1e6) * config["price_out"], 6)
         return {"reply": text, "model": config["model"], "actual_model": actual_model,
-                "provider": config["provider"], "peak": peak, "cache_hit_tokens": cache_hit,
+                "provider": config["provider"], "peak": peak,
+                "cache_hit_tokens": cache_hit, "cache_miss_tokens": cache_miss,
                 "input_tokens": in_tok, "output_tokens": out_tok, "cost_usd": cost,
                 "price_input_per_m": config["price_in"], "price_output_per_m": config["price_out"]}
     except Exception as e:  # network / auth / API errors surfaced to the page
@@ -586,7 +588,8 @@ def _run_evaluation(cid: int, limit: int) -> dict:
                                evaluate.parse_decision(res.get("reply", "")), ms)
             evaluate.set_actual_model(conn, run_id, res.get("actual_model"))
             c = res.get("cost_usd") or 0.0
-            evaluate.add_run_cost(conn, run_id, c, res.get("input_tokens"), res.get("output_tokens"))
+            evaluate.add_run_cost(conn, run_id, c, res.get("input_tokens"), res.get("output_tokens"),
+                                  res.get("cache_hit_tokens"), res.get("cache_miss_tokens"))
             _log_ai_usage(conn, c, res.get("input_tokens"), res.get("output_tokens"), "evaluate")
             done += 1
             cost += c

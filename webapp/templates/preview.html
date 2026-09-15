@@ -86,7 +86,8 @@
     <h3 style="margin:20px 0 6px;">Runs</h3>
     <table id="runs-table" hidden>
       <thead><tr><th>Started</th><th>Phase</th><th>Supplier</th><th>Model</th><th class="num">Pages</th><th class="num">Keep</th>
-        <th class="num">Drop</th><th class="num">Tokens in</th><th class="num">Tokens out</th><th class="num">Cost</th>
+        <th class="num">Drop</th><th class="num">Tokens in</th><th class="num">Cache hit</th><th class="num">Cache miss</th>
+        <th class="num">Tokens out</th><th class="num">Cost</th>
         <th class="num">Avg s</th><th></th></tr></thead>
       <tbody></tbody>
     </table>
@@ -251,7 +252,9 @@
           `<td>${esc(r.actual_model || r.model || "")}</td>` +
           `<td class="num">${fmtInt(r.pages)}</td><td class="num">${fmtInt(r.kept)}</td>` +
           `<td class="num">${fmtInt(r.dropped)}</td>` +
-          `<td class="num">${fmtInt(r.in_tokens)}</td><td class="num">${fmtInt(r.out_tokens)}</td>` +
+          `<td class="num">${fmtInt(r.in_tokens)}</td>` +
+          `<td class="num">${fmtInt(r.hit_tokens)}</td><td class="num">${fmtInt(r.miss_tokens)}</td>` +
+          `<td class="num">${fmtInt(r.out_tokens)}</td>` +
           `<td class="num">$${(r.cost||0).toFixed(6)}</td>` +
           `<td class="num">${avg}</td><td><a href="#" data-run="${r.run_id}">View</a></td>`;
         tbody.appendChild(tr);
