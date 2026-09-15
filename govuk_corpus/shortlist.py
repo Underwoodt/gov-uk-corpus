@@ -65,15 +65,28 @@ def build_query(
     """Build (sql, params). Pure/deterministic, so it is unit-testable."""
     params: list = []
     where: List[str] = []
+    org_cte = ""            # optional leading CTE (Postgres count path)
+    org_params: list = []   # params that belong to the CTE, emitted before `params`
 
     if organisations:
-        # EXISTS (not JOIN) so a page with several matching org rows is counted once
-        # without a DISTINCT — index idx_page_orgs_slug makes this cheap even under load.
         placeholders = ",".join([_P] * len(organisations))
-        where.append(
-            f"EXISTS (SELECT 1 FROM page_organisations po "
-            f"WHERE po.page_url = c.url AND po.organisation_slug IN ({placeholders}))")
-        params.extend(organisations)
+        if _IS_PG and count_only:
+            # Counting org + document_type (no keyword) lets the planner lead with the
+            # non-selective content.document_type and scan a huge intermediate set,
+            # which intermittently hits statement_timeout. Force the small, selective
+            # organisation set to be built FIRST via a MATERIALIZED CTE, then join
+            # content by primary key — a stable plan regardless of stats drift.
+            org_cte = (f"WITH org_pages AS MATERIALIZED ("
+                       f"SELECT po.page_url AS url FROM page_organisations po "
+                       f"WHERE po.organisation_slug IN ({placeholders}) GROUP BY po.page_url) ")
+            org_params.extend(organisations)
+        else:
+            # EXISTS (not JOIN) so a page with several matching org rows is counted once
+            # without a DISTINCT — index idx_page_orgs_slug makes this cheap even under load.
+            where.append(
+                f"EXISTS (SELECT 1 FROM page_organisations po "
+                f"WHERE po.page_url = c.url AND po.organisation_slug IN ({placeholders}))")
+            params.extend(organisations)
 
     if document_types:
         placeholders = ",".join([_P] * len(document_types))
@@ -111,7 +124,10 @@ def build_query(
         select = "c.url AS url, c.title AS title"
     else:
         select = "c.url AS url"
-    sql = f"SELECT {select} FROM content c{where_sql}"
+    from_sql = "content c"
+    if org_cte:   # join the pre-materialised organisation page set by primary key
+        from_sql = "content c JOIN org_pages op ON op.url = c.url"
+    sql = f"{org_cte}SELECT {select} FROM {from_sql}{where_sql}"
     if not count_only:
         sql += " ORDER BY c.url"
         if limit:
@@ -120,7 +136,8 @@ def build_query(
         if offset:
             sql += f" OFFSET {_P}"
             params.append(offset)
-    return sql, params
+    # CTE placeholders come first in the SQL text, so their params lead.
+    return sql, org_params + params
 
 
 def _quote_literal(v) -> str:

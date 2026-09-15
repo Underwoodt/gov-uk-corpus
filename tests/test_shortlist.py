@@ -28,6 +28,28 @@ class TestBuildQuery(unittest.TestCase):
         self.assertNotIn("DISTINCT", sql)   # EXISTS avoids row fan-out
         self.assertEqual(params[0], "environment-agency")
 
+    def test_pg_count_uses_materialized_org_cte(self):
+        # On Postgres, an org+doctype COUNT must force the org set first via a
+        # MATERIALIZED CTE (stable plan, avoids leading with content.document_type).
+        import govuk_corpus.shortlist as sl
+        saved_pg, saved_p = sl._IS_PG, sl._P
+        sl._IS_PG, sl._P = True, "%s"
+        try:
+            sql, params = sl.build_query(count_only=True,
+                                         organisations=["environment-agency"],
+                                         document_types=["guidance", "news"])
+            self.assertIn("WITH org_pages AS MATERIALIZED", sql)
+            self.assertIn("JOIN org_pages op ON op.url = c.url", sql)
+            self.assertNotIn("EXISTS (SELECT 1 FROM page_organisations", sql)
+            # CTE (org) params lead, then the document_type params.
+            self.assertEqual(params, ["environment-agency", "guidance", "news"])
+            # Non-count queries keep the EXISTS form (only counts use the CTE).
+            sql2, _ = sl.build_query(organisations=["environment-agency"])
+            self.assertIn("EXISTS (SELECT 1 FROM page_organisations", sql2)
+            self.assertNotIn("MATERIALIZED", sql2)
+        finally:
+            sl._IS_PG, sl._P = saved_pg, saved_p
+
     def test_keywords_all_vs_any(self):
         sql_all, _ = build_query(keywords=["a", "b"], match="all")
         sql_any, _ = build_query(keywords=["a", "b"], match="any")
