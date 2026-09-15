@@ -167,12 +167,18 @@ CREATE INDEX IF NOT EXISTS idx_ai_usage_day ON ai_usage(day);
 
 -- User-editable AI models (supplier + model id + prices) for the assistant/evaluation.
 CREATE TABLE IF NOT EXISTS ai_models (
-    id           INTEGER PRIMARY KEY,   -- epoch-ms
-    provider     TEXT,                  -- anthropic | deepseek
-    model_id     TEXT,
-    input_per_m  REAL,                  -- USD per 1M input tokens
-    output_per_m REAL,                  -- USD per 1M output tokens
-    created_at   TEXT
+    id            INTEGER PRIMARY KEY,  -- epoch-ms
+    provider      TEXT,                 -- anthropic | deepseek
+    model_id      TEXT,
+    input_per_m   REAL,                 -- standard input rate = in_miss_off (USD / 1M)
+    output_per_m  REAL,                 -- standard output rate = out_off (USD / 1M)
+    in_hit_off    REAL,                 -- input, cache hit, off-peak
+    in_hit_peak   REAL,                 -- input, cache hit, peak
+    in_miss_off   REAL,                 -- input, cache miss, off-peak
+    in_miss_peak  REAL,                 -- input, cache miss, peak
+    out_off       REAL,                 -- output, off-peak
+    out_peak      REAL,                 -- output, peak
+    created_at    TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_ai_models_provider ON ai_models(provider, model_id);
 

@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Peak hours · {{ provider_label }}{% endblock %}
+{% block content %}
+
+  {% if saved %}<div class="success">Peak hours saved for {{ provider_label }}.</div>{% endif %}
+
+  <p style="margin:0 0 4px;"><a href="{{ url_for('settings_page') }}">&larr; Settings</a></p>
+  <h1>Peak hours — {{ provider_label }}</h1>
+  <p class="lede" style="margin:0 0 6px;">Mark each hour of the week as <strong>peak</strong> or off-peak.
+    Cost calculations use this to pick the peak or off-peak token rate for the hour a call ran.</p>
+  <p class="hint" style="margin:0 0 16px;">Hours are <strong>UTC</strong>, on the 24-hour clock (00 = midnight).
+    Click a cell to toggle it; drag to paint. Click a day name to toggle the whole day, or an hour number to
+    toggle that hour across the week. Shaded = peak.</p>
+
+  <form method="post" action="{{ url_for('save_peak_schedule', provider=provider) }}">
+    <div class="controls" style="margin-bottom:12px;gap:10px;align-items:center;">
+      <button class="btn secondary-btn" type="button" id="all-peak">All peak</button>
+      <button class="btn secondary-btn" type="button" id="all-off">All off-peak</button>
+      <span class="secondary"><strong id="peak-count">{{ peak_count }}</strong> / 168 hours peak</span>
+    </div>
+
+    <div style="overflow-x:auto;">
+    <table class="peak-grid" style="border-collapse:collapse;font-size:12px;user-select:none;">
+      <thead>
+        <tr>
+          <th style="text-align:right;padding:2px 8px;">Day \ hour</th>
+          {% for h in hours %}
+          <th class="hour-head" data-hour="{{ h }}" title="Toggle hour {{ '%02d'|format(h) }} across the week"
+            style="padding:2px 0;min-width:22px;cursor:pointer;font-weight:400;">{{ '%02d'|format(h) }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in range(days|length) %}
+        <tr>
+          <th class="day-head" data-day="{{ d }}" title="Toggle {{ days[d] }}"
+            style="text-align:right;padding:2px 8px;cursor:pointer;white-space:nowrap;">{{ days[d] }}</th>
+          {% for h in hours %}
+          <td class="cell {{ 'peak' if grid[d][h] }}" data-day="{{ d }}" data-hour="{{ h }}"
+            style="width:22px;height:22px;border:1px solid var(--mid-grey);text-align:center;cursor:pointer;padding:0;">
+            <input type="checkbox" name="h_{{ d }}_{{ h }}" {{ 'checked' if grid[d][h] }} hidden>
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+
+    <button class="btn" type="submit" style="margin-top:16px;">Save peak hours</button>
+  </form>
+
+  <style>
+    .peak-grid td.cell.peak { background: var(--blue, #1d70b8); }
+    .peak-grid td.cell { background: #fff; }
+    .peak-grid th.hour-head:hover, .peak-grid th.day-head:hover { text-decoration: underline; }
+  </style>
+
+  <script>
+  (function () {
+    const table = document.querySelector(".peak-grid");
+    const countEl = document.getElementById("peak-count");
+    let painting = false, paintTo = true;
+
+    function cb(td) { return td.querySelector("input[type=checkbox]"); }
+    function setCell(td, on) {
+      cb(td).checked = on;
+      td.classList.toggle("peak", on);
+    }
+    function refreshCount() {
+      countEl.textContent = table.querySelectorAll("td.cell.peak").length;
+    }
+    function cells() { return table.querySelectorAll("td.cell"); }
+
+    table.querySelectorAll("td.cell").forEach(function (td) {
+      td.addEventListener("mousedown", function (e) {
+        e.preventDefault();
+        painting = true;
+        paintTo = !td.classList.contains("peak");   // paint to the opposite of this cell
+        setCell(td, paintTo); refreshCount();
+      });
+      td.addEventListener("mouseenter", function () {
+        if (painting) { setCell(td, paintTo); refreshCount(); }
+      });
+    });
+    document.addEventListener("mouseup", function () { painting = false; });
+
+    // Toggle a whole day row.
+    table.querySelectorAll("th.day-head").forEach(function (th) {
+      th.addEventListener("click", function () {
+        const d = th.dataset.day;
+        const row = table.querySelectorAll('td.cell[data-day="' + d + '"]');
+        const anyOff = Array.from(row).some(td => !td.classList.contains("peak"));
+        row.forEach(td => setCell(td, anyOff));   // if any off -> all peak, else all off
+        refreshCount();
+      });
+    });
+    // Toggle a whole hour column.
+    table.querySelectorAll("th.hour-head").forEach(function (th) {
+      th.addEventListener("click", function () {
+        const h = th.dataset.hour;
+        const col = table.querySelectorAll('td.cell[data-hour="' + h + '"]');
+        const anyOff = Array.from(col).some(td => !td.classList.contains("peak"));
+        col.forEach(td => setCell(td, anyOff));
+        refreshCount();
+      });
+    });
+
+    document.getElementById("all-peak").addEventListener("click", function () {
+      cells().forEach(td => setCell(td, true)); refreshCount();
+    });
+    document.getElementById("all-off").addEventListener("click", function () {
+      cells().forEach(td => setCell(td, false)); refreshCount();
+    });
+  })();
+  </script>
+{% endblock %}

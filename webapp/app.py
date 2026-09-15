@@ -32,7 +32,7 @@ from starlette.concurrency import run_in_threadpool
 
 from govuk_corpus import ai_models, audit
 from govuk_corpus import categories as cat
-from govuk_corpus import evaluate, orgs, settings, shortlist
+from govuk_corpus import evaluate, orgs, peak_schedule, settings, shortlist
 from govuk_corpus.backend import db
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -877,6 +877,19 @@ def settings_page(request: Request, saved: int = 0):
     return resp
 
 
+def _price_form(form, prefix: str) -> dict:
+    """Pull the six tiered price fields (prefix + field name) out of a form."""
+    out = {}
+    for f in ai_models.PRICE_FIELDS:
+        v = form.get(prefix + f)
+        if v not in (None, ""):
+            try:
+                out[f] = float(v)
+            except (TypeError, ValueError):
+                pass
+    return out
+
+
 @app.post("/settings")
 async def save_settings(request: Request):
     if not authed(request):
@@ -886,6 +899,17 @@ async def save_settings(request: Request):
     active = form.get("active_model_id")
     if active:
         settings.set_setting(conn, "active_model_id", active)
+    # Save edits to existing model rows.
+    for m in ai_models.list_models(conn):
+        rid = m["id"]
+        prov = (form.get(f"m_{rid}_provider") or "").strip()
+        mod = (form.get(f"m_{rid}_model_id") or "").strip()
+        if prov in PROVIDERS and mod:
+            try:
+                ai_models.update_model(conn, rid, prov, mod,
+                                       prices=_price_form(form, f"m_{rid}_"))
+            except ValueError:
+                pass
     try:
         settings.set_setting(conn, "ai_daily_budget", str(float(form.get("ai_daily_budget") or DEFAULT_DAILY_BUDGET)))
     except ValueError:
@@ -909,7 +933,7 @@ async def add_model_route(request: Request):
     if provider in PROVIDERS and model_id:
         try:
             ai_models.add_model(conn, provider, model_id,
-                                float(form.get("input_per_m") or 0), float(form.get("output_per_m") or 0))
+                                prices=_price_form(form, "add_"))
         except ValueError:
             pass
     conn.close()
@@ -930,6 +954,61 @@ async def delete_model_route(request: Request):
             pass
     conn.close()
     return RedirectResponse(url=str(request.url_for("settings_page")), status_code=303)
+
+
+@app.post("/api/models/{mid}/test")
+async def test_model_route(request: Request, mid: int):
+    """Ping a model with a tiny prompt to confirm the supplier accepts the name."""
+    if not authed(request):
+        return JSONResponse({"ok": False, "error": "Not signed in."}, status_code=401)
+    conn = connect()
+    row = ai_models.get_model(conn, mid)
+    if not row:
+        conn.close()
+        return JSONResponse({"ok": False, "error": "Model not found."}, status_code=404)
+    cfg = _cfg_for(conn, row["provider"], row["model_id"])
+    conn.close()
+    if not cfg.get("key"):
+        return JSONResponse({"ok": False,
+                             "error": f"No API key set for {cfg['label']}."})
+    res = await run_in_threadpool(_ai_reply, cfg, "", "Reply with the single word: ok")
+    if res.get("error"):
+        return JSONResponse({"ok": False, "error": res["error"]})
+    return JSONResponse({"ok": True, "actual_model": res.get("actual_model") or cfg["model"]})
+
+
+@app.get("/settings/peak/{provider}", response_class=HTMLResponse)
+def peak_schedule_page(request: Request, provider: str, saved: int = 0):
+    if not authed(request):
+        return login_redirect(request)
+    if provider not in PROVIDERS:
+        return RedirectResponse(url=str(request.url_for("settings_page")), status_code=303)
+    conn = connect()
+    resp = templates.TemplateResponse("peak_schedule.html", ctx(
+        conn, request, active_nav="settings", provider=provider,
+        provider_label=PROVIDERS[provider]["label"],
+        days=peak_schedule.DAYS, hours=list(range(peak_schedule.HOURS)),
+        grid=peak_schedule.get_grid(conn, provider),
+        peak_count=peak_schedule.peak_hour_count(conn, provider), saved=saved))
+    conn.close()
+    return resp
+
+
+@app.post("/settings/peak/{provider}")
+async def save_peak_schedule(request: Request, provider: str):
+    if not authed(request):
+        return login_redirect(request)
+    if provider not in PROVIDERS:
+        return RedirectResponse(url=str(request.url_for("settings_page")), status_code=303)
+    form = await request.form()
+    grid = [[1 if form.get(f"h_{d}_{h}") else 0 for h in range(peak_schedule.HOURS)]
+            for d in range(len(peak_schedule.DAYS))]
+    conn = connect()
+    peak_schedule.set_grid(conn, provider, grid)
+    conn.close()
+    return RedirectResponse(
+        url=str(request.url_for("peak_schedule_page", provider=provider)) + "?saved=1",
+        status_code=303)
 
 
 @app.on_event("startup")
