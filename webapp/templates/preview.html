@@ -61,6 +61,17 @@
       </tbody>
     </table>
 
+    <div id="org-breakdown" hidden style="margin-top:24px;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;">
+        <h2 style="margin:0;">Which organisations matched</h2>
+        <a href="#" id="org-toggle" hidden style="font-size:14px;">Show all organisations</a>
+      </div>
+      <p class="hint" style="margin-top:2px;">Pages contributed by each organisation (within the document-type
+        and keyword filters). Organisations overlap, so these don't sum to the total.</p>
+      <table style="width:100%;"><tbody id="org-rows"></tbody></table>
+      <p id="org-empty" class="secondary" hidden>No organisations set for this category.</p>
+    </div>
+
     <div id="kw-breakdown" hidden style="margin-top:24px;">
       <div style="display:flex;justify-content:space-between;align-items:baseline;">
         <h2 style="margin:0;">Which terms matched</h2>
@@ -177,8 +188,45 @@
           row.querySelector(".val").textContent = "error";
         }
       }
+      loadOrgBreakdown();       // 'which organisations matched'
       loadKeywordBreakdown();   // 'which terms matched'
     }
+
+    // "Which organisations matched" — per-organisation page counts, rendered as bars.
+    const ORG_TOP = 8;
+    let orgExpanded = false, orgRows = [];
+    async function loadOrgBreakdown() {
+      const wrap = document.getElementById("org-breakdown");
+      try {
+        const j = await (await fetch(`/api/categories/${CID}/org-breakdown`)).json();
+        orgRows = j.orgs || [];
+      } catch (e) { return; }
+      wrap.hidden = false;
+      document.getElementById("org-empty").hidden = orgRows.length !== 0;
+      document.getElementById("org-toggle").hidden = orgRows.length <= ORG_TOP;
+      renderOrgRows();
+    }
+    function renderOrgRows() {
+      const max = Math.max(1, ...orgRows.map(o => o.count || 0));
+      const shown = orgExpanded ? orgRows : orgRows.slice(0, ORG_TOP);
+      document.getElementById("org-rows").innerHTML = shown.map(o => {
+        const pct = o.count == null ? 0 : Math.round((o.count / max) * 100);
+        return `<tr>` +
+          `<td style="padding:6px 10px 6px 0;white-space:nowrap;">${esc(o.organisation)}</td>` +
+          `<td style="width:100%;padding:6px 10px;">` +
+            `<div style="background:#eee;border-radius:3px;height:14px;">` +
+              `<div style="width:${pct}%;height:100%;background:var(--blue,#1d70b8);border-radius:3px;"></div>` +
+            `</div></td>` +
+          `<td class="num" style="padding:6px 0;font-weight:700;white-space:nowrap;">${fmtInt(o.count)}</td>` +
+        `</tr>`;
+      }).join("");
+    }
+    document.getElementById("org-toggle").addEventListener("click", e => {
+      e.preventDefault();
+      orgExpanded = !orgExpanded;
+      e.target.textContent = orgExpanded ? "Show top " + ORG_TOP : "Show all organisations";
+      renderOrgRows();
+    });
 
     // "Which terms matched" — per-keyword page counts, rendered as bars.
     const KW_TOP = 8;

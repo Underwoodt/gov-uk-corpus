@@ -288,6 +288,36 @@ def count(conn, **kwargs) -> int:
     return conn.execute(sql, tuple(params)).fetchone()["n"]
 
 
+def org_breakdown(conn, *, organisations: Sequence[str], document_types: Sequence[str] = (),
+                  keywords: Sequence[str] = (), match: str = "any", limit: int = 300) -> List[dict]:
+    """Pages contributed by EACH organisation, within the document-type + keyword filters.
+    One GROUP BY over the filtered set. Organisations overlap (a page can have several),
+    so the per-org counts don't sum to the shortlist total."""
+    if not organisations:
+        return []
+    where = []
+    params: list = []
+    ph = ",".join([_P] * len(organisations))
+    where.append(f"po.organisation_slug IN ({ph})")
+    params.extend(organisations)
+    if document_types:
+        ph2 = ",".join([_P] * len(document_types))
+        where.append(f"c.document_type IN ({ph2})")
+        params.extend(document_types)
+    if keywords:
+        clause, kwp = _keyword_clause(keywords, match, _IS_PG)
+        where.append(clause)
+        params.extend(kwp)
+    where.append("c.is_redirect = 0")
+    where.append("c.content_hash IS NOT NULL")
+    sql = (f"SELECT po.organisation_slug AS org, COUNT(DISTINCT po.page_url) AS n "
+           f"FROM content c JOIN page_organisations po ON po.page_url = c.url "
+           f"WHERE {' AND '.join(where)} "
+           f"GROUP BY po.organisation_slug ORDER BY n DESC, po.organisation_slug LIMIT {int(limit)}")
+    return [{"organisation": r["org"], "count": r["n"]}
+            for r in conn.execute(sql, tuple(params)).fetchall()]
+
+
 def _split(values: Optional[List[str]]) -> List[str]:
     """Accept repeated flags and/or comma-separated values."""
     out: List[str] = []
