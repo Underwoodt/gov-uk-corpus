@@ -138,7 +138,11 @@ def corpus_meta(conn) -> str:
 
 
 def ctx(conn, request: Request, **extra) -> dict:
-    base = {"request": request, "corpus_meta": corpus_meta(conn), "active_nav": "categories"}
+    spent = _daily_spend(conn)
+    budget = _budget(conn)
+    pct = round(spent / budget * 100, 1) if budget > 0 else None
+    base = {"request": request, "corpus_meta": corpus_meta(conn), "active_nav": "categories",
+            "budget_bar": {"spent": round(spent, 4), "budget": budget, "pct": pct}}
     base.update(extra)
     return base
 
@@ -657,6 +661,24 @@ def api_list_runs(request: Request, cid: int):
     out = {"runs": evaluate.list_runs(conn, cid), "active": _active_run(conn, cid)}
     conn.close()
     return JSONResponse(out)
+
+
+@app.post("/api/categories/{cid}/runs/{run_id}/delete")
+def api_delete_run(request: Request, cid: int, run_id: str):
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    conn = connect()
+    try:
+        run = evaluate.get_run(conn, run_id)
+        if not run or str(run["category_id"]) != str(cid):
+            return JSONResponse({"error": "not found"}, status_code=404)
+        evaluate.delete_run(conn, run_id)
+        # If this was the category's active run, forget it so a fresh one starts next time.
+        if _active_run(conn, cid) == run_id:
+            settings.set_setting(conn, f"active_run_{cid}", "")
+        return JSONResponse({"ok": True})
+    finally:
+        conn.close()
 
 
 @app.get("/api/categories/{cid}/compare")

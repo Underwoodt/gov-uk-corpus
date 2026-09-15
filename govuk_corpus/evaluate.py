@@ -153,6 +153,14 @@ def get_run(conn, run_id: str) -> Optional[dict]:
     return dict(row) if row else None
 
 
+def delete_run(conn, run_id: str) -> None:
+    """Delete a run and its per-page results. Does NOT touch the ai_usage spend ledger,
+    so the daily budget accounting is preserved."""
+    conn.execute(f"DELETE FROM evaluation_results WHERE run_id = {_P}", (run_id,))
+    conn.execute(f"DELETE FROM evaluation_runs WHERE run_id = {_P}", (run_id,))
+    conn.commit()
+
+
 def list_runs(conn, category_id: int) -> List[dict]:
     rows = conn.execute(
         f"SELECT * FROM evaluation_runs WHERE category_id = {_P} ORDER BY started_at DESC",
