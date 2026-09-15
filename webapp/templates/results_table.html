@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}{{ category.display_name }} — results{% endblock %}
+{% block content %}
+
+  <a class="back" href="{{ url_for('preview_category_page', cid=category.id) }}">‹ Back to results</a>
+
+  <h1 style="margin:18px 0 4px;">Shortlist results</h1>
+  <p class="secondary" style="margin:0 0 10px;">{{ category.display_name }}
+    (<span class="mono">{{ category.slug or '' }}</span>) · <span id="total">…</span> pages ·
+    <a href="{{ url_for('download_page', cid=category.id) }}">Download…</a></p>
+
+  <details style="margin:0 0 16px;max-width:720px;">
+    <summary style="cursor:pointer;font-weight:700;">Columns</summary>
+    <div style="display:flex;flex-wrap:wrap;gap:8px 26px;margin-top:10px;">
+      {% for section, fields in sections %}
+      <div>
+        <div class="secondary" style="font-weight:700;font-size:13px;margin-bottom:4px;">{{ section }}</div>
+        {% for key, label, default_on in fields %}
+        <label class="check" style="display:block;font-size:14px;">
+          <input type="checkbox" class="col-toggle" value="{{ key }}" {{ 'checked' if default_on }}> {{ label }}
+        </label>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+  </details>
+
+  <div style="overflow-x:auto;">
+    <table id="results" style="font-size:14px;"><thead></thead><tbody></tbody></table>
+  </div>
+  <p id="empty" class="secondary" hidden>No pages in this shortlist.</p>
+
+  <div id="pager" class="controls" style="margin-top:12px;align-items:center;" hidden>
+    <button class="btn secondary-btn" id="prev" type="button">‹ Prev</button>
+    <span id="range" class="secondary"></span>
+    <button class="btn secondary-btn" id="next" type="button">Next ›</button>
+  </div>
+  <p id="status" class="secondary"></p>
+
+  <script>
+    const CID = {{ category.id }};
+    const PAGE = 50;
+    let offset = 0, total = 0, rows = [];
+    // key -> label, in section order (for headers).
+    const COLS = [{% for section, fields in sections %}{% for key, label, d in fields %}{key:"{{ key }}",label:"{{ label }}"},{% endfor %}{% endfor %}];
+    const fmtInt = n => Number(n||0).toLocaleString();
+    function esc(s){const d=document.createElement("div");d.textContent=s==null?"":s;return d.innerHTML;}
+    function selectedKeys(){
+      const on = new Set([...document.querySelectorAll(".col-toggle:checked")].map(c=>c.value));
+      return COLS.filter(c=>on.has(c.key));
+    }
+    function fmtDate(s){ return s ? String(s).slice(0,10) : "—"; }
+    function cell(key, r){
+      const v = r[key];
+      if (key === "title") return `<a href="${esc(r.url)}">${esc(v || r.url)}</a>`;
+      if (key === "url")   return `<a href="${esc(v)}">${esc(v)}</a>`;
+      if (key === "public_updated_at" || key === "first_published_at") return esc(fmtDate(v));
+      if (v == null || v === "") return "—";
+      return esc(v);
+    }
+    function render(){
+      const cols = selectedKeys();
+      document.querySelector("#results thead").innerHTML =
+        "<tr>" + cols.map(c=>`<th>${esc(c.label)}</th>`).join("") + "</tr>";
+      document.querySelector("#results tbody").innerHTML =
+        rows.map(r => "<tr>" + cols.map(c=>`<td>${cell(c.key, r)}</td>`).join("") + "</tr>").join("");
+    }
+    async function load(){
+      document.getElementById("status").innerHTML = '<span class="spinner"></span> Loading…';
+      try {
+        const j = await (await fetch(`/api/categories/${CID}/results-table?limit=${PAGE}&offset=${offset}`)).json();
+        if (j.error) { document.getElementById("status").textContent = "Error: " + j.error; return; }
+        total = j.total; rows = j.rows || [];
+        document.getElementById("total").textContent = fmtInt(total);
+        document.getElementById("empty").hidden = total !== 0;
+        render();
+        const from = total ? offset + 1 : 0, to = Math.min(offset + PAGE, total);
+        document.getElementById("range").textContent = `${fmtInt(from)}–${fmtInt(to)} of ${fmtInt(total)}`;
+        document.getElementById("prev").disabled = offset <= 0;
+        document.getElementById("next").disabled = offset + PAGE >= total;
+        document.getElementById("pager").hidden = total <= PAGE;
+        document.getElementById("status").textContent = "";
+      } catch(e){ document.getElementById("status").textContent = "Could not load results."; }
+    }
+    document.querySelectorAll(".col-toggle").forEach(c => c.addEventListener("change", render));
+    document.getElementById("prev").addEventListener("click", () => { offset = Math.max(0, offset - PAGE); load(); });
+    document.getElementById("next").addEventListener("click", () => { offset += PAGE; load(); });
+    load();
+  </script>
+{% endblock %}

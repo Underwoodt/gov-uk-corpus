@@ -232,11 +232,30 @@ else:
 _PRIMARY_ORG_EXPR = ("(SELECT po.organisation_slug FROM page_organisations po "
                      "WHERE po.page_url = c.url AND po.role = 'primary' LIMIT 1)")
 
+# Effective document type: for html_publication pages, the parent publication's type.
+_EFF_DOCTYPE_EXPR = (f"CASE WHEN c.document_type = 'html_publication' "
+                     f"THEN COALESCE(NULLIF(c.parent_document_type, ''), {_PARENT_DT_JSON}, c.document_type) "
+                     f"ELSE c.document_type END")
+
+# Freshness band from public_updated_at (lexical ISO compare against now-relative dates).
+if _IS_PG:
+    def _ago(days): return f"to_char(now() - interval '{days} days', 'YYYY-MM-DD')"
+else:
+    def _ago(days): return f"date('now', '-{days} days')"
+_LAST_UPDATE_BAND_EXPR = (
+    "CASE WHEN c.public_updated_at IS NULL OR c.public_updated_at = '' THEN 'Unknown' "
+    f"WHEN c.public_updated_at >= {_ago(30)} THEN '< 1 month' "
+    f"WHEN c.public_updated_at >= {_ago(91)} THEN '1-3 months' "
+    f"WHEN c.public_updated_at >= {_ago(365)} THEN '3 months-1 year' "
+    f"WHEN c.public_updated_at >= {_ago(730)} THEN '1-2 years' "
+    "ELSE '> 2 years' END")
+
 # Exportable fields: key -> (SQL expression, human label). 'url' is mandatory.
 EXPORT_FIELDS = {
     "url": ("c.url", "URL"),
     "title": ("c.title", "Title"),
     "document_type": ("c.document_type", "Document type"),
+    "effective_document_type": (_EFF_DOCTYPE_EXPR, "Document type"),
     "parent_document_type": (_PARENT_DT_EXPR, "Parent document type"),
     "organisations": (_ORGS_EXPR, "Organisations"),
     "primary_org": (_PRIMARY_ORG_EXPR, "Primary publishing organisation"),
@@ -247,16 +266,17 @@ EXPORT_FIELDS = {
     "content": ("c.content", "Content (raw JSON)"),
     "first_published_at": ("c.first_published_at", "First published at"),
     "public_updated_at": ("c.public_updated_at", "Public updated at"),
+    "last_update_band": (_LAST_UPDATE_BAND_EXPR, "Last update band"),
 }
 
 
 def export_rows(conn, fields: Sequence[str], *, limit: Optional[int] = 100000,
-                **filters) -> Tuple[List[str], List[dict]]:
+                offset: Optional[int] = None, **filters) -> Tuple[List[str], List[dict]]:
     """(ordered field keys, rows) for the chosen fields. 'url' is always included first."""
     keys = [f for f in fields if f in EXPORT_FIELDS and f != "url"]
     keys = ["url"] + keys
     select_expr = ", ".join(f"{EXPORT_FIELDS[k][0]} AS {k}" for k in keys)
-    sql, params = build_query(select_expr=select_expr, limit=limit, **filters)
+    sql, params = build_query(select_expr=select_expr, limit=limit, offset=offset, **filters)
     rows = [dict(r) for r in conn.execute(sql, tuple(params)).fetchall()]
     return keys, rows
 
