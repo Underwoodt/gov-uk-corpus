@@ -112,8 +112,19 @@ DEFAULT_DOC_TYPES = "\n".join([
 
 
 # ---- helpers -------------------------------------------------------------
+# Per-connection Postgres statement timeout (ms). A query that exceeds it errors
+# (the funnel shows "error") rather than hanging. Configurable so it can be raised
+# on a slow box without a code change; 0 disables the timeout entirely.
+try:
+    DB_STATEMENT_TIMEOUT_MS = int(os.getenv("DB_STATEMENT_TIMEOUT_MS", "15000"))
+except ValueError:
+    DB_STATEMENT_TIMEOUT_MS = 15000
+
+
 def connect():
-    return db.connect(DB_PATH, statement_timeout_ms=15000) if _is_pg() else db.connect(DB_PATH)
+    if not _is_pg():
+        return db.connect(DB_PATH)
+    return db.connect(DB_PATH, statement_timeout_ms=DB_STATEMENT_TIMEOUT_MS or None)
 
 
 def _is_pg() -> bool:
