@@ -137,6 +137,8 @@ CREATE TABLE IF NOT EXISTS evaluation_runs (
     dropped      INTEGER DEFAULT 0,
     unparseable  INTEGER DEFAULT 0,
     cost         REAL DEFAULT 0,
+    in_tokens    INTEGER DEFAULT 0,   -- total input tokens billed across the run
+    out_tokens   INTEGER DEFAULT 0,   -- total output tokens billed across the run
     total_ms     INTEGER DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_eval_runs_cat ON evaluation_runs(category_id);

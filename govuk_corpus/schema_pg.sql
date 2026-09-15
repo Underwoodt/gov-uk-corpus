@@ -123,6 +123,8 @@ CREATE TABLE IF NOT EXISTS evaluation_runs (
     dropped      integer DEFAULT 0,
     unparseable  integer DEFAULT 0,
     cost         real DEFAULT 0,
+    in_tokens    bigint DEFAULT 0,   -- total input tokens billed across the run
+    out_tokens   bigint DEFAULT 0,   -- total output tokens billed across the run
     total_ms     integer DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_eval_runs_cat ON evaluation_runs(category_id);
@@ -238,3 +240,7 @@ CREATE INDEX IF NOT EXISTS idx_content_usable_doctype
 -- Run phase (added after evaluation_runs shipped). ADD COLUMN with DEFAULT backfills
 -- existing runs to 'Phase 1 - Inclusion'.
 ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS phase text DEFAULT 'Phase 1 - Inclusion';
+
+-- Per-run token totals (added after evaluation_runs shipped). Existing rows start at 0.
+ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS in_tokens  bigint DEFAULT 0;
+ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS out_tokens bigint DEFAULT 0;

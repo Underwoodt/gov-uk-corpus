@@ -129,9 +129,13 @@ def set_actual_model(conn, run_id: str, actual_model: str) -> None:
     conn.commit()
 
 
-def add_run_cost(conn, run_id: str, cost: float) -> None:
-    conn.execute(f"UPDATE evaluation_runs SET cost = cost + {_P} WHERE run_id = {_P}",
-                 (cost or 0.0, run_id))
+def add_run_cost(conn, run_id: str, cost: float,
+                 in_tokens: Optional[int] = None, out_tokens: Optional[int] = None) -> None:
+    """Accumulate this call's cost and (optionally) its input/output token counts."""
+    conn.execute(
+        f"UPDATE evaluation_runs SET cost = cost + {_P}, "
+        f"in_tokens = in_tokens + {_P}, out_tokens = out_tokens + {_P} WHERE run_id = {_P}",
+        (cost or 0.0, in_tokens or 0, out_tokens or 0, run_id))
     conn.commit()
 
 
