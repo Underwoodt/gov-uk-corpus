@@ -101,7 +101,7 @@
 
     <h3 style="margin:20px 0 6px;">Runs</h3>
     <table id="runs-table" hidden>
-      <thead><tr><th>Started</th><th>Model</th><th class="num">Pages</th><th class="num">Keep</th>
+      <thead><tr><th>Started</th><th>Supplier</th><th>Model</th><th class="num">Pages</th><th class="num">Keep</th>
         <th class="num">Drop</th><th class="num">Cost</th><th class="num">Avg s</th><th></th></tr></thead>
       <tbody></tbody>
     </table>
@@ -264,7 +264,8 @@
         const tr = document.createElement("tr");
         if (r.run_id === activeRun) tr.style.fontWeight = "700";
         tr.innerHTML =
-          `<td>${fmtDate(r.started_at)}</td><td>${esc(r.model || "")}</td>` +
+          `<td>${fmtDate(r.started_at)}</td><td>${esc(r.provider || "")}</td>` +
+          `<td>${esc(r.actual_model || r.model || "")}</td>` +
           `<td class="num">${fmtInt(r.pages)}</td><td class="num">${fmtInt(r.kept)}</td>` +
           `<td class="num">${fmtInt(r.dropped)}</td><td class="num">$${(r.cost||0).toFixed(6)}</td>` +
           `<td class="num">${avg}</td><td><a href="#" data-run="${r.run_id}">View</a></td>`;
@@ -282,7 +283,8 @@
       document.getElementById("run-results-wrap").hidden = false;
       const run = j.run || {};
       document.getElementById("run-results-title").textContent =
-        `Run ${runId} · ${run.model || ""} · ${fmtInt(run.kept)} keep · ${fmtInt(run.dropped)} drop`;
+        `Run ${runId} · ${run.provider || ""} / ${run.actual_model || run.model || ""} · `
+        + `${fmtInt(run.kept)} keep · ${fmtInt(run.dropped)} drop`;
       document.getElementById("rr-csv").href = `/categories/${CID}/runs/${runId}/download`;
       const tbody = document.querySelector("#run-results tbody");
       tbody.innerHTML = "";

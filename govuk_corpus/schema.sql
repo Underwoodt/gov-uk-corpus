@@ -126,8 +126,9 @@ CREATE INDEX IF NOT EXISTS idx_org_hier_child  ON organisation_hierarchy(child_s
 CREATE TABLE IF NOT EXISTS evaluation_runs (
     run_id       TEXT PRIMARY KEY,
     category_id  INTEGER,
-    model        TEXT,
-    provider     TEXT,
+    provider     TEXT,             -- supplier: anthropic | deepseek | …
+    model        TEXT,             -- requested/configured model id
+    actual_model TEXT,             -- model the API actually served (from the response)
     started_at   TEXT,
     finished_at  TEXT,
     pages        INTEGER DEFAULT 0,

@@ -238,6 +238,7 @@ def _ai_reply(config: dict, system: str, prompt: str) -> dict:
             kwargs["system"] = system.strip()
         msg = client.messages.create(**kwargs)
         text = "".join(getattr(b, "text", "") for b in msg.content)
+        actual_model = getattr(msg, "model", None)   # what the API actually served
         usage = getattr(msg, "usage", None)
         in_tok = getattr(usage, "input_tokens", None)
         out_tok = getattr(usage, "output_tokens", None)
@@ -245,7 +246,8 @@ def _ai_reply(config: dict, system: str, prompt: str) -> dict:
         if in_tok is not None and out_tok is not None:
             cost = round((in_tok / 1e6) * config["price_in"]
                          + (out_tok / 1e6) * config["price_out"], 6)
-        return {"reply": text, "model": config["model"], "provider": config["provider"],
+        return {"reply": text, "model": config["model"], "actual_model": actual_model,
+                "provider": config["provider"],
                 "input_tokens": in_tok, "output_tokens": out_tok, "cost_usd": cost,
                 "price_input_per_m": config["price_in"], "price_output_per_m": config["price_out"]}
     except Exception as e:  # network / auth / API errors surfaced to the page
@@ -558,6 +560,7 @@ def _run_evaluation(cid: int, limit: int) -> dict:
                         "cost_usd": round(cost, 6), "spent_today": round(spent, 4), "budget": budget}
             evaluate.save_page(conn, run_id, cid, r["url"],
                                evaluate.parse_decision(res.get("reply", "")), ms)
+            evaluate.set_actual_model(conn, run_id, res.get("actual_model"))
             c = res.get("cost_usd") or 0.0
             evaluate.add_run_cost(conn, run_id, c)
             _log_ai_usage(conn, c, res.get("input_tokens"), res.get("output_tokens"), "evaluate")

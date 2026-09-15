@@ -120,6 +120,7 @@ class TestRunEvaluationMocked(unittest.TestCase):
         app._provider_key = lambda p: "k"
         app._ai_reply = lambda cfg, system, prompt: {
             "reply": '{"keep": true, "score": 0.8, "reason": "relevant"}',
+            "actual_model": "claude-haiku-4-5-20251001-actual",
             "input_tokens": 100, "output_tokens": 20, "cost_usd": cost}
         return app, cid
 
@@ -142,6 +143,8 @@ class TestRunEvaluationMocked(unittest.TestCase):
         run = evaluate.get_run(conn, result["run_id"])
         self.assertEqual(run["pages"], 2)
         self.assertEqual(run["kept"], 2)
+        self.assertEqual(run["provider"], "anthropic")                       # supplier tracked
+        self.assertEqual(run["actual_model"], "claude-haiku-4-5-20251001-actual")  # served model tracked
         self.assertGreater(app._daily_spend(conn), 0)
         conn.close()
 

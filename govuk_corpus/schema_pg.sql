@@ -112,8 +112,9 @@ CREATE INDEX IF NOT EXISTS idx_org_hier_child  ON organisation_hierarchy(child_s
 CREATE TABLE IF NOT EXISTS evaluation_runs (
     run_id       text PRIMARY KEY,
     category_id  bigint,
-    model        text,
     provider     text,
+    model        text,
+    actual_model text,
     started_at   text,
     finished_at  text,
     pages        integer DEFAULT 0,

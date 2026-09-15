@@ -113,6 +113,17 @@ def save_page(conn, run_id: str, category_id: int, url: str,
     conn.commit()
 
 
+def set_actual_model(conn, run_id: str, actual_model: str) -> None:
+    """Record the model the API actually served (once), if we don't have it yet."""
+    if not actual_model:
+        return
+    conn.execute(
+        f"UPDATE evaluation_runs SET actual_model = {_P} "
+        f"WHERE run_id = {_P} AND (actual_model IS NULL OR actual_model = '')",
+        (actual_model, run_id))
+    conn.commit()
+
+
 def add_run_cost(conn, run_id: str, cost: float) -> None:
     conn.execute(f"UPDATE evaluation_runs SET cost = cost + {_P} WHERE run_id = {_P}",
                  (cost or 0.0, run_id))
