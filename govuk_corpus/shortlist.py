@@ -203,11 +203,27 @@ def detail_rows(conn, **kwargs) -> List[dict]:
     return [dict(r) for r in conn.execute(sql, tuple(params)).fetchall()]
 
 
+# Parent document type, dug out of the stored content JSON at links.parent[].document_type
+# (e.g. an html_publication's real type is its parent publication's type). Guarded so a
+# malformed/empty content value yields NULL instead of erroring the whole export, and
+# tolerant of links.parent being an array or a single object.
+if _IS_PG:
+    _PARENT_DT_EXPR = (
+        "CASE WHEN c.content IS NOT NULL AND btrim(c.content) LIKE '{%' THEN "
+        "COALESCE(c.content::jsonb #>> '{links,parent,0,document_type}', "
+        "c.content::jsonb #>> '{links,parent,document_type}') END")
+else:
+    _PARENT_DT_EXPR = (
+        "CASE WHEN json_valid(c.content) THEN "
+        "COALESCE(json_extract(c.content, '$.links.parent[0].document_type'), "
+        "json_extract(c.content, '$.links.parent.document_type')) END")
+
 # Exportable fields: key -> (SQL expression, human label). 'url' is mandatory.
 EXPORT_FIELDS = {
     "url": ("c.url", "URL"),
     "title": ("c.title", "Title"),
     "document_type": ("c.document_type", "Document type"),
+    "parent_document_type": (_PARENT_DT_EXPR, "Parent document type"),
     "size": (_SIZE_EXPR, "Size (bytes)"),
     "readability": ("c.reading_age", "Readability (reading age)"),
     "gds_issues": ("c.gds_english_score", "GDS issues (count)"),
