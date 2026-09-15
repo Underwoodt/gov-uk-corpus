@@ -112,6 +112,17 @@
     </div>
   </form>
 
+  <h2 style="margin-top:40px;">Peak / off-peak hours</h2>
+  <p class="hint" style="margin:0 0 10px;">Set which hours of the week each supplier treats as peak (UTC).
+    Cost calculations use this to choose the peak or off-peak token rate.</p>
+  <ul style="list-style:none;padding:0;margin:0;">
+    {% for prov in providers %}
+    <li style="margin:0 0 6px;">
+      <a href="{{ url_for('peak_schedule_page', provider=prov) }}"><strong>{{ prov }}</strong> — edit peak hours</a>
+    </li>
+    {% endfor %}
+  </ul>
+
   <p class="secondary" style="margin-top:25px;max-width:640px;">
     Keys live in <code>~/gov-uk-corpus.env</code> (<code>ANTHROPIC_API_KEY</code>,
     <code>DEEPSEEK_API_KEY</code>, and <code>ANTHROPIC_WORKSPACE_ID</code> for org-scoped keys); restart the

@@ -32,7 +32,7 @@ from starlette.concurrency import run_in_threadpool
 
 from govuk_corpus import ai_models, audit
 from govuk_corpus import categories as cat
-from govuk_corpus import evaluate, orgs, settings, shortlist
+from govuk_corpus import evaluate, orgs, peak_schedule, settings, shortlist
 from govuk_corpus.backend import db
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -975,6 +975,40 @@ async def test_model_route(request: Request, mid: int):
     if res.get("error"):
         return JSONResponse({"ok": False, "error": res["error"]})
     return JSONResponse({"ok": True, "actual_model": res.get("actual_model") or cfg["model"]})
+
+
+@app.get("/settings/peak/{provider}", response_class=HTMLResponse)
+def peak_schedule_page(request: Request, provider: str, saved: int = 0):
+    if not authed(request):
+        return login_redirect(request)
+    if provider not in PROVIDERS:
+        return RedirectResponse(url=str(request.url_for("settings_page")), status_code=303)
+    conn = connect()
+    resp = templates.TemplateResponse("peak_schedule.html", ctx(
+        conn, request, active_nav="settings", provider=provider,
+        provider_label=PROVIDERS[provider]["label"],
+        days=peak_schedule.DAYS, hours=list(range(peak_schedule.HOURS)),
+        grid=peak_schedule.get_grid(conn, provider),
+        peak_count=peak_schedule.peak_hour_count(conn, provider), saved=saved))
+    conn.close()
+    return resp
+
+
+@app.post("/settings/peak/{provider}")
+async def save_peak_schedule(request: Request, provider: str):
+    if not authed(request):
+        return login_redirect(request)
+    if provider not in PROVIDERS:
+        return RedirectResponse(url=str(request.url_for("settings_page")), status_code=303)
+    form = await request.form()
+    grid = [[1 if form.get(f"h_{d}_{h}") else 0 for h in range(peak_schedule.HOURS)]
+            for d in range(len(peak_schedule.DAYS))]
+    conn = connect()
+    peak_schedule.set_grid(conn, provider, grid)
+    conn.close()
+    return RedirectResponse(
+        url=str(request.url_for("peak_schedule_page", provider=provider)) + "?saved=1",
+        status_code=303)
 
 
 @app.on_event("startup")
