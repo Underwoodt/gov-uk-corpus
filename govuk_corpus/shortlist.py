@@ -190,6 +190,7 @@ def detail_rows(conn, **kwargs) -> List[dict]:
 EXPORT_FIELDS = {
     "url": ("c.url", "URL"),
     "title": ("c.title", "Title"),
+    "document_type": ("c.document_type", "Document type"),
     "size": (_SIZE_EXPR, "Size (bytes)"),
     "readability": ("c.reading_age", "Readability (reading age)"),
     "gds_issues": ("c.gds_english_score", "GDS issues (count)"),
