@@ -86,7 +86,7 @@
 
     <h3 style="margin:20px 0 6px;">Runs</h3>
     <table id="runs-table" hidden>
-      <thead><tr><th>Started</th><th>Phase</th><th>Supplier</th><th>Model</th><th class="num">Pages</th><th class="num">Keep</th>
+      <thead><tr><th>Name</th><th>Started</th><th>Phase</th><th>Supplier</th><th>Model</th><th class="num">Pages</th><th class="num">Keep</th>
         <th class="num">Drop</th><th class="num">Tokens in</th><th class="num">Cache hit</th><th class="num">Cache miss</th>
         <th class="num">Tokens out</th><th class="num">Cost</th>
         <th class="num">Avg s</th><th></th></tr></thead>
@@ -249,6 +249,9 @@
         const tr = document.createElement("tr");
         if (r.run_id === activeRun) tr.style.fontWeight = "700";
         tr.innerHTML =
+          `<td><input class="run-name" data-run="${r.run_id}" value="${esc(r.name || "")}" ` +
+          `title="Click to rename this run" ` +
+          `style="font-size:13px;padding:3px;border:2px solid var(--black);width:110px;"></td>` +
           `<td>${fmtDate(r.started_at)}</td><td>${esc(r.phase || "")}</td><td>${esc(r.provider || "")}</td>` +
           `<td>${esc(r.actual_model || r.model || "")}</td>` +
           `<td class="num">${fmtInt(r.pages)}</td><td class="num">${fmtInt(r.kept)}</td>` +
@@ -269,6 +272,21 @@
         a.addEventListener("click", e => { e.preventDefault(); loadRunResults(a.dataset.run, ""); }));
       table.querySelectorAll("a.del-run").forEach(a =>
         a.addEventListener("click", e => { e.preventDefault(); deleteRun(a.dataset.run, a.dataset.pages); }));
+      table.querySelectorAll("input.run-name").forEach(inp => {
+        inp.dataset.orig = inp.value;
+        inp.addEventListener("keydown", e => { if (e.key === "Enter") inp.blur(); });
+        inp.addEventListener("blur", () => renameRun(inp));
+      });
+    }
+
+    async function renameRun(inp) {
+      const name = inp.value.trim();
+      if (name === inp.dataset.orig) return;
+      if (!name) { inp.value = inp.dataset.orig; return; }   // don't allow blanking
+      const body = new URLSearchParams({name});
+      const res = await fetch(`/api/categories/${CID}/runs/${inp.dataset.run}/rename`, {method: "POST", body});
+      if (res.ok) { inp.dataset.orig = name; }
+      else { inp.value = inp.dataset.orig; alert("Rename failed."); }
     }
 
     async function deleteRun(runId, pages) {

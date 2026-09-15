@@ -126,6 +126,7 @@ CREATE INDEX IF NOT EXISTS idx_org_hier_child  ON organisation_hierarchy(child_s
 CREATE TABLE IF NOT EXISTS evaluation_runs (
     run_id       TEXT PRIMARY KEY,
     category_id  INTEGER,
+    name         TEXT,             -- human label, e.g. "Test-1" (editable)
     phase        TEXT DEFAULT 'Phase 1 - Inclusion',   -- Phase 1 Inclusion | 2 Exclusion | 3 Adjudication
     provider     TEXT,             -- supplier: anthropic | deepseek | …
     model        TEXT,             -- requested/configured model id
