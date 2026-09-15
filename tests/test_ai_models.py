@@ -33,6 +33,12 @@ class TestAiModels(unittest.TestCase):
         ai_models.delete_model(self.conn, mid)
         self.assertIsNone(ai_models.find(self.conn, "anthropic", "claude-opus-5"))
 
+    def test_update_model(self):
+        mid = ai_models.add_model(self.conn, "anthropic", "claude-sonnet-5", 2.0, 10.0)
+        ai_models.update_model(self.conn, mid, "anthropic", "claude-sonnet-5", 3.0, 15.0)
+        row = ai_models.get_model(self.conn, mid)
+        self.assertEqual((row["input_per_m"], row["output_per_m"]), (3.0, 15.0))
+
 
 @unittest.skipUnless(__import__("importlib").util.find_spec("fastapi"), "no fastapi")
 class TestConfigResolution(unittest.TestCase):

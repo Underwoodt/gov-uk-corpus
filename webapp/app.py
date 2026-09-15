@@ -886,6 +886,18 @@ async def save_settings(request: Request):
     active = form.get("active_model_id")
     if active:
         settings.set_setting(conn, "active_model_id", active)
+    # Save edits to existing model rows.
+    for m in ai_models.list_models(conn):
+        rid = m["id"]
+        prov = (form.get(f"m_{rid}_provider") or "").strip()
+        mod = (form.get(f"m_{rid}_model_id") or "").strip()
+        if prov in PROVIDERS and mod:
+            try:
+                ai_models.update_model(conn, rid, prov, mod,
+                                       float(form.get(f"m_{rid}_input") or 0),
+                                       float(form.get(f"m_{rid}_output") or 0))
+            except ValueError:
+                pass
     try:
         settings.set_setting(conn, "ai_daily_budget", str(float(form.get("ai_daily_budget") or DEFAULT_DAILY_BUDGET)))
     except ValueError:

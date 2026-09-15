@@ -53,6 +53,15 @@ def add_model(conn, provider: str, model_id: str, input_per_m: float, output_per
     return mid
 
 
+def update_model(conn, row_id, provider: str, model_id: str,
+                 input_per_m: float, output_per_m: float) -> None:
+    conn.execute(
+        f"UPDATE ai_models SET provider = {_P}, model_id = {_P}, "
+        f"input_per_m = {_P}, output_per_m = {_P} WHERE id = {_P}",
+        (provider, model_id.strip(), float(input_per_m), float(output_per_m), row_id))
+    conn.commit()
+
+
 def delete_model(conn, model_id) -> None:
     conn.execute(f"DELETE FROM ai_models WHERE id = {_P}", (model_id,))
     conn.commit()
