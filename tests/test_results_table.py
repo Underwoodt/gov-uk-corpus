@@ -50,16 +50,18 @@ class TestResultsTable(unittest.TestCase):
 
     def test_slow_count_still_returns_rows(self):
         # A count that errors/times out must not sink the page: rows show, total null.
-        self.app.cached_count = lambda conn, **k: (_ for _ in ()).throw(RuntimeError("count timeout"))
-        j = self.c.get(f"/api/categories/{self.cid}/results-table").json()
+        from unittest import mock
+        with mock.patch.object(self.app, "cached_count", side_effect=RuntimeError("count timeout")):
+            j = self.c.get(f"/api/categories/{self.cid}/results-table").json()
         self.assertIsNone(j["total"])
         self.assertEqual(len(j["rows"]), 3)
 
     def test_rows_error_returns_json_not_plain_500(self):
         # A failing rows query returns a JSON error (so the UI shows the message,
         # not the generic "Could not load results").
-        self.app.shortlist.export_rows = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("select timeout"))
-        r = self.c.get(f"/api/categories/{self.cid}/results-table")
+        from unittest import mock
+        with mock.patch.object(self.app.shortlist, "export_rows", side_effect=RuntimeError("select timeout")):
+            r = self.c.get(f"/api/categories/{self.cid}/results-table")
         self.assertEqual(r.status_code, 500)
         self.assertIn("select timeout", r.json()["error"])
 
