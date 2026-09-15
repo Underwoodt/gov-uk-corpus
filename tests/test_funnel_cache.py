@@ -53,6 +53,29 @@ class TestFunnelCache(unittest.TestCase):
         self.assertEqual(app._funnel_cache_read(conn, 7, "defA", "corpY"), {"org": 10})
         conn.close()
 
+    def test_refresh_clears_cache(self):
+        from fastapi.testclient import TestClient
+        from govuk_corpus import categories as cat, settings as st
+        app = self.app
+        conn = app.connect()
+        for i in range(3):
+            conn.execute("INSERT INTO content (url, document_type, is_redirect, content_hash, search_text, title) "
+                         "VALUES (?, 'guidance', 0, 'h', 'slurry', ?)", (f"https://www.gov.uk/p{i}", f"T{i}"))
+            conn.execute("INSERT INTO page_organisations (page_url, organisation_content_id, organisation_slug, role) "
+                         "VALUES (?,?,?,?)", (f"https://www.gov.uk/p{i}", "ea", "environment-agency", "primary"))
+        cid = cat.create_category(conn, {"slug": "s", "owner_email": "a@b.co", "description": "d",
+              "dept_slugs": "environment-agency", "document_type_slugs": "guidance", "keywords": "slurry"})
+        conn.commit(); conn.close()
+        c = TestClient(app.app)
+        self.assertFalse(c.get(f"/api/categories/{cid}/funnel?stage=doctype").json()["cached"])
+        self.assertTrue(c.get(f"/api/categories/{cid}/funnel?stage=doctype").json()["cached"])
+        self.assertEqual(c.post(f"/api/categories/{cid}/funnel/refresh").status_code, 200)
+        conn = app.connect()
+        self.assertFalse(st.get_setting(conn, f"funnel_cache_{cid}", ""))   # cleared
+        conn.close()
+        self.assertFalse(c.get(f"/api/categories/{cid}/funnel?stage=doctype").json()["cached"])   # recomputed
+        self.assertEqual(c.post("/api/categories/999999/funnel/refresh").status_code, 404)
+
     def test_corpus_version_tracks_runs(self):
         app = self.app
         conn = app.connect()

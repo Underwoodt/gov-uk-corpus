@@ -35,8 +35,13 @@
     </div>
 
     <section id="tab-exact" class="subpanel" role="tabpanel">
-    <h2>Selection funnel</h2>
-    <p class="hint" style="margin-top:-20px;">How each filter narrows the corpus. Each row is timed as it runs.</p>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;">
+      <h2 style="margin:0;">Selection funnel</h2>
+      <button type="button" class="btn secondary-btn" id="refresh-funnel"
+        style="padding:4px 12px;font-size:14px;" title="Clear the cached counts and re-run the funnel">↻ Refresh</button>
+    </div>
+    <p class="hint" style="margin-top:6px;">How each filter narrows the corpus. Each row is timed as it runs.
+      Counts are cached until the definition or corpus changes — use Refresh to force a recompute.</p>
     <p style="margin:0 0 16px;font-size:14px;">
       <a href="{{ url_for('download_audit', cid=category.id) }}">Download Audit File (Debugging only)</a></p>
     <table id="funnel">
@@ -497,6 +502,19 @@
     })();
 
     loadRuns();   // show existing runs on load
+    // Refresh: clear the cached counts server-side, reset the rows, and re-run.
+    document.getElementById("refresh-funnel").addEventListener("click", async e => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      try {
+        await fetch(`/api/categories/${CID}/funnel/refresh`, { method: "POST" });
+        document.querySelectorAll("#funnel .val").forEach(v => v.innerHTML = '<span class="spinner"></span>');
+        document.querySelectorAll("#funnel .timing").forEach(t => t.textContent = "");
+        Object.keys(sankeyCounts).forEach(k => delete sankeyCounts[k]);
+        await runFunnel();   // re-fetches every stage (now cache misses) + reloads the breakdowns
+      } finally { btn.disabled = false; }
+    });
+
     runFunnel();  // fills the funnel table and draws the Sankey
   </script>
 {% endblock %}
