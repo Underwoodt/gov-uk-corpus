@@ -112,6 +112,7 @@ CREATE INDEX IF NOT EXISTS idx_org_hier_child  ON organisation_hierarchy(child_s
 CREATE TABLE IF NOT EXISTS evaluation_runs (
     run_id       text PRIMARY KEY,
     category_id  bigint,
+    phase        text DEFAULT 'Phase 1 - Inclusion',
     provider     text,
     model        text,
     actual_model text,
@@ -149,6 +150,17 @@ CREATE TABLE IF NOT EXISTS ai_usage (
     kind          text
 );
 CREATE INDEX IF NOT EXISTS idx_ai_usage_day ON ai_usage(day);
+
+-- User-editable AI models (supplier + model id + prices) for the assistant/evaluation.
+CREATE TABLE IF NOT EXISTS ai_models (
+    id           bigint PRIMARY KEY,
+    provider     text,
+    model_id     text,
+    input_per_m  real,
+    output_per_m real,
+    created_at   text
+);
+CREATE INDEX IF NOT EXISTS idx_ai_models_provider ON ai_models(provider, model_id);
 
 -- Small key/value app settings (e.g. which AI provider the UI uses).
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -222,3 +234,7 @@ CREATE INDEX IF NOT EXISTS idx_content_usable
   ON content (url) WHERE is_redirect = 0 AND content_hash IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_content_usable_doctype
   ON content (document_type) WHERE is_redirect = 0 AND content_hash IS NOT NULL;
+
+-- Run phase (added after evaluation_runs shipped). ADD COLUMN with DEFAULT backfills
+-- existing runs to 'Phase 1 - Inclusion'.
+ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS phase text DEFAULT 'Phase 1 - Inclusion';

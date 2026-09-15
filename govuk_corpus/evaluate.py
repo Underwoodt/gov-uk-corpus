@@ -23,6 +23,10 @@ _P = "%s" if _IS_PG else "?"
 
 BODY_CHAR_LIMIT = 6000   # ~1.5k tokens of body sent to the model
 
+PHASE_INCLUSION = "Phase 1 - Inclusion"
+PHASE_EXCLUSION = "Phase 2 - Exclusion"
+PHASE_ADJUDICATION = "Phase 3 - Adjudication"
+
 
 def build_prompt(inclusion: str, exclusion: str, title: str, description: str,
                  body: str, body_limit: int = BODY_CHAR_LIMIT) -> str:
@@ -69,12 +73,13 @@ def parse_decision(text: str) -> Optional[Dict]:
 
 
 # ---- runs ----------------------------------------------------------------
-def create_run(conn, category_id: int, model: str, provider: str) -> str:
+def create_run(conn, category_id: int, model: str, provider: str,
+               phase: str = PHASE_INCLUSION) -> str:
     run_id = f"run_{int(time.time() * 1000):x}_{uuid.uuid4().hex[:6]}"
     conn.execute(
-        f"INSERT INTO evaluation_runs (run_id, category_id, model, provider, started_at) "
-        f"VALUES ({_P},{_P},{_P},{_P},{_P})",
-        (run_id, category_id, model, provider, db.now_iso()))
+        f"INSERT INTO evaluation_runs (run_id, category_id, phase, model, provider, started_at) "
+        f"VALUES ({_P},{_P},{_P},{_P},{_P},{_P})",
+        (run_id, category_id, phase, model, provider, db.now_iso()))
     conn.commit()
     return run_id
 

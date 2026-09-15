@@ -126,6 +126,7 @@ CREATE INDEX IF NOT EXISTS idx_org_hier_child  ON organisation_hierarchy(child_s
 CREATE TABLE IF NOT EXISTS evaluation_runs (
     run_id       TEXT PRIMARY KEY,
     category_id  INTEGER,
+    phase        TEXT DEFAULT 'Phase 1 - Inclusion',   -- Phase 1 Inclusion | 2 Exclusion | 3 Adjudication
     provider     TEXT,             -- supplier: anthropic | deepseek | …
     model        TEXT,             -- requested/configured model id
     actual_model TEXT,             -- model the API actually served (from the response)
@@ -163,6 +164,17 @@ CREATE TABLE IF NOT EXISTS ai_usage (
     kind          TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_ai_usage_day ON ai_usage(day);
+
+-- User-editable AI models (supplier + model id + prices) for the assistant/evaluation.
+CREATE TABLE IF NOT EXISTS ai_models (
+    id           INTEGER PRIMARY KEY,   -- epoch-ms
+    provider     TEXT,                  -- anthropic | deepseek
+    model_id     TEXT,
+    input_per_m  REAL,                  -- USD per 1M input tokens
+    output_per_m REAL,                  -- USD per 1M output tokens
+    created_at   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_ai_models_provider ON ai_models(provider, model_id);
 
 -- Small key/value app settings (e.g. which AI provider the UI uses).
 CREATE TABLE IF NOT EXISTS app_settings (
