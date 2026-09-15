@@ -108,18 +108,36 @@ CREATE TABLE IF NOT EXISTS organisation_hierarchy (
 CREATE INDEX IF NOT EXISTS idx_org_hier_parent ON organisation_hierarchy(parent_slug);
 CREATE INDEX IF NOT EXISTS idx_org_hier_child  ON organisation_hierarchy(child_slug);
 
--- AI inclusion-pass evaluation of a category's shortlisted pages.
-CREATE TABLE IF NOT EXISTS category_evaluation (
-    category_id  bigint NOT NULL,
+-- AI inclusion-pass evaluation, tracked per run so different models can be compared.
+CREATE TABLE IF NOT EXISTS evaluation_runs (
+    run_id       text PRIMARY KEY,
+    category_id  bigint,
+    provider     text,
+    model        text,
+    actual_model text,
+    started_at   text,
+    finished_at  text,
+    pages        integer DEFAULT 0,
+    kept         integer DEFAULT 0,
+    dropped      integer DEFAULT 0,
+    unparseable  integer DEFAULT 0,
+    cost         real DEFAULT 0,
+    total_ms     integer DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_eval_runs_cat ON evaluation_runs(category_id);
+
+CREATE TABLE IF NOT EXISTS evaluation_results (
+    run_id       text NOT NULL,
+    category_id  bigint,
     url          text NOT NULL,
     keep         smallint,
     score        real,
     reason       text,
-    model        text,
+    ms           integer,
     created_at   text,
-    PRIMARY KEY (category_id, url)
+    PRIMARY KEY (run_id, url)
 );
-CREATE INDEX IF NOT EXISTS idx_category_eval_keep ON category_evaluation(category_id, keep);
+CREATE INDEX IF NOT EXISTS idx_eval_results_run_keep ON evaluation_results(run_id, keep);
 
 -- AI spend ledger (one row per successful model call) for the daily budget.
 CREATE TABLE IF NOT EXISTS ai_usage (

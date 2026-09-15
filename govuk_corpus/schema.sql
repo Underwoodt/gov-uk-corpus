@@ -122,18 +122,36 @@ CREATE TABLE IF NOT EXISTS organisation_hierarchy (
 CREATE INDEX IF NOT EXISTS idx_org_hier_parent ON organisation_hierarchy(parent_slug);
 CREATE INDEX IF NOT EXISTS idx_org_hier_child  ON organisation_hierarchy(child_slug);
 
--- AI inclusion-pass evaluation of a category's shortlisted pages.
-CREATE TABLE IF NOT EXISTS category_evaluation (
-    category_id  INTEGER NOT NULL,
-    url          TEXT NOT NULL,
-    keep         INTEGER,          -- 1 keep, 0 drop, NULL if unparseable
-    score        REAL,             -- 0..1 relevance
-    reason       TEXT,
-    model        TEXT,
-    created_at   TEXT,
-    PRIMARY KEY (category_id, url)
+-- AI inclusion-pass evaluation, tracked per run so different models can be compared.
+CREATE TABLE IF NOT EXISTS evaluation_runs (
+    run_id       TEXT PRIMARY KEY,
+    category_id  INTEGER,
+    provider     TEXT,             -- supplier: anthropic | deepseek | …
+    model        TEXT,             -- requested/configured model id
+    actual_model TEXT,             -- model the API actually served (from the response)
+    started_at   TEXT,
+    finished_at  TEXT,
+    pages        INTEGER DEFAULT 0,
+    kept         INTEGER DEFAULT 0,
+    dropped      INTEGER DEFAULT 0,
+    unparseable  INTEGER DEFAULT 0,
+    cost         REAL DEFAULT 0,
+    total_ms     INTEGER DEFAULT 0
 );
-CREATE INDEX IF NOT EXISTS idx_category_eval_keep ON category_evaluation(category_id, keep);
+CREATE INDEX IF NOT EXISTS idx_eval_runs_cat ON evaluation_runs(category_id);
+
+CREATE TABLE IF NOT EXISTS evaluation_results (
+    run_id       TEXT NOT NULL,
+    category_id  INTEGER,
+    url          TEXT NOT NULL,
+    keep         INTEGER,
+    score        REAL,
+    reason       TEXT,
+    ms           INTEGER,
+    created_at   TEXT,
+    PRIMARY KEY (run_id, url)
+);
+CREATE INDEX IF NOT EXISTS idx_eval_results_run_keep ON evaluation_results(run_id, keep);
 
 -- AI spend ledger (one row per successful model call) for the daily budget.
 CREATE TABLE IF NOT EXISTS ai_usage (

@@ -238,6 +238,7 @@ def _ai_reply(config: dict, system: str, prompt: str) -> dict:
             kwargs["system"] = system.strip()
         msg = client.messages.create(**kwargs)
         text = "".join(getattr(b, "text", "") for b in msg.content)
+        actual_model = getattr(msg, "model", None)   # what the API actually served
         usage = getattr(msg, "usage", None)
         in_tok = getattr(usage, "input_tokens", None)
         out_tok = getattr(usage, "output_tokens", None)
@@ -245,7 +246,8 @@ def _ai_reply(config: dict, system: str, prompt: str) -> dict:
         if in_tok is not None and out_tok is not None:
             cost = round((in_tok / 1e6) * config["price_in"]
                          + (out_tok / 1e6) * config["price_out"], 6)
-        return {"reply": text, "model": config["model"], "provider": config["provider"],
+        return {"reply": text, "model": config["model"], "actual_model": actual_model,
+                "provider": config["provider"],
                 "input_tokens": in_tok, "output_tokens": out_tok, "cost_usd": cost,
                 "price_input_per_m": config["price_in"], "price_output_per_m": config["price_out"]}
     except Exception as e:  # network / auth / API errors surfaced to the page
@@ -494,64 +496,106 @@ def api_results(request: Request, cid: int, limit: int = 10, offset: int = 0):
                          "offset": offset, "limit": limit, "rows": rows})
 
 
-# ---- AI evaluation (inclusion pass over the shortlist) ------------------
+# ---- AI evaluation (inclusion pass over the shortlist), tracked per run --
+def _cfg_for(provider: str, model: str) -> dict:
+    """Build an AI config for a run's fixed provider + model (key from env)."""
+    p = PROVIDERS.get(provider) or PROVIDERS[DEFAULT_PROVIDER]
+    return {"provider": provider, "label": p["label"], "base_url": p["base_url"],
+            "model": model or p["model"], "key": _provider_key(provider),
+            "price_in": p["price_in"], "price_out": p["price_out"]}
+
+
+def _active_run(conn, cid: int) -> str:
+    return settings.get_setting(conn, f"active_run_{cid}", "") or ""
+
+
+def _ensure_run(conn, cid: int) -> str:
+    """Return the active run for the category, creating one (current provider/model) if none."""
+    run_id = _active_run(conn, cid)
+    if run_id and evaluate.get_run(conn, run_id):
+        return run_id
+    cfg = _ai_config(conn)
+    run_id = evaluate.create_run(conn, cid, cfg["model"], cfg["provider"])
+    settings.set_setting(conn, f"active_run_{cid}", run_id)
+    return run_id
+
+
 def _run_evaluation(cid: int, limit: int) -> dict:
     conn = connect()
     try:
         category = cat.get_category(conn, cid)
         if not category:
             return {"error": "Category not found."}
-        cfg = _ai_config(conn)
-        if not cfg["key"]:
-            return {"error": f"No API key for {cfg['label']} — set one in Settings."}
         budget = _budget(conn)
         spent = _daily_spend(conn)
-        # Hard stop if already at/over budget.
         if budget > 0 and spent >= budget:
-            s = evaluate.summary(conn, cid)
             return {"error": f"Daily AI budget of ${budget:.2f} reached (${spent:.4f} spent today). "
                     f"Raise it in Settings or try again tomorrow.",
-                    "spent_today": round(spent, 4), "budget": budget, "stopped": "budget", **s}
+                    "spent_today": round(spent, 4), "budget": budget, "stopped": "budget"}
 
-        limit = min(limit, _max_docs(conn))       # guardrail: max documents per run
+        run_id = _ensure_run(conn, cid)
+        run = evaluate.get_run(conn, run_id)
+        cfg = _cfg_for(run["provider"], run["model"])
+        if not cfg["key"]:
+            return {"error": f"No API key for {cfg['label']} (this run's provider) — set one in Settings."}
+
+        limit = min(limit, _max_docs(conn))
         filters = _effective_filters(conn, category)
         inclusion = category.get("inclusion_context") or ""
         exclusion = category.get("exclusion_context") or ""
-        rows = evaluate.candidates(conn, cid, limit, **filters)
-        done = tin = tout = 0
+        rows = evaluate.run_candidates(conn, run_id, cid, limit, **filters)
+        done = 0
         cost = 0.0
         stopped = None
         for r in rows:
-            if budget > 0 and spent >= budget:    # stop at (estimated) budget
+            if budget > 0 and spent >= budget:
                 stopped = "budget"
                 break
+            t0 = time.time()
             prompt = evaluate.build_prompt(inclusion, exclusion, r["title"], r["description"], r["body"])
             res = _ai_reply(cfg, "", prompt)
-            if res.get("error"):    # stop early — likely auth/quota, don't burn N calls
-                s = evaluate.summary(conn, cid)
-                return {"error": res["error"], "evaluated_this_run": done,
-                        "cost_usd": round(cost, 6), "spent_today": round(spent, 4),
-                        "budget": budget, **s}
-            evaluate.save_result(conn, cid, r["url"],
-                                 evaluate.parse_decision(res.get("reply", "")), cfg["model"])
+            ms = int((time.time() - t0) * 1000)
+            if res.get("error"):
+                return {"error": res["error"], "run_id": run_id, "evaluated_this_run": done,
+                        "cost_usd": round(cost, 6), "spent_today": round(spent, 4), "budget": budget}
+            evaluate.save_page(conn, run_id, cid, r["url"],
+                               evaluate.parse_decision(res.get("reply", "")), ms)
+            evaluate.set_actual_model(conn, run_id, res.get("actual_model"))
             c = res.get("cost_usd") or 0.0
+            evaluate.add_run_cost(conn, run_id, c)
             _log_ai_usage(conn, c, res.get("input_tokens"), res.get("output_tokens"), "evaluate")
             done += 1
-            tin += res.get("input_tokens") or 0
-            tout += res.get("output_tokens") or 0
             cost += c
             spent += c
         total = cached_count(conn, **filters)
-        s = evaluate.summary(conn, cid)
+        run = evaluate.get_run(conn, run_id)
+        remaining = max(0, total - (run["pages"] or 0))
+        if remaining == 0:
+            evaluate.finish_run(conn, run_id)
         warning = (f"Within 10% of the ${budget:.2f} daily budget (${spent:.4f} spent today)."
                    if budget > 0 and spent >= 0.9 * budget else None)
-        return {"evaluated_this_run": done, "input_tokens": tin, "output_tokens": tout,
-                "cost_usd": round(cost, 6), "model": cfg["model"],
+        return {"run_id": run_id, "model": run["model"], "provider": run["provider"],
+                "evaluated_this_run": done, "cost_usd": round(cost, 6),
                 "spent_today": round(spent, 4), "budget": budget,
-                "warning": warning, "stopped": stopped,
-                "remaining": max(0, total - s["evaluated"]), **s}
+                "warning": warning, "stopped": stopped, "remaining": remaining, "run": run}
     finally:
         conn.close()
+
+
+@app.post("/api/categories/{cid}/runs")
+async def api_new_run(request: Request, cid: int):
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    conn = connect()
+    if not cat.get_category(conn, cid):
+        conn.close()
+        return JSONResponse({"error": "not found"}, status_code=404)
+    cfg = _ai_config(conn)     # capture the current provider/model for the new run
+    run_id = evaluate.create_run(conn, cid, cfg["model"], cfg["provider"])
+    settings.set_setting(conn, f"active_run_{cid}", run_id)
+    run = evaluate.get_run(conn, run_id)
+    conn.close()
+    return JSONResponse({"run_id": run_id, "run": run})
 
 
 @app.post("/api/categories/{cid}/evaluate")
@@ -563,24 +607,59 @@ async def api_evaluate(request: Request, cid: int, limit: int = 10):
     return JSONResponse(result)
 
 
-@app.get("/api/categories/{cid}/evaluate/results")
-def api_evaluate_results(request: Request, cid: int, keep: str = ""):
+@app.get("/categories/{cid}/performance", response_class=HTMLResponse)
+def performance_page(request: Request, cid: int):
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    category = cat.get_category(conn, cid)
+    if not category:
+        conn.close()
+        return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
+    category["display_name"] = cat.prettify(category.get("slug")) or (category.get("description") or "Untitled")
+    resp = templates.TemplateResponse("performance.html", ctx(conn, request, category=category))
+    conn.close()
+    return resp
+
+
+@app.get("/api/categories/{cid}/runs")
+def api_list_runs(request: Request, cid: int):
     if not authed(request):
         return JSONResponse({"error": "auth"}, status_code=401)
-    k = int(keep) if keep in ("0", "1") else None
     conn = connect()
-    out = {"summary": evaluate.summary(conn, cid),
-           "rows": evaluate.results(conn, cid, keep=k, limit=500)}
+    out = {"runs": evaluate.list_runs(conn, cid), "active": _active_run(conn, cid)}
     conn.close()
     return JSONResponse(out)
 
 
-@app.get("/categories/{cid}/evaluate/download")
-def download_evaluation(request: Request, cid: int):
+@app.get("/api/categories/{cid}/compare")
+def api_compare(request: Request, cid: int, base: str = "", other: str = ""):
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    conn = connect()
+    out = evaluate.compare(conn, base, other) if base and other else {}
+    conn.close()
+    return JSONResponse(out)
+
+
+@app.get("/api/categories/{cid}/runs/{run_id}/results")
+def api_run_results(request: Request, cid: int, run_id: str, keep: str = ""):
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    k = int(keep) if keep in ("0", "1") else None
+    conn = connect()
+    out = {"run": evaluate.get_run(conn, run_id),
+           "rows": evaluate.run_results(conn, run_id, keep=k, limit=500)}
+    conn.close()
+    return JSONResponse(out)
+
+
+@app.get("/categories/{cid}/runs/{run_id}/download")
+def download_run(request: Request, cid: int, run_id: str):
     if not authed(request):
         return login_redirect(request)
     conn = connect()
-    rows = evaluate.results(conn, cid)
+    rows = evaluate.run_results(conn, run_id)
     conn.close()
     buf = io.StringIO()
     w = csv.writer(buf)
@@ -589,7 +668,7 @@ def download_evaluation(request: Request, cid: int):
         decision = "keep" if r["keep"] == 1 else "drop" if r["keep"] == 0 else "unparseable"
         w.writerow([r["url"], decision, r["score"], r["reason"]])
     return Response(buf.getvalue(), media_type="text/csv",
-                    headers={"Content-Disposition": f'attachment; filename="evaluation-{cid}.csv"'})
+                    headers={"Content-Disposition": f'attachment; filename="run-{run_id}.csv"'})
 
 
 # ---- download page (choose format + fields) -----------------------------
