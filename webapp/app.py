@@ -800,6 +800,7 @@ def download_run(request: Request, cid: int, run_id: str):
 _DOWNLOAD_FIELDS = [
     ("url", "URL", True, True, None),
     ("title", "Title", True, False, None),
+    ("document_type", "Document type", True, False, None),
     ("size", "Size", True, False, None),
     ("readability", "Readability score", False, False, None),
     ("gds_issues", "GDS number of issues", False, False, None),
