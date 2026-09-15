@@ -683,6 +683,30 @@ def api_audit_stats(request: Request, cid: int, stage: str = "keyword"):
     return JSONResponse(out)
 
 
+@app.get("/api/categories/{cid}/org-breakdown")
+def api_org_breakdown(request: Request, cid: int):
+    """Pages contributed by EACH organisation, within the document-type + keyword filters
+    — the 'which organisations matched' breakdown. Organisations overlap (a page can have
+    several), so they don't sum to the shortlist total."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    conn = connect()
+    category = cat.get_category(conn, cid)
+    if not category:
+        conn.close()
+        return JSONResponse({"error": "not found"}, status_code=404)
+    filters = _effective_filters(conn, category)
+    try:
+        orgs_out = shortlist.org_breakdown(
+            conn, organisations=filters["organisations"],
+            document_types=filters["document_types"], keywords=filters["keywords"], match="any")
+    except Exception as e:
+        conn.close()
+        return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=500)
+    conn.close()
+    return JSONResponse({"orgs": orgs_out})
+
+
 @app.get("/api/categories/{cid}/keyword-breakdown")
 def api_keyword_breakdown(request: Request, cid: int):
     """Pages matching EACH keyword individually, within the org + document-type set —

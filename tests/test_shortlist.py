@@ -136,6 +136,24 @@ class TestShortlistResults(unittest.TestCase):
     def test_count(self):
         self.assertEqual(count(self.conn, keywords=["slurry"]), 2)
 
+    def test_org_breakdown_counts_per_org_with_overlap(self):
+        from govuk_corpus.shortlist import org_breakdown
+        # /a (slurry, guidance) is environment-agency in setUp; also tag it defra (overlap),
+        # and add /f a defra-only slurry guidance page.
+        self.conn.execute("INSERT INTO content (url, document_type, is_redirect, content_hash, search_text) "
+                          "VALUES ('https://www.gov.uk/f','guidance',0,'h','slurry rules')")
+        self.conn.execute("INSERT INTO page_organisations (page_url, organisation_content_id, "
+                          "organisation_slug, role) VALUES ('https://www.gov.uk/a','defra','defra','secondary')")
+        self.conn.execute("INSERT INTO page_organisations (page_url, organisation_content_id, "
+                          "organisation_slug, role) VALUES ('https://www.gov.uk/f','defra','defra','primary')")
+        self.conn.commit()
+        res = org_breakdown(self.conn, organisations=["environment-agency", "defra"],
+                            document_types=["guidance"], keywords=["slurry"], match="any")
+        counts = {r["organisation"]: r["count"] for r in res}
+        self.assertEqual(counts["environment-agency"], 1)   # /a
+        self.assertEqual(counts["defra"], 2)                 # /a (overlap) + /f
+        self.assertEqual(org_breakdown(self.conn, organisations=[]), [])
+
     def test_per_keyword_counts_for_breakdown(self):
         # The "which terms matched" breakdown counts each keyword on its own within
         # the org/doctype set; independent counts, so they can overlap.
