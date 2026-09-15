@@ -72,18 +72,112 @@ def parse_decision(text: str) -> Optional[Dict]:
             "score": score, "reason": str(d.get("reason") or "")[:1000]}
 
 
+# ---- Phase 2: Exclusion --------------------------------------------------
+# Recall-priority second pass over the pages the inclusion run KEPT. It re-introduces
+# the exclusion criteria and only ever turns a keep into a drop (removing false
+# positives). Adapted from the DEFRA guidance-relevance-filter adjudication pass.
+def build_exclusion_prompt(name: str, inclusion: str, exclusion: str,
+                           keep_hints: str, drop_hints: str, title: str, body: str,
+                           pass1_reason: str, body_limit: int = BODY_CHAR_LIMIT) -> str:
+    body = (body or "")[:body_limit]
+    nm = (name or "the topic").strip()
+    spec = (inclusion or "").strip() or "(not specified)"
+    if (exclusion or "").strip():
+        spec = f"{spec}\n\nExclusion criteria:\n{exclusion.strip()}"
+    keep_section = ""
+    if (keep_hints or "").strip():
+        keep_section = ("\nKEEP examples (keep = true) — lean toward keeping when similar "
+                        f"content appears:\n{keep_hints.strip()}\n")
+    drop_section = ""
+    if (drop_hints or "").strip():
+        drop_section = ("\nDROP examples (keep = false) — drop only when clearly similar to:\n"
+                        f"{drop_hints.strip()}\n")
+    title_line = f"Page title: {title}\n" if title else ""
+    return (
+        f"You curate a GOV.UK corpus for a {nm.upper()} audit. A fast first pass flagged this "
+        f"page because it looked relevant; it forces KEEP on any mention. Remove ONLY pages that "
+        f"are clearly not about {nm} at all. Missing a genuinely {nm}-relevant page is "
+        "unacceptable; keeping a borderline one is fine. Default to KEEP.\n\n"
+        f"=== {nm.upper()} SPEC ===\n{spec}\n=== END SPEC ===\n\n"
+        "Apply the inclusion and exclusion criteria above.\n"
+        f"KEEP (keep = true) — keep if the page has any audit-relevant {nm} content, even briefly.\n"
+        "DROP (keep = false) — drop ONLY when the page is clearly out of scope per the exclusion "
+        "criteria (homonyms, incidental-only mentions, wrong domain).\n"
+        f"{keep_section}{drop_section}"
+        "If you are unsure, KEEP.\n\n"
+        f"For context, the first pass wrote this note (it may be wrong): {pass1_reason!r}\n\n"
+        f"{title_line}\nPage content (may be truncated):\n{body or '(no body text)'}\n\n"
+        "Return ONLY a JSON object, no prose:\n"
+        '{"keep": true|false, "exclusion_hit": "none"|"incidental"|"homonym"|"wrong_domain", '
+        '"reason": "1-2 sentence explanation"}'
+    )
+
+
+def parse_exclusion(text: str) -> Optional[Dict]:
+    """Parse an exclusion reply into a save_page decision {keep, score, reason}, tagging
+    the reason with the exclusion_hit category. None if unparseable/missing verdict."""
+    if not text:
+        return None
+    t = text.strip()
+    if t.startswith("```"):
+        t = t.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+    m = re.search(r"\{.*\}", t, re.DOTALL)
+    if m:
+        t = m.group(0)
+    try:
+        d = json.loads(t)
+    except (ValueError, TypeError):
+        return None
+    keep = d.get("keep")
+    if keep is None:
+        return None
+    hit = str(d.get("exclusion_hit") or "").strip()
+    reason = str(d.get("reason") or d.get("verdict_reason") or "")[:1000]
+    if hit and hit.lower() != "none":
+        reason = f"[{hit}] {reason}".strip()
+    return {"keep": 1 if keep else 0, "score": None, "reason": reason}
+
+
+def latest_inclusion_run(conn, category_id: int) -> Optional[str]:
+    """The most recent Phase-1 inclusion run for a category (its keeps feed exclusion)."""
+    row = conn.execute(
+        f"SELECT run_id FROM evaluation_runs WHERE category_id = {_P} AND phase = {_P} "
+        f"ORDER BY started_at DESC LIMIT 1", (category_id, PHASE_INCLUSION)).fetchone()
+    return row["run_id"] if row else None
+
+
+def kept_count(conn, run_id: str) -> int:
+    return conn.execute(
+        f"SELECT COUNT(*) AS c FROM evaluation_results WHERE run_id = {_P} AND keep = 1",
+        (run_id,)).fetchone()["c"]
+
+
+def exclusion_candidates(conn, run_id: str, source_run_id: str, limit: int) -> List[dict]:
+    """Next `limit` pages the source (inclusion) run kept that this exclusion run has not
+    yet re-evaluated. Carries the inclusion pass's reason as pass1_reason."""
+    sql = (
+        "SELECT c.url AS url, c.title AS title, c.description AS description, "
+        "c.search_text AS body, r.reason AS pass1_reason "
+        "FROM evaluation_results r JOIN content c ON c.url = r.url "
+        f"WHERE r.run_id = {_P} AND r.keep = 1 "
+        f"AND r.url NOT IN (SELECT url FROM evaluation_results WHERE run_id = {_P}) "
+        f"ORDER BY r.url LIMIT {_P}")
+    return [dict(x) for x in conn.execute(sql, (source_run_id, run_id, limit)).fetchall()]
+
+
 # ---- runs ----------------------------------------------------------------
 def create_run(conn, category_id: int, model: str, provider: str,
-               phase: str = PHASE_INCLUSION, name: Optional[str] = None) -> str:
+               phase: str = PHASE_INCLUSION, name: Optional[str] = None,
+               source_run_id: Optional[str] = None) -> str:
     run_id = f"run_{int(time.time() * 1000):x}_{uuid.uuid4().hex[:6]}"
     if not name:
         n = conn.execute(f"SELECT COUNT(*) AS c FROM evaluation_runs WHERE category_id = {_P}",
                          (category_id,)).fetchone()["c"]
         name = f"Test-{n + 1}"
     conn.execute(
-        f"INSERT INTO evaluation_runs (run_id, category_id, name, phase, model, provider, started_at) "
-        f"VALUES ({_P},{_P},{_P},{_P},{_P},{_P},{_P})",
-        (run_id, category_id, name, phase, model, provider, db.now_iso()))
+        f"INSERT INTO evaluation_runs (run_id, category_id, name, source_run_id, phase, model, provider, started_at) "
+        f"VALUES ({_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P})",
+        (run_id, category_id, name, source_run_id, phase, model, provider, db.now_iso()))
     conn.commit()
     return run_id
 

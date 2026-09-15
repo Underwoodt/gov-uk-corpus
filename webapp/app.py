@@ -206,6 +206,33 @@ def _log_ai_usage(conn, cost, in_tok, out_tok, kind: str) -> None:
     conn.commit()
 
 
+# Phase → settings key holding the chosen model id for that phase.
+PHASE_MODEL_KEYS = {
+    evaluate.PHASE_INCLUSION: "phase_model_inclusion",
+    evaluate.PHASE_EXCLUSION: "phase_model_exclusion",
+    evaluate.PHASE_ADJUDICATION: "phase_model_adjudication",
+}
+
+
+def _config_from_model(conn, m: dict) -> dict:
+    """Build an AI config dict from an ai_models row."""
+    provider = m["provider"]
+    p = PROVIDERS.get(provider) or PROVIDERS[DEFAULT_PROVIDER]
+    return {"provider": provider, "label": p["label"], "base_url": p["base_url"],
+            "model": m["model_id"], "key": _provider_key(provider),
+            "has_key": _provider_key(provider) is not None,
+            "price_in": m["input_per_m"], "price_out": m["output_per_m"],
+            "grid": dict(m), "peak_bitmap": peak_schedule.get_bitmap(conn, provider)}
+
+
+def _default_config(conn) -> dict:
+    p = PROVIDERS[DEFAULT_PROVIDER]
+    return {"provider": DEFAULT_PROVIDER, "label": p["label"], "base_url": p["base_url"],
+            "model": p["model"], "key": _provider_key(DEFAULT_PROVIDER),
+            "has_key": _provider_key(DEFAULT_PROVIDER) is not None,
+            "price_in": p["price_in"], "price_out": p["price_out"]}
+
+
 def _ai_config(conn) -> dict:
     """Resolve the active AI model (from the ai_models table) + provider env."""
     ai_models.seed_defaults(conn)
@@ -214,19 +241,16 @@ def _ai_config(conn) -> dict:
     if not m:
         models = ai_models.list_models(conn)
         m = models[0] if models else None
-    if not m:   # nothing configured — fall back to the built-in default
-        p = PROVIDERS[DEFAULT_PROVIDER]
-        return {"provider": DEFAULT_PROVIDER, "label": p["label"], "base_url": p["base_url"],
-                "model": p["model"], "key": _provider_key(DEFAULT_PROVIDER),
-                "has_key": _provider_key(DEFAULT_PROVIDER) is not None,
-                "price_in": p["price_in"], "price_out": p["price_out"]}
-    provider = m["provider"]
-    p = PROVIDERS.get(provider) or PROVIDERS[DEFAULT_PROVIDER]
-    return {"provider": provider, "label": p["label"], "base_url": p["base_url"],
-            "model": m["model_id"], "key": _provider_key(provider),
-            "has_key": _provider_key(provider) is not None,
-            "price_in": m["input_per_m"], "price_out": m["output_per_m"],
-            "grid": dict(m), "peak_bitmap": peak_schedule.get_bitmap(conn, provider)}
+    return _config_from_model(conn, m) if m else _default_config(conn)
+
+
+def _ai_config_for_phase(conn, phase: str) -> dict:
+    """Resolve the model configured for a phase (Settings → Model per phase), falling
+    back to the active model when the phase has no specific model set."""
+    ai_models.seed_defaults(conn)
+    mid = settings.get_setting(conn, PHASE_MODEL_KEYS.get(phase, ""), "")
+    m = ai_models.get_model(conn, mid) if mid else None
+    return _config_from_model(conn, m) if m else _ai_config(conn)
 
 
 def _ai_reply(config: dict, system: str, prompt: str) -> dict:
@@ -544,8 +568,9 @@ def _ensure_run(conn, cid: int) -> str:
     run_id = _active_run(conn, cid)
     if run_id and evaluate.get_run(conn, run_id):
         return run_id
-    cfg = _ai_config(conn)
-    run_id = evaluate.create_run(conn, cid, cfg["model"], cfg["provider"])
+    cfg = _ai_config_for_phase(conn, evaluate.PHASE_INCLUSION)
+    run_id = evaluate.create_run(conn, cid, cfg["model"], cfg["provider"],
+                                 phase=evaluate.PHASE_INCLUSION)
     settings.set_setting(conn, f"active_run_{cid}", run_id)
     return run_id
 
@@ -565,6 +590,7 @@ def _run_evaluation(cid: int, limit: int) -> dict:
 
         run_id = _ensure_run(conn, cid)
         run = evaluate.get_run(conn, run_id)
+        phase = run.get("phase") or evaluate.PHASE_INCLUSION
         cfg = _cfg_for(conn, run["provider"], run["model"])
         if not cfg["key"]:
             return {"error": f"No API key for {cfg['label']} (this run's provider) — set one in Settings."}
@@ -573,7 +599,13 @@ def _run_evaluation(cid: int, limit: int) -> dict:
         filters = _effective_filters(conn, category)
         inclusion = category.get("inclusion_context") or ""
         exclusion = category.get("exclusion_context") or ""
-        rows = evaluate.run_candidates(conn, run_id, cid, limit, **filters)
+        name = cat.prettify(category.get("slug")) or (category.get("description") or "the topic")
+
+        is_exclusion = phase == evaluate.PHASE_EXCLUSION
+        if is_exclusion:
+            rows = evaluate.exclusion_candidates(conn, run_id, run.get("source_run_id"), limit)
+        else:
+            rows = evaluate.run_candidates(conn, run_id, cid, limit, **filters)
         done = 0
         cost = 0.0
         stopped = None
@@ -582,14 +614,22 @@ def _run_evaluation(cid: int, limit: int) -> dict:
                 stopped = "budget"
                 break
             t0 = time.time()
-            prompt = evaluate.build_prompt(inclusion, exclusion, r["title"], r["description"], r["body"])
+            if is_exclusion:
+                prompt = evaluate.build_exclusion_prompt(
+                    name, inclusion, exclusion,
+                    category.get("adjudication_hints_keep") or "",
+                    category.get("adjudication_hints_drop") or "",
+                    r["title"], r["body"], r.get("pass1_reason") or "")
+            else:
+                prompt = evaluate.build_prompt(inclusion, exclusion, r["title"], r["description"], r["body"])
             res = _ai_reply(cfg, "", prompt)
             ms = int((time.time() - t0) * 1000)
             if res.get("error"):
                 return {"error": res["error"], "run_id": run_id, "evaluated_this_run": done,
                         "cost_usd": round(cost, 6), "spent_today": round(spent, 4), "budget": budget}
-            evaluate.save_page(conn, run_id, cid, r["url"],
-                               evaluate.parse_decision(res.get("reply", "")), ms)
+            decision = (evaluate.parse_exclusion(res.get("reply", "")) if is_exclusion
+                        else evaluate.parse_decision(res.get("reply", "")))
+            evaluate.save_page(conn, run_id, cid, r["url"], decision, ms)
             evaluate.set_actual_model(conn, run_id, res.get("actual_model"))
             c = res.get("cost_usd") or 0.0
             evaluate.add_run_cost(conn, run_id, c, res.get("input_tokens"), res.get("output_tokens"),
@@ -598,16 +638,31 @@ def _run_evaluation(cid: int, limit: int) -> dict:
             done += 1
             cost += c
             spent += c
-        total = cached_count(conn, **filters)
         run = evaluate.get_run(conn, run_id)
+        if is_exclusion:
+            total = evaluate.kept_count(conn, run.get("source_run_id")) if run.get("source_run_id") else 0
+        else:
+            total = cached_count(conn, **filters)
         remaining = max(0, total - (run["pages"] or 0))
-        if remaining == 0:
+        advanced = None
+        if remaining == 0 and stopped is None:
             evaluate.finish_run(conn, run_id)
+            # Auto-advance: when an inclusion run completes, start Phase 2 (Exclusion)
+            # over the pages it kept, on the exclusion phase's model.
+            if not is_exclusion:
+                keeps = evaluate.kept_count(conn, run_id)
+                if keeps > 0:
+                    excfg = _ai_config_for_phase(conn, evaluate.PHASE_EXCLUSION)
+                    new_id = evaluate.create_run(conn, cid, excfg["model"], excfg["provider"],
+                                                 phase=evaluate.PHASE_EXCLUSION, source_run_id=run_id)
+                    settings.set_setting(conn, f"active_run_{cid}", new_id)
+                    advanced = {"run_id": new_id, "phase": evaluate.PHASE_EXCLUSION, "remaining": keeps}
+                    remaining = keeps
         warning = (f"Within 10% of the ${budget:.2f} daily budget (${spent:.4f} spent today)."
                    if budget > 0 and spent >= 0.9 * budget else None)
         return {"run_id": run_id, "model": run["model"], "provider": run["provider"],
-                "evaluated_this_run": done, "cost_usd": round(cost, 6),
-                "spent_today": round(spent, 4), "budget": budget,
+                "phase": phase, "evaluated_this_run": done, "cost_usd": round(cost, 6),
+                "spent_today": round(spent, 4), "budget": budget, "advanced": advanced,
                 "warning": warning, "stopped": stopped, "remaining": remaining, "run": run}
     finally:
         conn.close()
@@ -621,8 +676,9 @@ async def api_new_run(request: Request, cid: int):
     if not cat.get_category(conn, cid):
         conn.close()
         return JSONResponse({"error": "not found"}, status_code=404)
-    cfg = _ai_config(conn)     # capture the current provider/model for the new run
-    run_id = evaluate.create_run(conn, cid, cfg["model"], cfg["provider"])
+    cfg = _ai_config_for_phase(conn, evaluate.PHASE_INCLUSION)   # new manual run = a fresh inclusion run
+    run_id = evaluate.create_run(conn, cid, cfg["model"], cfg["provider"],
+                                 phase=evaluate.PHASE_INCLUSION)
     settings.set_setting(conn, f"active_run_{cid}", run_id)
     run = evaluate.get_run(conn, run_id)
     conn.close()
@@ -922,9 +978,13 @@ def settings_page(request: Request, saved: int = 0):
     for m in models:                      # is this model's provider usable?
         m["has_key"] = _provider_key(m["provider"]) is not None
         m["active"] = str(m["id"]) == str(active)
+    phase_models = [
+        {"phase": ph, "key": PHASE_MODEL_KEYS[ph],
+         "current": settings.get_setting(conn, PHASE_MODEL_KEYS[ph], "")}
+        for ph in (evaluate.PHASE_INCLUSION, evaluate.PHASE_EXCLUSION, evaluate.PHASE_ADJUDICATION)]
     resp = templates.TemplateResponse("settings.html", ctx(
         conn, request, active_nav="settings", models=models,
-        providers=list(PROVIDERS.keys()),
+        providers=list(PROVIDERS.keys()), phase_models=phase_models,
         provider_keys={k: _provider_key(k) is not None for k in PROVIDERS},
         daily_budget=_budget(conn), max_docs=_max_docs(conn),
         spent_today=round(_daily_spend(conn), 4), saved=saved))
@@ -954,6 +1014,10 @@ async def save_settings(request: Request):
     active = form.get("active_model_id")
     if active:
         settings.set_setting(conn, "active_model_id", active)
+    # Per-phase model selection (Inclusion / Exclusion / Adjudication).
+    for ph, key in PHASE_MODEL_KEYS.items():
+        if key in form:
+            settings.set_setting(conn, key, (form.get(key) or "").strip())
     # Save edits to existing model rows.
     for m in ai_models.list_models(conn):
         rid = m["id"]
