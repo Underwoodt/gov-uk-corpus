@@ -1,6 +1,16 @@
 {% extends "base.html" %}
 {% block title %}{{ category.display_name }} — preview{% endblock %}
 {% block content %}
+  <style>
+    .subtabs { display:flex; gap:0; margin:0 0 22px; border:2px solid var(--black); border-radius:6px; overflow:hidden; max-width:640px; }
+    .subtab-btn { flex:1; display:flex; flex-direction:column; align-items:center; gap:2px;
+      padding:12px 10px; background:var(--white,#fff); border:0; border-right:2px solid var(--black);
+      font-size:17px; font-weight:700; cursor:pointer; color:var(--black); }
+    .subtab-btn:last-child { border-right:0; }
+    .subtab-btn small { font-weight:400; font-size:13px; color:#505a5f; }
+    .subtab-btn.current { background:var(--black,#0b0c0c); color:#fff; }
+    .subtab-btn.current small { color:#c9c9c9; }
+  </style>
 
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
   {% include "_budget_bar.html" %}
@@ -17,6 +27,14 @@
   </div>
 
   <div class="tabpanel">
+    <div class="subtabs" role="tablist">
+      <button type="button" class="subtab-btn current" data-tab="exact" role="tab">
+        Exact Match<small>SQL + keywords</small></button>
+      <button type="button" class="subtab-btn" data-tab="semantic" role="tab">
+        Semantic Match<small>AI inference + confidence</small></button>
+    </div>
+
+    <section id="tab-exact" class="subpanel" role="tabpanel">
     <h2>Selection funnel</h2>
     <p class="hint" style="margin-top:-20px;">How each filter narrows the corpus. Each row is timed as it runs.</p>
     <table id="funnel">
@@ -62,7 +80,14 @@
       <tbody></tbody>
     </table>
 
-    <h2 style="margin-top:30px;">AI evaluation (inclusion pass)</h2>
+    <details style="margin-top:30px;"><summary>SQL query that was run</summary>
+      <div class="detail" style="max-width:none;"><pre class="mono" style="white-space:pre-wrap;font-size:14px;">{{ sql }}</pre>
+        <p class="secondary">Values shown inline for readability; the app executes with safe parameter
+          binding. Keyword terms are stemmed by Postgres at query time.</p></div></details>
+    </section>
+
+    <section id="tab-semantic" class="subpanel" role="tabpanel" hidden>
+    <h2 style="margin-top:10px;">AI evaluation (inclusion → exclusion)</h2>
     <p class="hint" style="margin-top:-20px;">Ask the AI to judge each shortlisted page against this category's
       <em>Include</em> / <em>Exclude</em> context — keep or drop, with a score and reason. Each <strong>run</strong>
       uses one fixed model (set in Settings), so you can start a new run after switching model and compare results
@@ -107,11 +132,7 @@
         <tbody></tbody>
       </table>
     </div>
-
-    <details style="margin-top:30px;"><summary>SQL query that was run</summary>
-      <div class="detail" style="max-width:none;"><pre class="mono" style="white-space:pre-wrap;font-size:14px;">{{ sql }}</pre>
-        <p class="secondary">Values shown inline for readability; the app executes with safe parameter
-          binding. Keyword terms are stemmed by Postgres at query time.</p></div></details>
+    </section>
   </div>
 
   <script>
@@ -401,6 +422,22 @@
       }
     }
     runEvalBtn.addEventListener("click", runEval);
+    // Sub-tabs: Exact Match (deterministic funnel) vs Semantic Match (AI).
+    (function () {
+      const btns = document.querySelectorAll(".subtab-btn");
+      function show(tab) {
+        btns.forEach(b => b.classList.toggle("current", b.dataset.tab === tab));
+        document.getElementById("tab-exact").hidden = tab !== "exact";
+        document.getElementById("tab-semantic").hidden = tab !== "semantic";
+        if (tab === "exact") drawSankey();   // redraw at the now-visible width
+        try { localStorage.setItem("preview-subtab-" + CID, tab); } catch (e) {}
+      }
+      btns.forEach(b => b.addEventListener("click", () => show(b.dataset.tab)));
+      let initial = "exact";
+      try { initial = localStorage.getItem("preview-subtab-" + CID) || "exact"; } catch (e) {}
+      show(initial);
+    })();
+
     loadRuns();   // show existing runs on load
     runFunnel();  // fills the funnel table and draws the Sankey
   </script>
