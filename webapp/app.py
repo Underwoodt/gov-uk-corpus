@@ -538,6 +538,33 @@ def api_funnel(request: Request, cid: int, stage: str = "all"):
     return JSONResponse({"stage": stage, "label": label, "count": n})
 
 
+@app.get("/api/categories/{cid}/keyword-breakdown")
+def api_keyword_breakdown(request: Request, cid: int):
+    """Pages matching EACH keyword individually, within the org + document-type set —
+    the 'which terms matched' breakdown. Counts are independent, so they overlap and
+    do not sum to the keyword-stage total (a page can match several terms)."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    conn = connect()
+    category = cat.get_category(conn, cid)
+    if not category:
+        conn.close()
+        return JSONResponse({"error": "not found"}, status_code=404)
+    filters = _effective_filters(conn, category)
+    base = {"organisations": filters["organisations"], "document_types": filters["document_types"]}
+    terms = []
+    for kw in filters["keywords"]:
+        try:
+            n = cached_count(conn, keywords=[kw], match="any", **base)
+        except Exception:
+            n = None            # a single slow/failed term shouldn't sink the whole panel
+        terms.append({"keyword": kw, "count": n})
+    conn.close()
+    # Sort by count desc (None last), preserving order for ties.
+    terms.sort(key=lambda t: (t["count"] is None, -(t["count"] or 0)))
+    return JSONResponse({"terms": terms})
+
+
 @app.get("/api/categories/{cid}/results")
 def api_results(request: Request, cid: int, limit: int = 10, offset: int = 0):
     if not authed(request):

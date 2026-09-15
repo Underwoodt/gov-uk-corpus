@@ -61,7 +61,18 @@
       </tbody>
     </table>
 
-    <h2 style="margin-top:10px;">Result</h2>
+    <div id="kw-breakdown" hidden style="margin-top:24px;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;">
+        <h2 style="margin:0;">Which terms matched</h2>
+        <a href="#" id="kw-toggle" hidden style="font-size:14px;">Show all terms</a>
+      </div>
+      <p class="hint" style="margin-top:2px;">Pages matching each keyword on its own (within the organisation and
+        document-type filters). Terms overlap, so these don't sum to the keyword total.</p>
+      <table style="width:100%;"><tbody id="kw-rows"></tbody></table>
+      <p id="kw-empty" class="secondary" hidden>No keywords set for this category.</p>
+    </div>
+
+    <h2 style="margin-top:24px;">Result</h2>
     <p class="hint" style="margin-top:-20px;">How pages flow through the three filters — organisation, document type,
       then keyword. The dark bars are the pages that pass each stage; the red wedges are those dropped.</p>
     <div style="overflow-x:auto;">
@@ -162,7 +173,46 @@
           row.querySelector(".val").textContent = "error";
         }
       }
+      loadKeywordBreakdown();   // 'which terms matched'
     }
+
+    // "Which terms matched" — per-keyword page counts, rendered as bars.
+    const KW_TOP = 8;
+    let kwExpanded = false, kwTerms = [];
+    async function loadKeywordBreakdown() {
+      const wrap = document.getElementById("kw-breakdown");
+      try {
+        const j = await (await fetch(`/api/categories/${CID}/keyword-breakdown`)).json();
+        kwTerms = j.terms || [];
+      } catch (e) { return; }
+      wrap.hidden = false;
+      document.getElementById("kw-empty").hidden = kwTerms.length !== 0;
+      const toggle = document.getElementById("kw-toggle");
+      toggle.hidden = kwTerms.length <= KW_TOP;
+      renderKeywordRows();
+    }
+    function renderKeywordRows() {
+      const max = Math.max(1, ...kwTerms.map(t => t.count || 0));
+      const shown = kwExpanded ? kwTerms : kwTerms.slice(0, KW_TOP);
+      document.getElementById("kw-rows").innerHTML = shown.map(t => {
+        const pct = t.count == null ? 0 : Math.round((t.count / max) * 100);
+        const val = t.count == null ? "error" : fmtInt(t.count);
+        return `<tr>` +
+          `<td style="padding:6px 10px 6px 0;white-space:nowrap;">${esc(t.keyword)}</td>` +
+          `<td style="width:100%;padding:6px 10px;">` +
+            `<div style="background:#eee;border-radius:3px;height:14px;">` +
+              `<div style="width:${pct}%;height:100%;background:var(--blue,#1d70b8);border-radius:3px;"></div>` +
+            `</div></td>` +
+          `<td class="num" style="padding:6px 0;font-weight:700;white-space:nowrap;">${val}</td>` +
+        `</tr>`;
+      }).join("");
+    }
+    document.getElementById("kw-toggle").addEventListener("click", e => {
+      e.preventDefault();
+      kwExpanded = !kwExpanded;
+      e.target.textContent = kwExpanded ? "Show top " + KW_TOP : "Show all terms";
+      renderKeywordRows();
+    });
 
     // Sankey of the three filter stages (built from the funnel counts).
     const sankeyCounts = {};
