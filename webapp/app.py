@@ -1132,6 +1132,27 @@ def results_table_page(request: Request, cid: int):
     return resp
 
 
+@app.get("/categories/{cid}/missing-links", response_class=HTMLResponse)
+def missing_links_page(request: Request, cid: int):
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    category = cat.get_category(conn, cid)
+    if not category:
+        conn.close()
+        return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
+    category["display_name"] = cat.prettify(category.get("slug")) or (category.get("description") or "Untitled")
+    filters = _effective_filters(conn, category)
+    try:
+        sql = link_gaps.sql_text(**filters)
+    except Exception as e:
+        sql = f"-- Could not build SQL preview: {type(e).__name__}: {e}"
+    resp = templates.TemplateResponse("missing_links.html", ctx(
+        conn, request, category=category, sql=sql))
+    conn.close()
+    return resp
+
+
 @app.get("/api/categories/{cid}/results-table")
 def api_results_table(request: Request, cid: int, limit: int = 50, offset: int = 0, q: str = ""):
     if not authed(request):
