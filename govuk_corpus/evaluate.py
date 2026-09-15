@@ -74,14 +74,24 @@ def parse_decision(text: str) -> Optional[Dict]:
 
 # ---- runs ----------------------------------------------------------------
 def create_run(conn, category_id: int, model: str, provider: str,
-               phase: str = PHASE_INCLUSION) -> str:
+               phase: str = PHASE_INCLUSION, name: Optional[str] = None) -> str:
     run_id = f"run_{int(time.time() * 1000):x}_{uuid.uuid4().hex[:6]}"
+    if not name:
+        n = conn.execute(f"SELECT COUNT(*) AS c FROM evaluation_runs WHERE category_id = {_P}",
+                         (category_id,)).fetchone()["c"]
+        name = f"Test-{n + 1}"
     conn.execute(
-        f"INSERT INTO evaluation_runs (run_id, category_id, phase, model, provider, started_at) "
-        f"VALUES ({_P},{_P},{_P},{_P},{_P},{_P})",
-        (run_id, category_id, phase, model, provider, db.now_iso()))
+        f"INSERT INTO evaluation_runs (run_id, category_id, name, phase, model, provider, started_at) "
+        f"VALUES ({_P},{_P},{_P},{_P},{_P},{_P},{_P})",
+        (run_id, category_id, name, phase, model, provider, db.now_iso()))
     conn.commit()
     return run_id
+
+
+def rename_run(conn, run_id: str, name: str) -> None:
+    conn.execute(f"UPDATE evaluation_runs SET name = {_P} WHERE run_id = {_P}",
+                 (name.strip(), run_id))
+    conn.commit()
 
 
 def run_candidates(conn, run_id: str, category_id: int, limit: int, *,

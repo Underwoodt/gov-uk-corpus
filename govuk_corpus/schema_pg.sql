@@ -112,6 +112,7 @@ CREATE INDEX IF NOT EXISTS idx_org_hier_child  ON organisation_hierarchy(child_s
 CREATE TABLE IF NOT EXISTS evaluation_runs (
     run_id       text PRIMARY KEY,
     category_id  bigint,
+    name         text,             -- human label, e.g. "Test-1" (editable)
     phase        text DEFAULT 'Phase 1 - Inclusion',
     provider     text,
     model        text,
@@ -248,6 +249,7 @@ CREATE INDEX IF NOT EXISTS idx_content_usable_doctype
 -- Run phase (added after evaluation_runs shipped). ADD COLUMN with DEFAULT backfills
 -- existing runs to 'Phase 1 - Inclusion'.
 ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS phase text DEFAULT 'Phase 1 - Inclusion';
+ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS name text;
 
 -- Per-run token totals (added after evaluation_runs shipped). Existing rows start at 0.
 ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS in_tokens  bigint DEFAULT 0;

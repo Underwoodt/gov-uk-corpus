@@ -30,6 +30,7 @@
     <table id="perf-table">
       <thead><tr><th>Run characteristic</th><th>Run 1</th><th>Run 2</th><th>Run 3</th></tr></thead>
       <tbody>
+        <tr data-metric="name"><td>Name</td><td></td><td></td><td></td></tr>
         <tr data-metric="datetime"><td>Run Date/Time</td><td></td><td></td><td></td></tr>
         <tr data-metric="phase"><td>Phase</td><td></td><td></td><td></td></tr>
         <tr data-metric="model"><td>Model</td><td></td><td></td><td></td></tr>
@@ -67,9 +68,10 @@
       const runId = document.getElementById(`pick-${col}`).value;
       const r = byId[runId];
       const set = (metric, v) => { cell(metric, col).textContent = v; };
-      if (!r) { ["datetime","phase","model","total","avgcost","avgtime","intokens","hittokens","misstokens","outtokens","totalcost","totaltime"].forEach(m => set(m, "—")); return; }
+      if (!r) { ["name","datetime","phase","model","total","avgcost","avgtime","intokens","hittokens","misstokens","outtokens","totalcost","totaltime"].forEach(m => set(m, "—")); return; }
       const pages = r.pages || 0;
       const secsTotal = (r.total_ms || 0) / 1000;
+      set("name", r.name || "—");
       set("datetime", fmtDate(r.started_at));
       set("phase", r.phase || "—");
       set("model", `${r.provider || ""} / ${r.actual_model || r.model || ""}`);
@@ -113,7 +115,7 @@
       [0, 1, 2].forEach(col => {
         const sel = document.getElementById(`pick-${col}`);
         sel.innerHTML = '<option value="">—</option>' + RUNS.map(r =>
-          `<option value="${r.run_id}">${fmtDate(r.started_at)} · ${r.actual_model || r.model || ""}</option>`).join("");
+          `<option value="${r.run_id}">${r.name ? r.name + " · " : ""}${fmtDate(r.started_at)} · ${r.actual_model || r.model || ""}</option>`).join("");
         if (RUNS[col]) sel.value = RUNS[col].run_id;   // default: three most recent
         sel.addEventListener("change", () => { renderColumn(col); renderComparisons(); });
       });

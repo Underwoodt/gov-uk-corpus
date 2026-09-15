@@ -84,6 +84,23 @@ class TestRuns(unittest.TestCase):
         self.assertEqual((r["in_tokens"], r["out_tokens"]), (2000, 100))
         self.assertEqual((r["hit_tokens"], r["miss_tokens"]), (500, 1500))
 
+    def test_default_name_is_sequential_per_category(self):
+        r1 = evaluate.create_run(self.conn, 1, "m", "anthropic")
+        r2 = evaluate.create_run(self.conn, 1, "m", "anthropic")
+        r_other = evaluate.create_run(self.conn, 2, "m", "anthropic")   # different category
+        self.assertEqual(evaluate.get_run(self.conn, r1)["name"], "Test-1")
+        self.assertEqual(evaluate.get_run(self.conn, r2)["name"], "Test-2")
+        self.assertEqual(evaluate.get_run(self.conn, r_other)["name"], "Test-1")
+
+    def test_rename_run(self):
+        r = evaluate.create_run(self.conn, 1, "m", "anthropic")
+        evaluate.rename_run(self.conn, r, "  Slurry baseline  ")
+        self.assertEqual(evaluate.get_run(self.conn, r)["name"], "Slurry baseline")
+
+    def test_explicit_name_overrides_default(self):
+        r = evaluate.create_run(self.conn, 1, "m", "anthropic", name="Haiku run")
+        self.assertEqual(evaluate.get_run(self.conn, r)["name"], "Haiku run")
+
     def test_delete_run_removes_run_and_results(self):
         run = evaluate.create_run(self.conn, 1, "m", "anthropic")
         evaluate.save_page(self.conn, run, 1, "https://www.gov.uk/p0", {"keep": 1, "score": .9, "reason": "a"}, 10)

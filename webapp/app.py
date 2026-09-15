@@ -663,6 +663,25 @@ def api_list_runs(request: Request, cid: int):
     return JSONResponse(out)
 
 
+@app.post("/api/categories/{cid}/runs/{run_id}/rename")
+async def api_rename_run(request: Request, cid: int, run_id: str):
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    form = await request.form()
+    name = (form.get("name") or "").strip()
+    if not name:
+        return JSONResponse({"error": "empty name"}, status_code=400)
+    conn = connect()
+    try:
+        run = evaluate.get_run(conn, run_id)
+        if not run or str(run["category_id"]) != str(cid):
+            return JSONResponse({"error": "not found"}, status_code=404)
+        evaluate.rename_run(conn, run_id, name[:120])
+        return JSONResponse({"ok": True, "name": name[:120]})
+    finally:
+        conn.close()
+
+
 @app.post("/api/categories/{cid}/runs/{run_id}/delete")
 def api_delete_run(request: Request, cid: int, run_id: str):
     if not authed(request):
