@@ -1031,6 +1031,68 @@ _DOWNLOAD_SECTIONS = [
 ]
 
 
+# ---- results table (browse the shortlist with configurable columns) -----
+# (key, label, default_on). 'content' is intentionally excluded (too big to show).
+_RESULTS_SECTIONS = [
+    ("Content", [
+        ("title", "Title", True),                        # rendered hyperlinked to URL
+        ("effective_document_type", "Document type", True),   # html_publication -> parent type
+        ("url", "URL", False),
+    ]),
+    ("Ownership", [
+        ("primary_org", "Primary publishing organisation", True),
+        ("organisations", "Organisations", False),
+    ]),
+    ("Freshness", [
+        ("public_updated_at", "Last update", True),
+        ("last_update_band", "Last update band", True),
+        ("first_published_at", "First published at", False),
+    ]),
+    ("Quality attributes", [
+        ("readability", "Readability age", True),
+        ("gds_issues", "GDS issue count", True),
+        ("gds_findings", "GDS issues text", False),
+        ("size", "Size", False),
+    ]),
+]
+# All fields the results endpoint fetches (url always, for the Title link).
+_RESULTS_FIELDS = ["url"] + [k for _, fs in _RESULTS_SECTIONS for k, _, _ in fs if k != "url"]
+
+
+@app.get("/categories/{cid}/results", response_class=HTMLResponse)
+def results_table_page(request: Request, cid: int):
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    category = cat.get_category(conn, cid)
+    if not category:
+        conn.close()
+        return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
+    category["display_name"] = cat.prettify(category.get("slug")) or (category.get("description") or "Untitled")
+    resp = templates.TemplateResponse("results_table.html", ctx(
+        conn, request, category=category, sections=_RESULTS_SECTIONS))
+    conn.close()
+    return resp
+
+
+@app.get("/api/categories/{cid}/results-table")
+def api_results_table(request: Request, cid: int, limit: int = 50, offset: int = 0):
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+    conn = connect()
+    category = cat.get_category(conn, cid)
+    if not category:
+        conn.close()
+        return JSONResponse({"error": "not found"}, status_code=404)
+    filters = _effective_filters(conn, category)
+    total = cached_count(conn, **filters)
+    _keys, rows = shortlist.export_rows(conn, _RESULTS_FIELDS, limit=limit, offset=offset, **filters)
+    conn.close()
+    return JSONResponse({"total": total, "rows": rows, "limit": limit, "offset": offset})
+
+
 @app.get("/categories/{cid}/download", response_class=HTMLResponse)
 def download_page(request: Request, cid: int):
     if not authed(request):

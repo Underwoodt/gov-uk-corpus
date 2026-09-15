@@ -136,6 +136,27 @@ class TestShortlistResults(unittest.TestCase):
     def test_count(self):
         self.assertEqual(count(self.conn, keywords=["slurry"]), 2)
 
+    def test_results_derived_columns(self):
+        from datetime import datetime, timezone, timedelta
+        from govuk_corpus.shortlist import export_rows
+        now = datetime.now(timezone.utc)
+        iso = lambda d: (now - timedelta(days=d)).strftime("%Y-%m-%dT12:00:00Z")
+        # /g guidance recent; /h html_publication with a parent, old.
+        self.conn.execute("INSERT INTO content (url, document_type, parent_document_type, is_redirect, "
+                          "content_hash, search_text, title, public_updated_at) "
+                          "VALUES ('https://www.gov.uk/g','guidance','',0,'h','slurry','G',?)", (iso(5),))
+        self.conn.execute("INSERT INTO content (url, document_type, parent_document_type, is_redirect, "
+                          "content_hash, search_text, title, public_updated_at) "
+                          "VALUES ('https://www.gov.uk/h','html_publication','policy_paper',0,'h','slurry','H',?)", (iso(500),))
+        self.conn.commit()
+        _keys, rows = export_rows(self.conn, ["url", "effective_document_type", "last_update_band"],
+                                  document_types=["guidance", "html_publication"], keywords=["slurry"])
+        got = {r["url"].rsplit("/", 1)[-1]: r for r in rows}
+        self.assertEqual(got["g"]["effective_document_type"], "guidance")
+        self.assertEqual(got["h"]["effective_document_type"], "policy_paper")   # html_publication -> parent
+        self.assertEqual(got["g"]["last_update_band"], "< 1 month")
+        self.assertEqual(got["h"]["last_update_band"], "1-2 years")
+
     def test_org_breakdown_counts_per_org_with_overlap(self):
         from govuk_corpus.shortlist import org_breakdown
         # /a (slurry, guidance) is environment-agency in setUp; also tag it defra (overlap),
