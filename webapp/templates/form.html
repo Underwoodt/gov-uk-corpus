@@ -8,6 +8,12 @@
   <p class="lede" style="margin:0 0 20px;">A category is a saved set of rules for finding gov.uk pages
     about one topic. These rules build a shortlist of pages, which you can then run.</p>
 
+  {% if not is_edit %}
+  <p style="margin:0 0 20px;"><a href="{{ url_for('category_assistant_page') }}">Not sure where to start?
+    Let the assistant interview you →</a></p>
+  <div id="prefill-banner" class="success" hidden>Pre-filled by the assistant — review the fields and save.</div>
+  {% endif %}
+
   {% if errors %}
   <div class="error-summary" role="alert">
     <h2>There is a problem</h2>
@@ -166,5 +172,26 @@
       setField('dept_slugs', (ex.dept_slugs || []).join('\n'));
       setField('document_type_slugs', (ex.document_type_slugs || []).join('\n'));
     }
+
+    // Pre-fill from the category assistant (handed over via sessionStorage).
+    (function () {
+      if (!new URLSearchParams(location.search).get("prefill")) return;
+      var raw; try { raw = sessionStorage.getItem("category_prefill"); } catch (e) {}
+      if (!raw) return;
+      var f; try { f = JSON.parse(raw); } catch (e) { return; }
+      function setByName(name, val) {
+        var el = document.getElementById(name) || document.querySelector('[name="' + name + '"]');
+        if (el && !el.readOnly) el.value = val;
+      }
+      ["slug","owner_email","dept_slugs","document_type_slugs","keywords","inclusion_context",
+       "exclusion_context","adjudication_hints_keep","adjudication_hints_drop"].forEach(function (k) {
+        if (f[k] != null) setByName(k, f[k]);
+      });
+      var cb = document.querySelector('[name="include_child_orgs"]');
+      if (cb) cb.checked = !!f.include_child_orgs;
+      var banner = document.getElementById("prefill-banner");
+      if (banner) banner.hidden = false;
+      try { sessionStorage.removeItem("category_prefill"); } catch (e) {}
+    })();
   </script>
 {% endblock %}

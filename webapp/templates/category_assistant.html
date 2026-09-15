@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Category assistant{% endblock %}
+{% block content %}
+  <style>
+    #chat { max-width:720px; }
+    .msg { padding:10px 14px; border-radius:10px; margin:0 0 10px; white-space:pre-wrap; line-height:1.45; }
+    .msg.user { background:var(--black,#0b0c0c); color:#fff; margin-left:60px; }
+    .msg.bot  { background:#f2f2f2; color:var(--black); margin-right:40px; }
+    .msg.bot code, .msg.bot pre { display:none; }   /* hide the raw JSON block from the chat */
+    #composer { display:flex; gap:8px; max-width:720px; margin-top:8px; }
+    #composer textarea { flex:1; padding:10px; border:2px solid var(--black); border-radius:6px;
+      font:inherit; resize:vertical; min-height:52px; }
+  </style>
+
+  <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
+  {% include "_budget_bar.html" %}
+
+  <h1 style="margin:16px 0 4px;">Category assistant</h1>
+  <p class="hint" style="margin:0 0 16px;max-width:720px;">Answer a few questions and I'll draft a category for you,
+    then open the Create form pre-filled so you can review and save. Nothing is created until you save.
+    Uses AI credit (counts toward the daily budget above).</p>
+
+  <div id="chat"></div>
+
+  <div id="draft" hidden style="max-width:720px;border:2px solid var(--green,#00703c);border-radius:8px;padding:14px 16px;margin:6px 0 12px;">
+    <strong>Draft ready.</strong> I've put together a starting point.
+    <div style="margin-top:10px;"><button class="btn" id="to-form" type="button">Review in the form →</button></div>
+  </div>
+
+  <div id="composer">
+    <textarea id="input" placeholder="Type your answer…" autofocus></textarea>
+    <button class="btn" id="send" type="button">Send</button>
+  </div>
+  <p id="status" class="secondary" style="max-width:720px;"></p>
+
+  <script>
+    const chat = document.getElementById("chat");
+    const input = document.getElementById("input");
+    const sendBtn = document.getElementById("send");
+    const status = document.getElementById("status");
+    const messages = [];   // {role, content}
+    let draftFields = null;
+
+    function esc(s){const d=document.createElement("div");d.textContent=s==null?"":s;return d.innerHTML;}
+    // Strip the fenced json block so the user sees prose, not the payload.
+    function display(text){ return text.replace(/```json[\s\S]*?```/g, "").trim(); }
+
+    function addMsg(role, text) {
+      const div = document.createElement("div");
+      div.className = "msg " + (role === "user" ? "user" : "bot");
+      div.innerHTML = esc(role === "user" ? text : display(text));
+      chat.appendChild(div);
+      div.scrollIntoView({block:"end"});
+    }
+
+    // Seed the conversation with the assistant's greeting.
+    const greeting = {{ greeting | tojson }};
+    messages.push({role:"assistant", content:greeting});
+    addMsg("assistant", greeting);
+
+    async function send() {
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = "";
+      addMsg("user", text);
+      messages.push({role:"user", content:text});
+      sendBtn.disabled = true;
+      status.innerHTML = '<span class="spinner"></span> Thinking…';
+      try {
+        const r = await fetch("/api/categories/assistant", {
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({messages})
+        });
+        const j = await r.json();
+        if (j.error) { status.textContent = "Error: " + j.error; return; }
+        status.textContent = "";
+        messages.push({role:"assistant", content:j.reply});
+        addMsg("assistant", j.reply);
+        if (j.fields) {
+          draftFields = j.fields;
+          document.getElementById("draft").hidden = false;
+        }
+      } catch (e) {
+        status.textContent = "Could not reach the assistant.";
+      } finally {
+        sendBtn.disabled = false;
+        input.focus();
+      }
+    }
+
+    sendBtn.addEventListener("click", send);
+    input.addEventListener("keydown", e => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+    });
+    document.getElementById("to-form").addEventListener("click", () => {
+      try { sessionStorage.setItem("category_prefill", JSON.stringify(draftFields)); } catch (e) {}
+      window.location = "{{ url_for('new_category_page') }}?prefill=1";
+    });
+  </script>
+{% endblock %}

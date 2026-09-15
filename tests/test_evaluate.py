@@ -257,7 +257,10 @@ class TestRunEvaluationMocked(unittest.TestCase):
         self.assertNotEqual(r1["run_id"], r2["run_id"])
         self.assertEqual(r2["evaluated_this_run"], 3)   # re-evaluated the same 3 pages in the new run
         conn = app.connect()
-        self.assertEqual(len(evaluate.list_runs(conn, cid)), 2)
+        # Two inclusion runs (each may auto-spawn a Phase-2 exclusion run over its keeps).
+        inclusion = [r for r in evaluate.list_runs(conn, cid)
+                     if r["phase"] == evaluate.PHASE_INCLUSION]
+        self.assertEqual(len(inclusion), 2)
         conn.close()
 
     def test_budget_stops_and_max_docs_caps(self):

@@ -32,7 +32,8 @@ from starlette.concurrency import run_in_threadpool
 
 from govuk_corpus import ai_models, audit
 from govuk_corpus import categories as cat
-from govuk_corpus import audit_stats, evaluate, orgs, peak_schedule, pricing, settings, shortlist
+from govuk_corpus import (audit_stats, category_interview, evaluate, orgs,
+                          peak_schedule, pricing, settings, shortlist)
 from govuk_corpus.backend import db
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -265,6 +266,11 @@ def _ai_config_for_phase(conn, phase: str) -> dict:
 
 
 def _ai_reply(config: dict, system: str, prompt: str) -> dict:
+    """Single-turn convenience wrapper over _ai_chat."""
+    return _ai_chat(config, system, [{"role": "user", "content": prompt}])
+
+
+def _ai_chat(config: dict, system: str, messages: list, max_tokens: int = 1024) -> dict:
     if not config.get("key"):
         return {"error": f"No API key set for {config['label']}. Add its key to "
                 f"~/gov-uk-corpus.env and restart, or pick a provider that has one in Settings."}
@@ -282,8 +288,7 @@ def _ai_reply(config: dict, system: str, prompt: str) -> dict:
         if ws and config["provider"] == "anthropic":
             client_kwargs["default_headers"] = {"anthropic-workspace-id": ws}
         client = anthropic.Anthropic(**client_kwargs)
-        kwargs = dict(model=config["model"], max_tokens=1024,
-                      messages=[{"role": "user", "content": prompt}])
+        kwargs = dict(model=config["model"], max_tokens=max_tokens, messages=list(messages))
         if system.strip():
             kwargs["system"] = system.strip()
         msg = client.messages.create(**kwargs)
@@ -395,6 +400,49 @@ def new_category_page(request: Request):
         return login_redirect(request)
     conn = connect()
     return templates.TemplateResponse("form.html", _form_ctx(conn, request, None, {}, []))
+
+
+# ---- category assistant (guided interview -> pre-fill the create form) ---
+@app.get("/categories/new/assistant", response_class=HTMLResponse)
+def category_assistant_page(request: Request):
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    resp = templates.TemplateResponse("category_assistant.html", ctx(
+        conn, request, greeting=category_interview.GREETING))
+    conn.close()
+    return resp
+
+
+@app.post("/api/categories/assistant")
+async def api_category_assistant(request: Request):
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    body = await request.json()
+    messages = body.get("messages") or []
+    if not isinstance(messages, list) or not messages:
+        return JSONResponse({"error": "no messages"}, status_code=400)
+    # Keep only role/content and cap history length to bound cost.
+    clean = [{"role": m.get("role"), "content": str(m.get("content") or "")}
+             for m in messages[-24:] if m.get("role") in ("user", "assistant")]
+    conn = connect()
+    try:
+        budget = _budget(conn)
+        spent = _daily_spend(conn)
+        if budget > 0 and spent >= budget:
+            return JSONResponse({"error": f"Daily AI budget of ${budget:.2f} reached "
+                                 f"(${spent:.4f} spent today)."}, status_code=429)
+        cfg = _ai_config(conn)
+        res = await run_in_threadpool(_ai_chat, cfg, category_interview.SYSTEM_PROMPT, clean)
+        if res.get("error"):
+            return JSONResponse({"error": res["error"]}, status_code=502)
+        _log_ai_usage(conn, res.get("cost_usd"), res.get("input_tokens"),
+                      res.get("output_tokens"), "assistant")
+        reply = res.get("reply", "")
+        fields = category_interview.parse_fields(reply)
+        return JSONResponse({"reply": reply, "fields": fields})
+    finally:
+        conn.close()
 
 
 @app.post("/categories/new")
