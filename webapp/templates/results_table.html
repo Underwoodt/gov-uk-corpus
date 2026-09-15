@@ -25,6 +25,13 @@
     </div>
   </details>
 
+  <div class="controls" style="margin:0 0 12px;align-items:center;gap:8px;">
+    <input id="search" type="search" placeholder="Search titles across all results…"
+      style="padding:8px 10px;border:2px solid var(--black);border-radius:6px;min-width:280px;font:inherit;">
+    <button class="btn secondary-btn" id="search-btn" type="button">Search</button>
+    <button class="btn secondary-btn" id="clear-btn" type="button" hidden>Clear</button>
+  </div>
+
   <div style="overflow-x:auto;">
     <table id="results" style="font-size:14px;"><thead></thead><tbody></tbody></table>
   </div>
@@ -40,7 +47,7 @@
   <script>
     const CID = {{ category.id }};
     const PAGE = 50;
-    let offset = 0, total = 0, rows = [];
+    let offset = 0, total = 0, rows = [], query = "";
     // key -> label, in section order (for headers).
     const COLS = [{% for section, fields in sections %}{% for key, label, d in fields %}{key:"{{ key }}",label:"{{ label }}"},{% endfor %}{% endfor %}];
     const fmtInt = n => Number(n||0).toLocaleString();
@@ -68,7 +75,9 @@
     async function load(){
       document.getElementById("status").innerHTML = '<span class="spinner"></span> Loading…';
       try {
-        const j = await (await fetch(`/api/categories/${CID}/results-table?limit=${PAGE}&offset=${offset}`)).json();
+        const url = `/api/categories/${CID}/results-table?limit=${PAGE}&offset=${offset}`
+          + (query ? `&q=${encodeURIComponent(query)}` : "");
+        const j = await (await fetch(url)).json();
         if (j.error) { document.getElementById("status").textContent = "Error: " + j.error; return; }
         total = j.total; rows = j.rows || [];   // total may be null if the count was slow
         const known = total != null;
@@ -88,6 +97,21 @@
     document.querySelectorAll(".col-toggle").forEach(c => c.addEventListener("change", render));
     document.getElementById("prev").addEventListener("click", () => { offset = Math.max(0, offset - PAGE); load(); });
     document.getElementById("next").addEventListener("click", () => { offset += PAGE; load(); });
+
+    // Title search across the whole shortlist (server-side), not just the page.
+    const searchInput = document.getElementById("search");
+    function runSearch() {
+      query = searchInput.value.trim();
+      offset = 0;
+      document.getElementById("clear-btn").hidden = !query;
+      document.getElementById("empty").textContent =
+        query ? `No titles match “${query}”.` : "No pages in this shortlist.";
+      load();
+    }
+    document.getElementById("search-btn").addEventListener("click", runSearch);
+    searchInput.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); runSearch(); } });
+    document.getElementById("clear-btn").addEventListener("click", () => { searchInput.value = ""; runSearch(); });
+
     load();
   </script>
 {% endblock %}

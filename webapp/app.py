@@ -1094,7 +1094,7 @@ def results_table_page(request: Request, cid: int):
 
 
 @app.get("/api/categories/{cid}/results-table")
-def api_results_table(request: Request, cid: int, limit: int = 50, offset: int = 0):
+def api_results_table(request: Request, cid: int, limit: int = 50, offset: int = 0, q: str = ""):
     if not authed(request):
         return JSONResponse({"error": "auth"}, status_code=401)
     limit = max(1, min(limit, 200))
@@ -1105,19 +1105,28 @@ def api_results_table(request: Request, cid: int, limit: int = 50, offset: int =
         conn.close()
         return JSONResponse({"error": "not found"}, status_code=404)
     filters = _effective_filters(conn, category)
+    q = (q or "").strip()
+    extra = {}
+    if q:
+        # Title contains `q`, over the WHOLE shortlist (not just the page). The wildcards
+        # live in the parameter value, so there is no literal '%' in the SQL text.
+        extra = {"extra_where": f"LOWER(c.title) LIKE LOWER({shortlist._P})",
+                 "extra_params": ["%" + q + "%"]}
     try:
         # Fetch the page of rows first — the important part. A single page is cheap even
         # when the whole-shortlist count is slow.
-        _keys, rows = shortlist.export_rows(conn, _RESULTS_FIELDS, limit=limit, offset=offset, **filters)
+        _keys, rows = shortlist.export_rows(conn, _RESULTS_FIELDS, limit=limit, offset=offset,
+                                            **filters, **extra)
     except Exception as e:
         conn.close()
         return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=500)
     try:
-        total = cached_count(conn, **filters)   # best-effort; null if it errors/times out
+        # A title search bypasses the count cache (its key ignores extra_where).
+        total = (shortlist.count(conn, **filters, **extra) if q else cached_count(conn, **filters))
     except Exception:
         total = None
     conn.close()
-    return JSONResponse({"total": total, "rows": rows, "limit": limit, "offset": offset})
+    return JSONResponse({"total": total, "rows": rows, "limit": limit, "offset": offset, "q": q})
 
 
 @app.get("/categories/{cid}/download", response_class=HTMLResponse)
