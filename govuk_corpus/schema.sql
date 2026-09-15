@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS content (
     gds_findings       TEXT,                 -- readable summary of the GDS issues found
     source             TEXT,                 -- sitemap | attachment | redirect | seed | other
     document_type      TEXT,
+    parent_document_type TEXT,     -- for html_publication: parent publication's type (from JSON)
     schema_name        TEXT,
     title              TEXT,
     description        TEXT,
@@ -58,6 +59,7 @@ CREATE TABLE IF NOT EXISTS content (
     last_changed_at    TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_content_document_type ON content(document_type);
+CREATE INDEX IF NOT EXISTS idx_content_parent_document_type ON content(parent_document_type);
 CREATE INDEX IF NOT EXISTS idx_content_source ON content(source);
 -- Partial indexes over the "usable page" guard every shortlist count carries.
 CREATE INDEX IF NOT EXISTS idx_content_usable
