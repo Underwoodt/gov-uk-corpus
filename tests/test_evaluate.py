@@ -81,6 +81,21 @@ class TestRuns(unittest.TestCase):
         self.assertEqual((r["pages"], r["kept"], r["dropped"], r["total_ms"]), (2, 1, 1, 400))
         self.assertAlmostEqual(r["cost"], 0.0025, places=6)
 
+    def test_compare_runs(self):
+        a = evaluate.create_run(self.conn, 1, "m", "anthropic")
+        b = evaluate.create_run(self.conn, 1, "m", "deepseek")
+        # p0: both keep (agree). p1: a keep, b drop (disagree). p2: only in a (not shared).
+        evaluate.save_page(self.conn, a, 1, "https://www.gov.uk/p0", {"keep": 1, "score": .9, "reason": ""}, 1)
+        evaluate.save_page(self.conn, a, 1, "https://www.gov.uk/p1", {"keep": 1, "score": .8, "reason": ""}, 1)
+        evaluate.save_page(self.conn, a, 1, "https://www.gov.uk/p2", {"keep": 1, "score": .7, "reason": ""}, 1)
+        evaluate.save_page(self.conn, b, 1, "https://www.gov.uk/p0", {"keep": 1, "score": .9, "reason": ""}, 1)
+        evaluate.save_page(self.conn, b, 1, "https://www.gov.uk/p1", {"keep": 0, "score": .3, "reason": ""}, 1)
+        c = evaluate.compare(self.conn, a, b)
+        self.assertEqual(c["shared"], 2)      # p0, p1 (p2 only in a)
+        self.assertEqual(c["kept"], 1)        # b kept p0
+        self.assertEqual(c["dropped"], 1)     # b dropped p1
+        self.assertEqual(c["disagree"], 1)    # p1 differs
+
     def test_list_runs_and_results_filter(self):
         run = evaluate.create_run(self.conn, 1, "m", "anthropic")
         evaluate.save_page(self.conn, run, 1, "https://www.gov.uk/p0", {"keep": 1, "score": 0.9, "reason": "a"}, 10)

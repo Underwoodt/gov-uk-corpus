@@ -148,6 +148,22 @@ def list_runs(conn, category_id: int) -> List[dict]:
     return [dict(r) for r in rows]
 
 
+def compare(conn, base_run: str, other_run: str) -> Dict[str, int]:
+    """Compare `other_run` to `base_run` over pages evaluated in BOTH: how many the
+    other run kept/dropped, and how many decisions disagree with the base run."""
+    sql = (
+        "SELECT COUNT(*) AS shared, "
+        "SUM(CASE WHEN o.keep = 1 THEN 1 ELSE 0 END) AS kept, "
+        "SUM(CASE WHEN o.keep = 0 THEN 1 ELSE 0 END) AS dropped, "
+        "SUM(CASE WHEN o.keep = b.keep THEN 0 "
+        "         WHEN o.keep IS NULL AND b.keep IS NULL THEN 0 ELSE 1 END) AS disagree "
+        "FROM evaluation_results b JOIN evaluation_results o ON o.url = b.url "
+        f"WHERE b.run_id = {_P} AND o.run_id = {_P}")
+    row = conn.execute(sql, (base_run, other_run)).fetchone()
+    return {"shared": row["shared"] or 0, "kept": row["kept"] or 0,
+            "dropped": row["dropped"] or 0, "disagree": row["disagree"] or 0}
+
+
 def run_results(conn, run_id: str, keep: Optional[int] = None,
                 limit: Optional[int] = None) -> List[dict]:
     sql = f"SELECT url, keep, score, reason FROM evaluation_results WHERE run_id = {_P}"

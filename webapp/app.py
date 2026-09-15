@@ -632,6 +632,16 @@ def api_list_runs(request: Request, cid: int):
     return JSONResponse(out)
 
 
+@app.get("/api/categories/{cid}/compare")
+def api_compare(request: Request, cid: int, base: str = "", other: str = ""):
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    conn = connect()
+    out = evaluate.compare(conn, base, other) if base and other else {}
+    conn.close()
+    return JSONResponse(out)
+
+
 @app.get("/api/categories/{cid}/runs/{run_id}/results")
 def api_run_results(request: Request, cid: int, run_id: str, keep: str = ""):
     if not authed(request):

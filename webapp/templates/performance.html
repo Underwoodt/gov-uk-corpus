@@ -36,6 +36,9 @@
         <tr data-metric="avgtime"><td>Average Evaluation Elapsed (min:sec)</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="totalcost"><td>Total Evaluation Cost</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="totaltime"><td>Total Evaluation Time</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="cmp-keep"><td>Decisions Keep (Sum, shared pages)</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="cmp-drop"><td>Decisions Drop (Sum, shared pages)</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="cmp-disagree"><td>Decisions disagree with Run 1 (Sum)</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
       </tbody>
     </table>
   </div>
@@ -69,7 +72,26 @@
       set("totalcost", "$" + (r.cost || 0).toFixed(6));
       set("totaltime", fmtMS(secsTotal));
     }
-    function renderAll() { [0, 1, 2].forEach(renderColumn); }
+    const fmtInt = n => Number(n || 0).toLocaleString();
+
+    // Runs 2 & 3 compared to Run 1 (baseline) over pages evaluated in both.
+    async function renderComparisons() {
+      const base = document.getElementById("pick-0").value;
+      const CMP = ["cmp-keep", "cmp-drop", "cmp-disagree"];
+      CMP.forEach(m => cell(m, 0).textContent = "-");   // baseline column
+      for (const col of [1, 2]) {
+        const other = document.getElementById(`pick-${col}`).value;
+        const setAll = v => CMP.forEach(m => cell(m, col).textContent = v);
+        if (!base || !other || other === base) { setAll("—"); continue; }
+        try {
+          const j = await (await fetch(`/api/categories/${CID}/compare?base=${base}&other=${other}`)).json();
+          cell("cmp-keep", col).textContent = fmtInt(j.kept);
+          cell("cmp-drop", col).textContent = fmtInt(j.dropped);
+          cell("cmp-disagree", col).textContent = fmtInt(j.disagree);
+        } catch (e) { setAll("—"); }
+      }
+    }
+    function renderAll() { [0, 1, 2].forEach(renderColumn); renderComparisons(); }
 
     async function load() {
       const j = await (await fetch(`/api/categories/${CID}/runs`)).json();
@@ -82,7 +104,7 @@
         sel.innerHTML = '<option value="">—</option>' + RUNS.map(r =>
           `<option value="${r.run_id}">${fmtDate(r.started_at)} · ${r.actual_model || r.model || ""}</option>`).join("");
         if (RUNS[col]) sel.value = RUNS[col].run_id;   // default: three most recent
-        sel.addEventListener("change", () => renderColumn(col));
+        sel.addEventListener("change", () => { renderColumn(col); renderComparisons(); });
       });
       renderAll();
     }
