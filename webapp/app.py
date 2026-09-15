@@ -32,7 +32,7 @@ from starlette.concurrency import run_in_threadpool
 
 from govuk_corpus import ai_models, audit
 from govuk_corpus import categories as cat
-from govuk_corpus import evaluate, orgs, peak_schedule, pricing, settings, shortlist
+from govuk_corpus import audit_stats, evaluate, orgs, peak_schedule, pricing, settings, shortlist
 from govuk_corpus.backend import db
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -538,6 +538,47 @@ def api_funnel(request: Request, cid: int, stage: str = "all"):
     return JSONResponse({"stage": stage, "label": label, "count": n})
 
 
+@app.get("/categories/{cid}/audit-dashboard", response_class=HTMLResponse)
+def audit_dashboard_page(request: Request, cid: int):
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    category = cat.get_category(conn, cid)
+    if not category:
+        conn.close()
+        return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
+    category["display_name"] = cat.prettify(category.get("slug")) or (category.get("description") or "Untitled")
+    stages = [(s, _FUNNEL_STAGES[s][0]) for s in ("all", "org", "doctype", "keyword")]
+    resp = templates.TemplateResponse("audit_dashboard.html", ctx(
+        conn, request, category=category, stages=stages))
+    conn.close()
+    return resp
+
+
+@app.get("/api/categories/{cid}/audit-stats")
+def api_audit_stats(request: Request, cid: int, stage: str = "keyword"):
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    if stage not in _FUNNEL_STAGES:
+        return JSONResponse({"error": "unknown stage"}, status_code=404)
+    conn = connect()
+    category = cat.get_category(conn, cid)
+    if not category:
+        conn.close()
+        return JSONResponse({"error": "not found"}, status_code=404)
+    filters = _effective_filters(conn, category)
+    applies = _FUNNEL_STAGES[stage][1]     # which filters this stage applies
+    kw = {k: filters[k] for k in applies}
+    kw.setdefault("match", "any")
+    try:
+        out = audit_stats.stats(conn, **kw)
+    except Exception as e:
+        conn.close()
+        return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=500)
+    conn.close()
+    return JSONResponse(out)
+
+
 @app.get("/api/categories/{cid}/keyword-breakdown")
 def api_keyword_breakdown(request: Request, cid: int):
     """Pages matching EACH keyword individually, within the org + document-type set —
@@ -834,20 +875,31 @@ def download_run(request: Request, cid: int, run_id: str):
 
 
 # ---- download page (choose format + fields) -----------------------------
-# (key, label, default_on, disabled, warning)
-_DOWNLOAD_FIELDS = [
-    ("url", "URL", True, True, None),
-    ("title", "Title", True, False, None),
-    ("document_type", "Document type", True, False, None),
-    ("parent_document_type", "Parent document type", False, False,
-     "for html_publication pages: the parent publication's type (from the page JSON)"),
-    ("size", "Size", True, False, None),
-    ("readability", "Readability score", False, False, None),
-    ("gds_issues", "GDS number of issues", False, False, None),
-    ("gds_findings", "GDS issues text", False, False, None),
-    ("content", "Content", False, False, "warning: may make the download very large"),
-    ("first_published_at", "First published at", False, False, None),
-    ("public_updated_at", "Public updated at", False, False, None),
+# Grouped into sections for the download page. Each field: (key, label, default_on,
+# disabled, warning). 'url' is mandatory (disabled + on).
+_DOWNLOAD_SECTIONS = [
+    ("Content", [
+        ("url", "URL", True, True, None),
+        ("title", "Title", True, False, None),
+        ("document_type", "Document type", True, False, None),
+        ("parent_document_type", "Parent document type", False, False,
+         "for html_publication pages: the parent publication's type"),
+        ("content", "Content (raw JSON)", False, False, "warning: may make the download very large"),
+    ]),
+    ("Ownership", [
+        ("organisations", "Organisations", False, False, "all linked organisation slugs"),
+        ("primary_org", "Primary publishing organisation", False, False, None),
+    ]),
+    ("Freshness", [
+        ("first_published_at", "First published at", False, False, None),
+        ("public_updated_at", "Public updated at", False, False, None),
+    ]),
+    ("Quality attributes", [
+        ("size", "Size", True, False, None),
+        ("readability", "Readability score", False, False, None),
+        ("gds_issues", "GDS number of issues", False, False, None),
+        ("gds_findings", "GDS issues text", False, False, None),
+    ]),
 ]
 
 
@@ -863,7 +915,7 @@ def download_page(request: Request, cid: int):
     category["display_name"] = cat.prettify(category.get("slug")) or (category.get("description") or "Untitled")
     total = cached_count(conn, **_effective_filters(conn, category))
     resp = templates.TemplateResponse("download.html", ctx(
-        conn, request, category=category, total=total, fields=_DOWNLOAD_FIELDS))
+        conn, request, category=category, total=total, sections=_DOWNLOAD_SECTIONS))
     conn.close()
     return resp
 
