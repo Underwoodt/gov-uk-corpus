@@ -56,6 +56,25 @@ class TestResultsTable(unittest.TestCase):
         self.assertIsNone(j["total"])
         self.assertEqual(len(j["rows"]), 3)
 
+    def test_title_search_spans_whole_result_set(self):
+        from govuk_corpus import categories as cat
+        conn = self.app.connect()
+        # add 10 more pages: half "Slurry storage", half "Manure plan"
+        for i in range(10):
+            title = f"Slurry storage {i}" if i % 2 == 0 else f"Manure plan {i}"
+            conn.execute("INSERT INTO content (url, document_type, is_redirect, content_hash, search_text, title) "
+                         "VALUES (?, 'guidance', 0, 'h', 'slurry', ?)", (f"https://www.gov.uk/s{i:02d}", title))
+            conn.execute("INSERT INTO page_organisations (page_url, organisation_content_id, organisation_slug, role) "
+                         "VALUES (?,?,?,?)", (f"https://www.gov.uk/s{i:02d}", "ea", "environment-agency", "primary"))
+        conn.commit(); conn.close()
+        # q filters the whole shortlist (not just a page); case-insensitive
+        j = self.c.get(f"/api/categories/{self.cid}/results-table?limit=50&q=STORAGE").json()
+        self.assertEqual(j["total"], 5)
+        self.assertTrue(all("Slurry storage" in r["title"] for r in j["rows"]))
+        self.assertEqual(j["q"], "STORAGE")
+        # no matches
+        self.assertEqual(self.c.get(f"/api/categories/{self.cid}/results-table?q=zzzz").json()["total"], 0)
+
     def test_rows_error_returns_json_not_plain_500(self):
         # A failing rows query returns a JSON error (so the UI shows the message,
         # not the generic "Could not load results").
