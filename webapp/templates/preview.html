@@ -153,9 +153,9 @@
     const sankeyCounts = {};
     function drawSankey() {
       const svg = document.getElementById("sankey");
-      if (["all", "org", "doctype", "keyword"].some(k => sankeyCounts[k] == null)) return;
+      if (["org", "doctype", "keyword"].some(k => sankeyCounts[k] == null)) return;
+      // Start at the organisation stage — "All pages" (the whole corpus) would dwarf the rest.
       const stages = [
-        { name: "All pages", n: sankeyCounts.all },
         { name: "After organisation", n: sankeyCounts.org },
         { name: "After document type", n: sankeyCounts.doctype },
         { name: "After keyword (kept)", n: sankeyCounts.keyword },
