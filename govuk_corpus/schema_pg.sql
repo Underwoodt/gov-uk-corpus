@@ -155,12 +155,18 @@ CREATE INDEX IF NOT EXISTS idx_ai_usage_day ON ai_usage(day);
 
 -- User-editable AI models (supplier + model id + prices) for the assistant/evaluation.
 CREATE TABLE IF NOT EXISTS ai_models (
-    id           bigint PRIMARY KEY,
-    provider     text,
-    model_id     text,
-    input_per_m  real,
-    output_per_m real,
-    created_at   text
+    id            bigint PRIMARY KEY,
+    provider      text,
+    model_id      text,
+    input_per_m   real,   -- standard input rate = in_miss_off (USD / 1M)
+    output_per_m  real,   -- standard output rate = out_off (USD / 1M)
+    in_hit_off    real,   -- input, cache hit, off-peak
+    in_hit_peak   real,   -- input, cache hit, peak
+    in_miss_off   real,   -- input, cache miss, off-peak
+    in_miss_peak  real,   -- input, cache miss, peak
+    out_off       real,   -- output, off-peak
+    out_peak      real,   -- output, peak
+    created_at    text
 );
 CREATE INDEX IF NOT EXISTS idx_ai_models_provider ON ai_models(provider, model_id);
 
@@ -244,3 +250,19 @@ ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS phase text DEFAULT 'Phase 1
 -- Per-run token totals (added after evaluation_runs shipped). Existing rows start at 0.
 ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS in_tokens  bigint DEFAULT 0;
 ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS out_tokens bigint DEFAULT 0;
+
+-- Tiered model pricing (added after ai_models shipped with a single input/output rate).
+-- Backfill each tier from the existing standard rate; users then edit the real grid.
+ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS in_hit_off   real;
+ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS in_hit_peak  real;
+ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS in_miss_off  real;
+ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS in_miss_peak real;
+ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS out_off      real;
+ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS out_peak     real;
+UPDATE ai_models SET in_miss_off  = COALESCE(in_miss_off,  input_per_m),
+                     in_miss_peak = COALESCE(in_miss_peak, input_per_m),
+                     in_hit_off   = COALESCE(in_hit_off,   input_per_m),
+                     in_hit_peak  = COALESCE(in_hit_peak,  input_per_m),
+                     out_off      = COALESCE(out_off,       output_per_m),
+                     out_peak     = COALESCE(out_peak,      output_per_m)
+ WHERE in_miss_off IS NULL OR out_off IS NULL;
