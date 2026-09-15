@@ -912,6 +912,16 @@ def download_audit(request: Request, cid: int, outcome: str = ""):
     if not authed(request):
         return login_redirect(request)
     conn = connect()
+    category = cat.get_category(conn, cid)
+    if not category:
+        conn.close()
+        return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
+    # Built on demand (there is no separate build step) so the file always reflects the
+    # current definition. Requires an organisation — the audit starts at the org filter.
+    filters = _effective_filters(conn, category)
+    if filters["organisations"]:
+        audit.build_audit(conn, cid, filters["organisations"],
+                          filters["document_types"], filters["keywords"])
     rows = audit.audit_rows(conn, cid, outcome=outcome or None)
     conn.close()
     buf = io.StringIO()
