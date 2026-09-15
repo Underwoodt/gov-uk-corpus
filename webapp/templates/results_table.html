@@ -70,15 +70,18 @@
       try {
         const j = await (await fetch(`/api/categories/${CID}/results-table?limit=${PAGE}&offset=${offset}`)).json();
         if (j.error) { document.getElementById("status").textContent = "Error: " + j.error; return; }
-        total = j.total; rows = j.rows || [];
-        document.getElementById("total").textContent = fmtInt(total);
-        document.getElementById("empty").hidden = total !== 0;
+        total = j.total; rows = j.rows || [];   // total may be null if the count was slow
+        const known = total != null;
+        document.getElementById("total").textContent = known ? fmtInt(total) : "?";
+        document.getElementById("empty").hidden = rows.length !== 0 || (known && total !== 0);
         render();
-        const from = total ? offset + 1 : 0, to = Math.min(offset + PAGE, total);
-        document.getElementById("range").textContent = `${fmtInt(from)}–${fmtInt(to)} of ${fmtInt(total)}`;
+        const from = rows.length ? offset + 1 : 0, to = offset + rows.length;
+        document.getElementById("range").textContent =
+          `${fmtInt(from)}–${fmtInt(to)}` + (known ? ` of ${fmtInt(total)}` : "");
         document.getElementById("prev").disabled = offset <= 0;
-        document.getElementById("next").disabled = offset + PAGE >= total;
-        document.getElementById("pager").hidden = total <= PAGE;
+        // With an unknown total, allow Next while a full page came back.
+        document.getElementById("next").disabled = known ? (offset + PAGE >= total) : (rows.length < PAGE);
+        document.getElementById("pager").hidden = offset === 0 && rows.length < PAGE;
         document.getElementById("status").textContent = "";
       } catch(e){ document.getElementById("status").textContent = "Could not load results."; }
     }
