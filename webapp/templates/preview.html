@@ -96,19 +96,9 @@
     </div>
     <span class="actions" style="margin-top:10px;">
       <a class="btn secondary-btn" href="{{ url_for('results_table_page', cid=category.id) }}">View results table</a>
+      <a class="btn secondary-btn" href="{{ url_for('missing_links_page', cid=category.id) }}">Missing links</a>
       <a class="btn secondary-btn" href="{{ url_for('download_page', cid=category.id) }}">Download…</a>
     </span>
-
-    <h2 style="margin-top:30px;">Links to pages not in the corpus</h2>
-    <p class="hint" style="margin-top:-20px;">Scans this shortlist's page bodies for gov.uk links that point to pages
-      the corpus doesn't have — ranked by how many pages link to each. Reads page content, so it's on demand.</p>
-    <button type="button" class="btn secondary-btn" id="check-links">Check for missing links</button>
-    <span id="links-status" class="secondary" style="margin-left:12px;"></span>
-    <table id="link-gaps" hidden style="margin-top:16px;">
-      <thead><tr><th>Missing gov.uk page</th><th class="num">Linked from</th></tr></thead>
-      <tbody></tbody>
-    </table>
-    <p id="link-gaps-empty" class="secondary" hidden>No missing links found in the scanned pages.</p>
 
     <details style="margin-top:30px;"><summary>SQL queries that were run (per funnel stage)</summary>
       <div class="detail" style="max-width:none;"><pre class="mono" style="white-space:pre-wrap;font-size:14px;">{{ sql }}</pre>
@@ -525,26 +515,6 @@
         Object.keys(sankeyCounts).forEach(k => delete sankeyCounts[k]);
         await runFunnel();   // re-fetches every stage (now cache misses) + reloads the breakdowns
       } finally { btn.disabled = false; }
-    });
-
-    // On-demand: gov.uk links in the shortlist's bodies that aren't in the corpus.
-    document.getElementById("check-links").addEventListener("click", async e => {
-      const btn = e.currentTarget, status = document.getElementById("links-status");
-      const table = document.getElementById("link-gaps"), tbody = table.querySelector("tbody");
-      btn.disabled = true; status.innerHTML = '<span class="spinner"></span> Scanning page bodies…';
-      table.hidden = true; document.getElementById("link-gaps-empty").hidden = true;
-      try {
-        const j = await (await fetch(`/api/categories/${CID}/link-gaps`)).json();
-        if (j.error) { status.textContent = "Error: " + j.error; return; }
-        status.textContent = `${fmtInt(j.missing_count)} missing of ${fmtInt(j.distinct_links)} distinct gov.uk links `
-          + `· scanned ${fmtInt(j.scanned)} page${j.scanned === 1 ? "" : "s"}${j.sampled ? " (sample)" : ""}`;
-        tbody.innerHTML = (j.missing || []).map(m =>
-          `<tr><td><a href="${esc(m.url)}">${esc(m.url)}</a></td>` +
-          `<td class="num">${fmtInt(m.count)}</td></tr>`).join("");
-        table.hidden = (j.missing || []).length === 0;
-        document.getElementById("link-gaps-empty").hidden = (j.missing || []).length !== 0;
-      } catch (err) { status.textContent = "Could not scan links."; }
-      finally { btn.disabled = false; }
     });
 
     runFunnel();  // fills the funnel table and draws the Sankey

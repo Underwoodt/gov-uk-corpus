@@ -50,15 +50,35 @@ class TestFindMissing(unittest.TestCase):
     def tearDown(self):
         self.conn.close()
 
-    def test_missing_ranked_by_link_count(self):
+    def test_missing_pairs_per_source(self):
         res = link_gaps.find_missing_links(self.conn, organisations=["environment-agency"],
                                            document_types=["guidance"], keywords=["slurry"], match="any")
-        m = {x["url"]: x["count"] for x in res["missing"]}
-        self.assertEqual(m.get("https://www.gov.uk/missing-a"), 2)   # p0 + p1
-        self.assertEqual(m.get("https://www.gov.uk/missing-b"), 1)
-        self.assertNotIn("https://www.gov.uk/in-corpus", m)          # exists -> not missing
-        self.assertEqual(res["missing"][0]["url"], "https://www.gov.uk/missing-a")  # ranked
+        pairs = {(p["page"], p["link"]) for p in res["pairs"]}
+        A, B = "https://www.gov.uk/missing-a", "https://www.gov.uk/missing-b"
+        p0, p1 = "https://www.gov.uk/p0", "https://www.gov.uk/p1"
+        self.assertEqual(pairs, {(p0, A), (p1, A), (p1, B)})         # source -> missing link
+        # in-corpus exists, so it is never a missing link
+        self.assertFalse(any(pl.endswith("/in-corpus") for _, pl in pairs))
+        self.assertEqual(res["pair_count"], 3)
+        self.assertEqual(res["missing_count"], 2)                    # distinct missing targets
+        self.assertEqual(res["pages_with_missing"], 2)
         self.assertFalse(res["sampled"])
+        self.assertFalse(res["truncated"])
+
+    def test_max_pairs_truncates(self):
+        res = link_gaps.find_missing_links(self.conn, organisations=["environment-agency"],
+                                           document_types=["guidance"], keywords=["slurry"],
+                                           match="any", max_pairs=1)
+        self.assertEqual(len(res["pairs"]), 1)
+        self.assertEqual(res["pair_count"], 3)   # full count regardless of the display cap
+        self.assertTrue(res["truncated"])
+
+    def test_sql_text_shows_both_steps(self):
+        sql = link_gaps.sql_text(organisations=["environment-agency"],
+                                 document_types=["guidance"], keywords=["slurry"], match="any")
+        self.assertIn("Step 1", sql)
+        self.assertIn("Step 2", sql)
+        self.assertIn("environment-agency", sql)   # interpolated filter value
 
 
 if __name__ == "__main__":
