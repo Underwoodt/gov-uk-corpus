@@ -32,7 +32,7 @@ from starlette.concurrency import run_in_threadpool
 
 from govuk_corpus import ai_models, audit
 from govuk_corpus import categories as cat
-from govuk_corpus import (audit_stats, category_interview, evaluate, orgs,
+from govuk_corpus import (audit_stats, category_interview, evaluate, link_gaps, orgs,
                           peak_schedule, pricing, settings, shortlist)
 from govuk_corpus.backend import db
 
@@ -694,6 +694,26 @@ def api_audit_stats(request: Request, cid: int, stage: str = "keyword"):
     kw.setdefault("match", "any")
     try:
         out = audit_stats.stats(conn, **kw)
+    except Exception as e:
+        conn.close()
+        return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=500)
+    conn.close()
+    return JSONResponse(out)
+
+
+@app.get("/api/categories/{cid}/link-gaps")
+def api_link_gaps(request: Request, cid: int):
+    """gov.uk links in this shortlist's page bodies that point to pages NOT in the corpus."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    conn = connect()
+    category = cat.get_category(conn, cid)
+    if not category:
+        conn.close()
+        return JSONResponse({"error": "not found"}, status_code=404)
+    filters = _effective_filters(conn, category)
+    try:
+        out = link_gaps.find_missing_links(conn, **filters)
     except Exception as e:
         conn.close()
         return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=500)
