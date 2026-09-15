@@ -443,9 +443,11 @@ def preview_category_page(request: Request, cid: int):
     # SQL preview is cheap (no DB hit) — render it inline.
     sql, params = shortlist.build_query(include_title=True, limit=10000, **filters)
     pretty = shortlist.pretty_sql(shortlist.interpolate_sql(sql, params))
+    eval_max_docs = _max_docs(conn)
     conn.close()
     return templates.TemplateResponse("preview.html", ctx(
-        connect(), request, category=category, sql=pretty, stages=stages))
+        connect(), request, category=category, sql=pretty, stages=stages,
+        eval_max_docs=eval_max_docs))
 
 
 @app.get("/api/categories/{cid}/funnel")
