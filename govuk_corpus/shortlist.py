@@ -221,12 +221,25 @@ else:
         "json_extract(c.content, '$.links.parent.document_type')) END")
 _PARENT_DT_EXPR = f"COALESCE(c.parent_document_type, {_PARENT_DT_JSON})"
 
+# All organisation slugs linked to the page, comma-joined (correlated subquery).
+if _IS_PG:
+    _ORGS_EXPR = ("(SELECT string_agg(DISTINCT po.organisation_slug, ', ') "
+                  "FROM page_organisations po WHERE po.page_url = c.url)")
+else:
+    _ORGS_EXPR = ("(SELECT group_concat(DISTINCT po.organisation_slug) "
+                  "FROM page_organisations po WHERE po.page_url = c.url)")
+# The page's primary-role organisation (its publishing organisation), if recorded.
+_PRIMARY_ORG_EXPR = ("(SELECT po.organisation_slug FROM page_organisations po "
+                     "WHERE po.page_url = c.url AND po.role = 'primary' LIMIT 1)")
+
 # Exportable fields: key -> (SQL expression, human label). 'url' is mandatory.
 EXPORT_FIELDS = {
     "url": ("c.url", "URL"),
     "title": ("c.title", "Title"),
     "document_type": ("c.document_type", "Document type"),
     "parent_document_type": (_PARENT_DT_EXPR, "Parent document type"),
+    "organisations": (_ORGS_EXPR, "Organisations"),
+    "primary_org": (_PRIMARY_ORG_EXPR, "Primary publishing organisation"),
     "size": (_SIZE_EXPR, "Size (bytes)"),
     "readability": ("c.reading_age", "Readability (reading age)"),
     "gds_issues": ("c.gds_english_score", "GDS issues (count)"),

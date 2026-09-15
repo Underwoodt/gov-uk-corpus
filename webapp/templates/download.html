@@ -21,13 +21,20 @@
     <div class="field">
       <label class="q">Fields to include</label>
       <p class="hint">URL is always included.</p>
-      <div style="display:flex;flex-direction:column;gap:12px;max-width:640px;">
-        {% for key, label, default_on, disabled, warning in fields %}
-        <label class="check">
-          <input type="checkbox" name="fields" value="{{ key }}"
-            {{ 'checked' if default_on }} {{ 'disabled' if disabled }}>
-          {{ label }}{% if warning %} <span class="secondary">— {{ warning }}</span>{% endif %}
-        </label>
+      <div style="max-width:640px;">
+        {% for section, section_fields in sections %}
+        <fieldset style="border:0;padding:0;margin:0 0 22px;">
+          <legend style="font-weight:700;font-size:17px;padding:0;margin:0 0 8px;border-bottom:2px solid var(--black);width:100%;">{{ section }}</legend>
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            {% for key, label, default_on, disabled, warning in section_fields %}
+            <label class="check">
+              <input type="checkbox" name="fields" value="{{ key }}"
+                {{ 'checked' if default_on }} {{ 'disabled' if disabled }}>
+              {{ label }}{% if warning %} <span class="secondary">— {{ warning }}</span>{% endif %}
+            </label>
+            {% endfor %}
+          </div>
+        </fieldset>
         {% endfor %}
       </div>
     </div>

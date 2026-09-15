@@ -834,20 +834,31 @@ def download_run(request: Request, cid: int, run_id: str):
 
 
 # ---- download page (choose format + fields) -----------------------------
-# (key, label, default_on, disabled, warning)
-_DOWNLOAD_FIELDS = [
-    ("url", "URL", True, True, None),
-    ("title", "Title", True, False, None),
-    ("document_type", "Document type", True, False, None),
-    ("parent_document_type", "Parent document type", False, False,
-     "for html_publication pages: the parent publication's type (from the page JSON)"),
-    ("size", "Size", True, False, None),
-    ("readability", "Readability score", False, False, None),
-    ("gds_issues", "GDS number of issues", False, False, None),
-    ("gds_findings", "GDS issues text", False, False, None),
-    ("content", "Content", False, False, "warning: may make the download very large"),
-    ("first_published_at", "First published at", False, False, None),
-    ("public_updated_at", "Public updated at", False, False, None),
+# Grouped into sections for the download page. Each field: (key, label, default_on,
+# disabled, warning). 'url' is mandatory (disabled + on).
+_DOWNLOAD_SECTIONS = [
+    ("Content", [
+        ("url", "URL", True, True, None),
+        ("title", "Title", True, False, None),
+        ("document_type", "Document type", True, False, None),
+        ("parent_document_type", "Parent document type", False, False,
+         "for html_publication pages: the parent publication's type"),
+        ("content", "Content (raw JSON)", False, False, "warning: may make the download very large"),
+    ]),
+    ("Ownership", [
+        ("organisations", "Organisations", False, False, "all linked organisation slugs"),
+        ("primary_org", "Primary publishing organisation", False, False, None),
+    ]),
+    ("Freshness", [
+        ("first_published_at", "First published at", False, False, None),
+        ("public_updated_at", "Public updated at", False, False, None),
+    ]),
+    ("Quality attributes", [
+        ("size", "Size", True, False, None),
+        ("readability", "Readability score", False, False, None),
+        ("gds_issues", "GDS number of issues", False, False, None),
+        ("gds_findings", "GDS issues text", False, False, None),
+    ]),
 ]
 
 
@@ -863,7 +874,7 @@ def download_page(request: Request, cid: int):
     category["display_name"] = cat.prettify(category.get("slug")) or (category.get("description") or "Untitled")
     total = cached_count(conn, **_effective_filters(conn, category))
     resp = templates.TemplateResponse("download.html", ctx(
-        conn, request, category=category, total=total, fields=_DOWNLOAD_FIELDS))
+        conn, request, category=category, total=total, sections=_DOWNLOAD_SECTIONS))
     conn.close()
     return resp
 
