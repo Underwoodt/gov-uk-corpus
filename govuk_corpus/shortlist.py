@@ -210,8 +210,10 @@ def detail_rows(conn, **kwargs) -> List[dict]:
 # NULL instead of erroring the whole export, and tolerant of links.parent being an array
 # or a single object. COALESCE short-circuits, so backfilled rows skip the JSON cast.
 if _IS_PG:
+    # NB: the literal '%' in the LIKE must be doubled to '%%' — psycopg parses the query
+    # for parameter placeholders and treats a bare '%' as an (invalid) placeholder.
     _PARENT_DT_JSON = (
-        "CASE WHEN c.content IS NOT NULL AND btrim(c.content) LIKE '{%' THEN "
+        "CASE WHEN c.content IS NOT NULL AND btrim(c.content) LIKE '{%%' THEN "
         "COALESCE(c.content::jsonb #>> '{links,parent,0,document_type}', "
         "c.content::jsonb #>> '{links,parent,document_type}') END")
 else:
