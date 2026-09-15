@@ -79,33 +79,47 @@
 
     <h2 style="margin-top:30px;">AI evaluation (inclusion pass)</h2>
     <p class="hint" style="margin-top:-20px;">Ask the AI to judge each shortlisted page against this category's
-      <em>Include</em> / <em>Exclude</em> context — keep or drop, with a score and reason. Runs a capped batch
-      each time (resumable); uses the provider set in Settings and spends API credit.</p>
+      <em>Include</em> / <em>Exclude</em> context — keep or drop, with a score and reason. Each <strong>run</strong>
+      uses one fixed model (set in Settings), so you can start a new run after switching model and compare results
+      and cost. Runs in capped batches; uses API credit.</p>
     <div class="controls">
       <label>Evaluate next
         <input id="eval-n" type="number" value="10" min="1" max="{{ eval_max_docs }}" style="width:80px;padding:4px;border:2px solid var(--black);">
         pages</label>
       <span class="secondary">(max {{ eval_max_docs }}/run — Settings)</span>
-      <button type="button" class="btn secondary-btn" id="run-eval">Evaluate</button>
+      <button type="button" class="btn secondary-btn" id="run-eval">Evaluate (active run)</button>
+      <button type="button" class="btn secondary-btn" id="new-run">Start new run</button>
       <span id="eval-status" class="secondary"></span>
     </div>
+    <p id="active-run-line" class="secondary" style="margin:0 0 10px;"></p>
     <div id="eval-progress-wrap" hidden style="max-width:640px;margin:0 0 15px;">
       <div style="height:18px;border:1px solid var(--grey-border);background:var(--white);">
         <div id="eval-progress-bar" style="height:100%;width:0%;background:var(--blue);transition:width .2s;"></div>
       </div>
       <p id="eval-averages" class="secondary timing" style="margin:6px 0 0;"></p>
     </div>
-    <div class="controls" id="eval-controls" hidden>
-      <span id="eval-summary" class="secondary"></span>
-      <a href="#" id="eval-filter-all" onclick="loadEval('');return false">All</a>
-      <a href="#" id="eval-filter-keep" onclick="loadEval('1');return false">Keep</a>
-      <a href="#" id="eval-filter-drop" onclick="loadEval('0');return false">Drop</a>
-      <a href="{{ url_for('download_evaluation', cid=category.id) }}">Download CSV</a>
-    </div>
-    <table id="eval-results" hidden style="margin-top:12px;">
-      <thead><tr><th>Page</th><th>Decision</th><th class="num">Score</th><th>Reason</th></tr></thead>
+
+    <h3 style="margin:20px 0 6px;">Runs</h3>
+    <table id="runs-table" hidden>
+      <thead><tr><th>Started</th><th>Model</th><th class="num">Pages</th><th class="num">Keep</th>
+        <th class="num">Drop</th><th class="num">Cost</th><th class="num">Avg s</th><th></th></tr></thead>
       <tbody></tbody>
     </table>
+    <p id="runs-empty" class="secondary" hidden>No runs yet. Click <em>Evaluate</em> to start one.</p>
+
+    <div id="run-results-wrap" hidden>
+      <div class="controls">
+        <span id="run-results-title" class="secondary"></span>
+        <a href="#" id="rr-all">All</a>
+        <a href="#" id="rr-keep">Keep</a>
+        <a href="#" id="rr-drop">Drop</a>
+        <a href="#" id="rr-csv">Download CSV</a>
+      </div>
+      <table id="run-results">
+        <thead><tr><th>Page</th><th>Decision</th><th class="num">Score</th><th>Reason</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
 
     <details style="margin-top:30px;"><summary>SQL query that was run</summary>
       <div class="detail" style="max-width:none;"><pre class="mono" style="white-space:pre-wrap;font-size:14px;">{{ sql }}</pre>
@@ -231,16 +245,46 @@
     // AI evaluation
     const runEvalBtn = document.getElementById("run-eval");
     function decisionText(k) { return k === 1 ? "keep" : k === 0 ? "drop" : "—"; }
-    async function loadEval(keep) {
-      const r = await fetch(`/api/categories/${CID}/evaluate/results?keep=${keep}`);
-      const j = await r.json();
-      const s = j.summary;
-      document.getElementById("eval-controls").hidden = false;
-      document.getElementById("eval-summary").textContent =
-        `${fmtInt(s.evaluated)} evaluated · ${fmtInt(s.kept)} keep · ${fmtInt(s.dropped)} drop`
-        + (s.unparseable ? ` · ${fmtInt(s.unparseable)} unparseable` : "");
-      const table = document.getElementById("eval-results");
+    const newRunBtn = document.getElementById("new-run");
+    let selectedRun = null, activeRun = null;
+
+    function fmtDate(s) { return s ? String(s).slice(0, 19).replace("T", " ") : "—"; }
+
+    async function loadRuns() {
+      const j = await (await fetch(`/api/categories/${CID}/runs`)).json();
+      activeRun = j.active || null;
+      document.getElementById("active-run-line").textContent =
+        activeRun ? `Active run: ${activeRun} (evaluate adds to it; “Start new run” to compare a different model).`
+                  : "No active run — “Evaluate” starts one with the model set in Settings.";
+      const table = document.getElementById("runs-table");
       const tbody = table.querySelector("tbody");
+      tbody.innerHTML = "";
+      for (const r of j.runs) {
+        const avg = r.pages ? (r.total_ms / r.pages / 1000).toFixed(1) : "—";
+        const tr = document.createElement("tr");
+        if (r.run_id === activeRun) tr.style.fontWeight = "700";
+        tr.innerHTML =
+          `<td>${fmtDate(r.started_at)}</td><td>${esc(r.model || "")}</td>` +
+          `<td class="num">${fmtInt(r.pages)}</td><td class="num">${fmtInt(r.kept)}</td>` +
+          `<td class="num">${fmtInt(r.dropped)}</td><td class="num">$${(r.cost||0).toFixed(6)}</td>` +
+          `<td class="num">${avg}</td><td><a href="#" data-run="${r.run_id}">View</a></td>`;
+        tbody.appendChild(tr);
+      }
+      table.hidden = j.runs.length === 0;
+      document.getElementById("runs-empty").hidden = j.runs.length !== 0;
+      table.querySelectorAll("a[data-run]").forEach(a =>
+        a.addEventListener("click", e => { e.preventDefault(); loadRunResults(a.dataset.run, ""); }));
+    }
+
+    async function loadRunResults(runId, keep) {
+      selectedRun = runId;
+      const j = await (await fetch(`/api/categories/${CID}/runs/${runId}/results?keep=${keep}`)).json();
+      document.getElementById("run-results-wrap").hidden = false;
+      const run = j.run || {};
+      document.getElementById("run-results-title").textContent =
+        `Run ${runId} · ${run.model || ""} · ${fmtInt(run.kept)} keep · ${fmtInt(run.dropped)} drop`;
+      document.getElementById("rr-csv").href = `/categories/${CID}/runs/${runId}/download`;
+      const tbody = document.querySelector("#run-results tbody");
       tbody.innerHTML = "";
       for (const row of j.rows) {
         const tr = document.createElement("tr");
@@ -251,8 +295,21 @@
           `<td>${esc(row.reason || "")}</td>`;
         tbody.appendChild(tr);
       }
-      table.hidden = j.rows.length === 0;
     }
+    document.getElementById("rr-all").addEventListener("click", e => { e.preventDefault(); if (selectedRun) loadRunResults(selectedRun, ""); });
+    document.getElementById("rr-keep").addEventListener("click", e => { e.preventDefault(); if (selectedRun) loadRunResults(selectedRun, "1"); });
+    document.getElementById("rr-drop").addEventListener("click", e => { e.preventDefault(); if (selectedRun) loadRunResults(selectedRun, "0"); });
+
+    async function newRun() {
+      newRunBtn.disabled = true;
+      try {
+        await fetch(`/api/categories/${CID}/runs`, { method: "POST" });
+        await loadRuns();
+        document.getElementById("eval-status").textContent = "New run started — Evaluate to fill it.";
+      } finally { newRunBtn.disabled = false; }
+    }
+    newRunBtn.addEventListener("click", newRun);
+
     const EVAL_MAX_DOCS = {{ eval_max_docs }};
     const EVAL_CHUNK = 25;   // pages per request (short calls); loop to reach the target
     async function runEval() {
@@ -290,9 +347,10 @@
           cost += j.cost_usd || 0;
           last = j;
           updateProgress();
-          await loadEval("");                       // refresh results as we go
+          await loadRuns();
+          if (last.run_id) await loadRunResults(last.run_id, "");
           if (j.stopped === "budget") break;
-          if (j.evaluated_this_run === 0 || j.remaining === 0) break;   // shortlist exhausted
+          if (j.evaluated_this_run === 0 || j.remaining === 0) break;   // shortlist exhausted for this run
         }
         if (last && !last.error) {
           let msg = `Evaluated ${fmtInt(doneTotal)} · $${cost.toFixed(6)} · ${fmtInt(last.remaining)} left in shortlist`;
@@ -308,7 +366,7 @@
       }
     }
     runEvalBtn.addEventListener("click", runEval);
-    loadEval("");   // show any existing results on load
+    loadRuns();   // show existing runs on load
 
     document.getElementById("page-size").addEventListener("change", () => { offset = 0; loadResults(); });
     document.getElementById("prev-page").addEventListener("click", () => {
