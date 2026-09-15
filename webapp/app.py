@@ -801,6 +801,8 @@ _DOWNLOAD_FIELDS = [
     ("url", "URL", True, True, None),
     ("title", "Title", True, False, None),
     ("document_type", "Document type", True, False, None),
+    ("parent_document_type", "Parent document type", False, False,
+     "for html_publication pages: the parent publication's type (from the page JSON)"),
     ("size", "Size", True, False, None),
     ("readability", "Readability score", False, False, None),
     ("gds_issues", "GDS number of issues", False, False, None),

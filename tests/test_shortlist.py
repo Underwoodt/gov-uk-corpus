@@ -168,6 +168,27 @@ class TestShortlistResults(unittest.TestCase):
         urls = shortlist(self.conn, keywords=["storage"])
         self.assertEqual(urls, ["https://www.gov.uk/a"])
 
+    def test_parent_document_type_from_content_json(self):
+        import json as J
+        from govuk_corpus.shortlist import export_rows
+        cases = [
+            ("https://www.gov.uk/pa", J.dumps({"links": {"parent": [{"document_type": "guidance"}]}}), "guidance"),
+            ("https://www.gov.uk/po", J.dumps({"links": {"parent": {"document_type": "policy_paper"}}}), "policy_paper"),
+            ("https://www.gov.uk/pn", J.dumps({"title": "x"}), None),
+            ("https://www.gov.uk/pm", "{not valid json", None),   # must not error the export
+        ]
+        for url, content, _ in cases:
+            self.conn.execute("INSERT INTO content (url, document_type, is_redirect, content_hash, "
+                              "search_text, content) VALUES (?, 'html_publication', 0, 'h', 'body', ?)",
+                              (url, content))
+        self.conn.commit()
+        rows = export_rows(self.conn, ["url", "parent_document_type"], document_types=["html_publication"])[1]
+        got = {r["url"].rsplit("/", 1)[-1]: r["parent_document_type"] for r in rows}
+        self.assertEqual(got["pa"], "guidance")
+        self.assertEqual(got["po"], "policy_paper")
+        self.assertIsNone(got["pn"])
+        self.assertIsNone(got["pm"])   # malformed JSON -> NULL, not a crash
+
     def test_include_redirects_and_unfetched(self):
         urls = shortlist(self.conn, keywords=["slurry"], include_redirects=True, include_unfetched=True)
         self.assertIn("https://www.gov.uk/d", urls)   # redirect, now included
