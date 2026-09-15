@@ -533,6 +533,55 @@ _FUNNEL_STAGES = {  # stage -> (label, which filters apply)
 }
 
 
+# ---- persistent, version-keyed funnel cache -----------------------------
+# Funnel counts are deterministic given (definition, corpus), so they can be cached
+# and re-served without a query until the definition or the corpus changes.
+def _def_version(category: dict) -> str:
+    """A hash of the funnel-relevant fields — changes only when the filters change
+    (editing the AI context or owner doesn't invalidate)."""
+    parts = "|".join([
+        category.get("dept_slugs") or "", category.get("document_type_slugs") or "",
+        category.get("keywords") or "", str(category.get("include_child_orgs") or "")])
+    return hashlib.md5(parts.encode("utf-8")).hexdigest()[:12]
+
+
+def _corpus_version(conn) -> str:
+    """A cheap token that changes when the corpus is (re)crawled. The crawler stamps
+    runs.finished_at on each import; org-hierarchy changes ride along with it."""
+    try:
+        row = conn.execute("SELECT COALESCE(MAX(finished_at), '') AS v FROM runs").fetchone()
+        return str(row["v"] or "")
+    except Exception:
+        return ""
+
+
+def _funnel_cache_read(conn, cid: int, def_v: str, corpus_v: str) -> dict:
+    """The cached stage counts for this category, or {} if stale/absent."""
+    raw = settings.get_setting(conn, f"funnel_cache_{cid}", "")
+    if not raw:
+        return {}
+    try:
+        blob = json.loads(raw)
+    except (ValueError, TypeError):
+        return {}
+    if blob.get("def") == def_v and blob.get("corpus") == corpus_v:
+        return blob.get("stages") or {}
+    return {}
+
+
+def _funnel_cache_write(conn, cid: int, def_v: str, corpus_v: str, stage: str, count) -> None:
+    raw = settings.get_setting(conn, f"funnel_cache_{cid}", "")
+    blob = {}
+    try:
+        blob = json.loads(raw) if raw else {}
+    except (ValueError, TypeError):
+        blob = {}
+    if blob.get("def") != def_v or blob.get("corpus") != corpus_v:
+        blob = {"def": def_v, "corpus": corpus_v, "stages": {}}   # versions moved on -> reset
+    blob.setdefault("stages", {})[stage] = count
+    settings.set_setting(conn, f"funnel_cache_{cid}", json.dumps(blob))
+
+
 @app.get("/categories/{cid}", response_class=HTMLResponse)
 def preview_category_page(request: Request, cid: int):
     """Fast shell — the funnel and results load progressively via the JSON API below."""
@@ -571,6 +620,12 @@ def api_funnel(request: Request, cid: int, stage: str = "all"):
     if not category:
         return JSONResponse({"error": "not found"}, status_code=404)
     label, applies = _FUNNEL_STAGES[stage]
+    # Serve from the persistent cache unless the definition or corpus has changed.
+    def_v, corpus_v = _def_version(category), _corpus_version(conn)
+    cached = _funnel_cache_read(conn, cid, def_v, corpus_v)
+    if stage in cached:
+        conn.close()
+        return JSONResponse({"stage": stage, "label": label, "count": cached[stage], "cached": True})
     if stage == "all":
         # Same number as the top banner — reuse the cached corpus total, no query.
         n = corpus_total(conn)
@@ -582,8 +637,9 @@ def api_funnel(request: Request, cid: int, stage: str = "all"):
         if "keywords" in kw:
             kw["match"] = "any"
         n = cached_count(conn, **kw)
+    _funnel_cache_write(conn, cid, def_v, corpus_v, stage, n)
     conn.close()
-    return JSONResponse({"stage": stage, "label": label, "count": n})
+    return JSONResponse({"stage": stage, "label": label, "count": n, "cached": False})
 
 
 @app.get("/categories/{cid}/audit-dashboard", response_class=HTMLResponse)
