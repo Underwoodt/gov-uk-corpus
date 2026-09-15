@@ -575,7 +575,7 @@ def _run_evaluation(cid: int, limit: int) -> dict:
                                evaluate.parse_decision(res.get("reply", "")), ms)
             evaluate.set_actual_model(conn, run_id, res.get("actual_model"))
             c = res.get("cost_usd") or 0.0
-            evaluate.add_run_cost(conn, run_id, c)
+            evaluate.add_run_cost(conn, run_id, c, res.get("input_tokens"), res.get("output_tokens"))
             _log_ai_usage(conn, c, res.get("input_tokens"), res.get("output_tokens"), "evaluate")
             done += 1
             cost += c
