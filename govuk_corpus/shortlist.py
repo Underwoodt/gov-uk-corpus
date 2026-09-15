@@ -71,12 +71,14 @@ def build_query(
     if organisations:
         placeholders = ",".join([_P] * len(organisations))
         if _IS_PG and count_only:
-            # Counting org + document_type (no keyword) lets the planner lead with the
-            # non-selective content.document_type and scan a huge intermediate set,
-            # which intermittently hits statement_timeout. Force the small, selective
-            # organisation set to be built FIRST via a MATERIALIZED CTE, then join
-            # content by primary key — a stable plan regardless of stats drift.
-            org_cte = (f"WITH org_pages AS MATERIALIZED ("
+            # Counting org + document_type (no keyword) via a plain EXISTS lets the planner
+            # lead with the non-selective content.document_type and scan a huge intermediate
+            # set (statement_timeout). Restructuring as a JOIN off the selective organisation
+            # set fixes that. NOT MATERIALIZED: on PG12+ this CTE is inlined, so the planner
+            # can still push the document_type filter and pick the best plan — measurably
+            # faster than the materialised form, which forced the whole org set to be built up
+            # front.
+            org_cte = (f"WITH org_pages AS ("
                        f"SELECT po.page_url AS url FROM page_organisations po "
                        f"WHERE po.organisation_slug IN ({placeholders}) GROUP BY po.page_url) ")
             org_params.extend(organisations)
