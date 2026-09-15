@@ -39,6 +39,26 @@ class TestAiModels(unittest.TestCase):
         row = ai_models.get_model(self.conn, mid)
         self.assertEqual((row["input_per_m"], row["output_per_m"]), (3.0, 15.0))
 
+    def test_price_grid_stored_and_standard_synced(self):
+        prices = {"in_hit_off": 0.003, "in_hit_peak": 0.006,
+                  "in_miss_off": 0.15, "in_miss_peak": 0.30,
+                  "out_off": 0.60, "out_peak": 1.20}
+        mid = ai_models.add_model(self.conn, "deepseek", "deepseek-chat", prices=prices)
+        row = ai_models.get_model(self.conn, mid)
+        for f, v in prices.items():
+            self.assertAlmostEqual(row[f], v, msg=f)
+        # Standard rate the cost engine reads = cache-miss off-peak / output off-peak.
+        self.assertAlmostEqual(row["input_per_m"], 0.15)
+        self.assertAlmostEqual(row["output_per_m"], 0.60)
+
+    def test_missing_tiers_default_from_standard(self):
+        # Only positional standard rates given -> all tiers fall back to them.
+        mid = ai_models.add_model(self.conn, "anthropic", "claude-opus-5", 5.0, 25.0)
+        row = ai_models.get_model(self.conn, mid)
+        self.assertEqual((row["in_hit_off"], row["in_hit_peak"]), (5.0, 5.0))
+        self.assertEqual((row["in_miss_off"], row["in_miss_peak"]), (5.0, 5.0))
+        self.assertEqual((row["out_off"], row["out_peak"]), (25.0, 25.0))
+
 
 @unittest.skipUnless(__import__("importlib").util.find_spec("fastapi"), "no fastapi")
 class TestConfigResolution(unittest.TestCase):

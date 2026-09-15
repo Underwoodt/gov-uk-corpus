@@ -17,34 +17,55 @@
   <form method="post" action="{{ url_for('save_settings') }}">
     <h2 style="margin-bottom:10px;">AI models</h2>
     <p class="hint">Edit any row and click <em>Save settings</em>. Select the active model (used for new runs and
-      the assistant). Prices are USD per 1M tokens.</p>
-    <table>
-      <thead><tr><th>Active</th><th>Supplier</th><th>Model ID</th><th class="num">Input $/M</th>
-        <th class="num">Output $/M</th><th>Key</th><th></th></tr></thead>
+      the assistant). All prices are USD per 1M tokens. The standard rate used for cost estimates is
+      <em>input cache-miss off-peak</em> and <em>output off-peak</em>.</p>
+
+    {% set PF = ['in_hit_off','in_hit_peak','in_miss_off','in_miss_peak','out_off','out_peak'] %}
+    <div style="overflow-x:auto;">
+    <table style="font-size:13px;">
+      <thead>
+        <tr>
+          <th rowspan="2">Active</th><th rowspan="2">Supplier</th><th rowspan="2">Model ID</th>
+          <th colspan="2" class="num" style="border-bottom:1px solid var(--mid-grey);">Input · cache hit</th>
+          <th colspan="2" class="num" style="border-bottom:1px solid var(--mid-grey);">Input · cache miss</th>
+          <th colspan="2" class="num" style="border-bottom:1px solid var(--mid-grey);">Output</th>
+          <th rowspan="2">Key</th><th rowspan="2">Test</th><th rowspan="2"></th>
+        </tr>
+        <tr>
+          <th class="num">Off-peak</th><th class="num">Peak</th>
+          <th class="num">Off-peak</th><th class="num">Peak</th>
+          <th class="num">Off-peak</th><th class="num">Peak</th>
+        </tr>
+      </thead>
       <tbody>
         {% for m in models %}
         <tr>
           <td><input type="radio" name="active_model_id" value="{{ m.id }}" {{ 'checked' if m.active }}
             style="width:20px;height:20px;accent-color:var(--black);"></td>
           <td>
-            <select name="m_{{ m.id }}_provider" style="font-size:14px;padding:3px;border:2px solid var(--black);">
+            <select name="m_{{ m.id }}_provider" style="font-size:13px;padding:3px;border:2px solid var(--black);">
               {% for prov in providers %}<option value="{{ prov }}" {{ 'selected' if m.provider == prov }}>{{ prov }}</option>{% endfor %}
             </select>
           </td>
           <td><input name="m_{{ m.id }}_model_id" value="{{ m.model_id }}" class="mono"
-            style="font-size:14px;padding:3px;border:2px solid var(--black);min-width:220px;"></td>
-          <td class="num"><input name="m_{{ m.id }}_input" type="number" step="0.0001" min="0"
-            value="{{ '%.4f'|format(m.input_per_m or 0) }}" style="width:90px;padding:3px;border:2px solid var(--black);text-align:right;"></td>
-          <td class="num"><input name="m_{{ m.id }}_output" type="number" step="0.0001" min="0"
-            value="{{ '%.4f'|format(m.output_per_m or 0) }}" style="width:90px;padding:3px;border:2px solid var(--black);text-align:right;"></td>
+            style="font-size:13px;padding:3px;border:2px solid var(--black);min-width:200px;"></td>
+          {% for f in PF %}
+          <td class="num"><input name="m_{{ m.id }}_{{ f }}" type="number" step="0.0001" min="0"
+            value="{{ '%.4f'|format(m[f] or 0) }}"
+            style="width:78px;padding:3px;border:2px solid var(--black);text-align:right;"></td>
+          {% endfor %}
           <td>{% if m.has_key %}✅{% else %}<span style="color:#d4351c;">⛔</span>{% endif %}</td>
-          <td><button type="submit" class="btn secondary-btn" style="padding:2px 10px;font-size:14px;"
+          <td><button type="button" class="btn secondary-btn test-model" data-id="{{ m.id }}"
+            style="padding:2px 10px;font-size:13px;">Test</button>
+            <span class="test-result" data-id="{{ m.id }}" style="display:block;font-size:12px;"></span></td>
+          <td><button type="submit" class="btn secondary-btn" style="padding:2px 10px;font-size:13px;"
             formaction="{{ url_for('delete_model_route') }}" formmethod="post"
             name="model_id" value="{{ m.id }}">Delete</button></td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
+    </div>
 
     <h2 style="margin-top:30px;">Execution guardrails</h2>
     <p class="secondary" style="margin:0 0 6px;">Spent today (all AI calls):
@@ -67,7 +88,7 @@
 
   <h2 style="margin-top:40px;">Add a model</h2>
   <form method="post" action="{{ url_for('add_model_route') }}">
-    <div class="controls" style="align-items:flex-end;">
+    <div class="controls" style="align-items:flex-end;flex-wrap:wrap;">
       <label>Supplier<br>
         <select name="provider" style="font-size:16px;padding:5px;border:2px solid var(--black);">
           {% for prov in providers %}<option value="{{ prov }}">{{ prov }}</option>{% endfor %}
@@ -75,10 +96,18 @@
       <label>Model ID<br>
         <input name="model_id" type="text" placeholder="claude-sonnet-5"
           style="font-size:16px;padding:5px;border:2px solid var(--black);"></label>
-      <label>Input $/M<br>
-        <input name="input_per_m" type="number" step="0.0001" min="0" value="0" style="width:110px;padding:5px;border:2px solid var(--black);"></label>
-      <label>Output $/M<br>
-        <input name="output_per_m" type="number" step="0.0001" min="0" value="0" style="width:110px;padding:5px;border:2px solid var(--black);"></label>
+    </div>
+    <p class="hint" style="margin:14px 0 4px;">Prices (USD per 1M tokens). Leave a tier blank to copy it
+      from the cache-miss / off-peak value.</p>
+    <div class="controls" style="align-items:flex-end;flex-wrap:wrap;">
+      {% set add_labels = [('in_hit_off','Input hit · off-peak'),('in_hit_peak','Input hit · peak'),
+        ('in_miss_off','Input miss · off-peak'),('in_miss_peak','Input miss · peak'),
+        ('out_off','Output · off-peak'),('out_peak','Output · peak')] %}
+      {% for f, lbl in add_labels %}
+      <label style="font-size:13px;">{{ lbl }}<br>
+        <input name="add_{{ f }}" type="number" step="0.0001" min="0" placeholder="0"
+          style="width:120px;padding:5px;border:2px solid var(--black);"></label>
+      {% endfor %}
       <button class="btn secondary-btn" type="submit">Add model</button>
     </div>
   </form>
@@ -87,4 +116,29 @@
     Keys live in <code>~/gov-uk-corpus.env</code> (<code>ANTHROPIC_API_KEY</code>,
     <code>DEEPSEEK_API_KEY</code>, and <code>ANTHROPIC_WORKSPACE_ID</code> for org-scoped keys); restart the
     service after changing them. A model whose supplier has no key can be selected but won't run.</p>
+
+  <script>
+  document.querySelectorAll(".test-model").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var id = btn.dataset.id;
+      var out = document.querySelector('.test-result[data-id="' + id + '"]');
+      btn.disabled = true;
+      out.style.color = "#505a5f";
+      out.textContent = "Testing…";
+      fetch("/api/models/" + id + "/test", {method: "POST"})
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (d.ok) {
+            out.style.color = "var(--green)";
+            out.textContent = "✅ OK" + (d.actual_model ? " (" + d.actual_model + ")" : "");
+          } else {
+            out.style.color = "#d4351c";
+            out.textContent = "⛔ " + (d.error || "Failed");
+          }
+        })
+        .catch(function (e) { out.style.color = "#d4351c"; out.textContent = "⛔ " + e; })
+        .finally(function () { btn.disabled = false; });
+    });
+  });
+  </script>
 {% endblock %}

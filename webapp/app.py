@@ -877,6 +877,19 @@ def settings_page(request: Request, saved: int = 0):
     return resp
 
 
+def _price_form(form, prefix: str) -> dict:
+    """Pull the six tiered price fields (prefix + field name) out of a form."""
+    out = {}
+    for f in ai_models.PRICE_FIELDS:
+        v = form.get(prefix + f)
+        if v not in (None, ""):
+            try:
+                out[f] = float(v)
+            except (TypeError, ValueError):
+                pass
+    return out
+
+
 @app.post("/settings")
 async def save_settings(request: Request):
     if not authed(request):
@@ -894,8 +907,7 @@ async def save_settings(request: Request):
         if prov in PROVIDERS and mod:
             try:
                 ai_models.update_model(conn, rid, prov, mod,
-                                       float(form.get(f"m_{rid}_input") or 0),
-                                       float(form.get(f"m_{rid}_output") or 0))
+                                       prices=_price_form(form, f"m_{rid}_"))
             except ValueError:
                 pass
     try:
@@ -921,7 +933,7 @@ async def add_model_route(request: Request):
     if provider in PROVIDERS and model_id:
         try:
             ai_models.add_model(conn, provider, model_id,
-                                float(form.get("input_per_m") or 0), float(form.get("output_per_m") or 0))
+                                prices=_price_form(form, "add_"))
         except ValueError:
             pass
     conn.close()
@@ -942,6 +954,27 @@ async def delete_model_route(request: Request):
             pass
     conn.close()
     return RedirectResponse(url=str(request.url_for("settings_page")), status_code=303)
+
+
+@app.post("/api/models/{mid}/test")
+async def test_model_route(request: Request, mid: int):
+    """Ping a model with a tiny prompt to confirm the supplier accepts the name."""
+    if not authed(request):
+        return JSONResponse({"ok": False, "error": "Not signed in."}, status_code=401)
+    conn = connect()
+    row = ai_models.get_model(conn, mid)
+    if not row:
+        conn.close()
+        return JSONResponse({"ok": False, "error": "Model not found."}, status_code=404)
+    cfg = _cfg_for(conn, row["provider"], row["model_id"])
+    conn.close()
+    if not cfg.get("key"):
+        return JSONResponse({"ok": False,
+                             "error": f"No API key set for {cfg['label']}."})
+    res = await run_in_threadpool(_ai_reply, cfg, "", "Reply with the single word: ok")
+    if res.get("error"):
+        return JSONResponse({"ok": False, "error": res["error"]})
+    return JSONResponse({"ok": True, "actual_model": res.get("actual_model") or cfg["model"]})
 
 
 @app.on_event("startup")
