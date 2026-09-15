@@ -1105,8 +1105,17 @@ def api_results_table(request: Request, cid: int, limit: int = 50, offset: int =
         conn.close()
         return JSONResponse({"error": "not found"}, status_code=404)
     filters = _effective_filters(conn, category)
-    total = cached_count(conn, **filters)
-    _keys, rows = shortlist.export_rows(conn, _RESULTS_FIELDS, limit=limit, offset=offset, **filters)
+    try:
+        # Fetch the page of rows first — the important part. A single page is cheap even
+        # when the whole-shortlist count is slow.
+        _keys, rows = shortlist.export_rows(conn, _RESULTS_FIELDS, limit=limit, offset=offset, **filters)
+    except Exception as e:
+        conn.close()
+        return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=500)
+    try:
+        total = cached_count(conn, **filters)   # best-effort; null if it errors/times out
+    except Exception:
+        total = None
     conn.close()
     return JSONResponse({"total": total, "rows": rows, "limit": limit, "offset": offset})
 
