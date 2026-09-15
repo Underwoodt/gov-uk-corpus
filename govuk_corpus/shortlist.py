@@ -203,20 +203,23 @@ def detail_rows(conn, **kwargs) -> List[dict]:
     return [dict(r) for r in conn.execute(sql, tuple(params)).fetchall()]
 
 
-# Parent document type, dug out of the stored content JSON at links.parent[].document_type
-# (e.g. an html_publication's real type is its parent publication's type). Guarded so a
-# malformed/empty content value yields NULL instead of erroring the whole export, and
-# tolerant of links.parent being an array or a single object.
+# Parent document type: the materialised content.parent_document_type column when it has
+# been backfilled (fast, indexable), otherwise dug live out of the content JSON at
+# links.parent[].document_type (e.g. an html_publication's real type is its parent
+# publication's type). The live path is guarded so a malformed/empty content value yields
+# NULL instead of erroring the whole export, and tolerant of links.parent being an array
+# or a single object. COALESCE short-circuits, so backfilled rows skip the JSON cast.
 if _IS_PG:
-    _PARENT_DT_EXPR = (
+    _PARENT_DT_JSON = (
         "CASE WHEN c.content IS NOT NULL AND btrim(c.content) LIKE '{%' THEN "
         "COALESCE(c.content::jsonb #>> '{links,parent,0,document_type}', "
         "c.content::jsonb #>> '{links,parent,document_type}') END")
 else:
-    _PARENT_DT_EXPR = (
+    _PARENT_DT_JSON = (
         "CASE WHEN json_valid(c.content) THEN "
         "COALESCE(json_extract(c.content, '$.links.parent[0].document_type'), "
         "json_extract(c.content, '$.links.parent.document_type')) END")
+_PARENT_DT_EXPR = f"COALESCE(c.parent_document_type, {_PARENT_DT_JSON})"
 
 # Exportable fields: key -> (SQL expression, human label). 'url' is mandatory.
 EXPORT_FIELDS = {

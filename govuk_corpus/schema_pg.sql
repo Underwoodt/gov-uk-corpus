@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS content (
     content_hash       text,
     source             text,
     document_type      text,
+    parent_document_type text,     -- for html_publication: parent publication's type (from JSON)
     schema_name        text,
     title              text,
     description        text,
@@ -53,6 +54,7 @@ CREATE TABLE IF NOT EXISTS content (
     last_changed_at    text
 );
 CREATE INDEX IF NOT EXISTS idx_content_document_type ON content(document_type);
+CREATE INDEX IF NOT EXISTS idx_content_parent_document_type ON content(parent_document_type);
 CREATE INDEX IF NOT EXISTS idx_content_source ON content(source);
 
 CREATE TABLE IF NOT EXISTS sitemap (
@@ -231,6 +233,8 @@ CREATE INDEX IF NOT EXISTS idx_content_search_tsv ON content USING GIN (search_t
 ALTER TABLE content ADD COLUMN IF NOT EXISTS reading_age real;          -- estimated reading age (years)
 ALTER TABLE content ADD COLUMN IF NOT EXISTS gds_english_score real;    -- GDS plain-English compliance score
 ALTER TABLE content ADD COLUMN IF NOT EXISTS gds_findings text;         -- readable summary of the GDS issues
+ALTER TABLE content ADD COLUMN IF NOT EXISTS parent_document_type text; -- backfilled from links.parent[].document_type
+CREATE INDEX IF NOT EXISTS idx_content_parent_document_type ON content(parent_document_type);
 
 -- Category display name/identifier (added after initial deploy).
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS slug text;
