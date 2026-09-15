@@ -32,7 +32,7 @@ from starlette.concurrency import run_in_threadpool
 
 from govuk_corpus import ai_models, audit
 from govuk_corpus import categories as cat
-from govuk_corpus import evaluate, orgs, peak_schedule, pricing, settings, shortlist
+from govuk_corpus import audit_stats, evaluate, orgs, peak_schedule, pricing, settings, shortlist
 from govuk_corpus.backend import db
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -536,6 +536,47 @@ def api_funnel(request: Request, cid: int, stage: str = "all"):
         n = cached_count(conn, **kw)
     conn.close()
     return JSONResponse({"stage": stage, "label": label, "count": n})
+
+
+@app.get("/categories/{cid}/audit-dashboard", response_class=HTMLResponse)
+def audit_dashboard_page(request: Request, cid: int):
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    category = cat.get_category(conn, cid)
+    if not category:
+        conn.close()
+        return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
+    category["display_name"] = cat.prettify(category.get("slug")) or (category.get("description") or "Untitled")
+    stages = [(s, _FUNNEL_STAGES[s][0]) for s in ("all", "org", "doctype", "keyword")]
+    resp = templates.TemplateResponse("audit_dashboard.html", ctx(
+        conn, request, category=category, stages=stages))
+    conn.close()
+    return resp
+
+
+@app.get("/api/categories/{cid}/audit-stats")
+def api_audit_stats(request: Request, cid: int, stage: str = "keyword"):
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    if stage not in _FUNNEL_STAGES:
+        return JSONResponse({"error": "unknown stage"}, status_code=404)
+    conn = connect()
+    category = cat.get_category(conn, cid)
+    if not category:
+        conn.close()
+        return JSONResponse({"error": "not found"}, status_code=404)
+    filters = _effective_filters(conn, category)
+    applies = _FUNNEL_STAGES[stage][1]     # which filters this stage applies
+    kw = {k: filters[k] for k in applies}
+    kw.setdefault("match", "any")
+    try:
+        out = audit_stats.stats(conn, **kw)
+    except Exception as e:
+        conn.close()
+        return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=500)
+    conn.close()
+    return JSONResponse(out)
 
 
 @app.get("/api/categories/{cid}/keyword-breakdown")

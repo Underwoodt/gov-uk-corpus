@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}{{ category.display_name }} — audit dashboard{% endblock %}
+{% block content %}
+
+  <a class="back" href="{{ url_for('preview_category_page', cid=category.id) }}">‹ Back to results</a>
+
+  <h1 style="margin:20px 0 4px;">Audit dashboard</h1>
+  <p class="secondary" style="margin:0 0 8px;">{{ category.display_name }}
+    (<span class="mono">{{ category.slug or '' }}</span>)</p>
+  <p class="hint" style="margin:0 0 24px;max-width:680px;">Quality and freshness of the pages at each level of the
+    funnel. Freshness is by last public update; averages ignore pages without a value; the top issues are the
+    individual GDS plain-English findings summed across pages.</p>
+
+  {% for stage, label in stages %}
+  <section class="audit-card" data-stage="{{ stage }}"
+    style="border:2px solid var(--black);border-radius:6px;padding:16px 18px;margin:0 0 20px;">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;">
+      <h2 style="margin:0;">{{ label }}</h2>
+      <span class="stage-count secondary" style="font-weight:700;"><span class="spinner"></span></span>
+    </div>
+    <div class="stage-body" hidden>
+      <div style="display:flex;flex-wrap:wrap;gap:14px;margin:14px 0;">
+        <div class="stat" style="border:1px solid var(--mid-grey);border-radius:5px;padding:8px 14px;min-width:130px;">
+          <div class="secondary" style="font-size:13px;">Avg page size</div>
+          <div class="avg-size" style="font-size:20px;font-weight:700;">—</div></div>
+        <div class="stat" style="border:1px solid var(--mid-grey);border-radius:5px;padding:8px 14px;min-width:130px;">
+          <div class="secondary" style="font-size:13px;">Avg reading age</div>
+          <div class="avg-reading" style="font-size:20px;font-weight:700;">—</div></div>
+        <div class="stat" style="border:1px solid var(--mid-grey);border-radius:5px;padding:8px 14px;min-width:130px;">
+          <div class="secondary" style="font-size:13px;">Avg GDS issues</div>
+          <div class="avg-gds" style="font-size:20px;font-weight:700;">—</div></div>
+      </div>
+
+      <h3 style="margin:14px 0 6px;">Freshness</h3>
+      <table style="width:100%;max-width:560px;"><tbody class="freshness-rows"></tbody></table>
+
+      <h3 style="margin:18px 0 6px;">Top GDS issues <span class="issues-note secondary" style="font-weight:400;font-size:13px;"></span></h3>
+      <table style="max-width:560px;">
+        <thead><tr><th>Issue</th><th class="num">Count</th></tr></thead>
+        <tbody class="issue-rows"></tbody>
+      </table>
+      <p class="issues-empty secondary" hidden>No GDS issues recorded for these pages.</p>
+    </div>
+    <p class="stage-error secondary" hidden style="color:#d4351c;"></p>
+  </section>
+  {% endfor %}
+
+  <script>
+    const CID = {{ category.id }};
+    const fmtInt = n => Number(n || 0).toLocaleString();
+    function esc(s){const d=document.createElement("div");d.textContent=s==null?"":s;return d.innerHTML;}
+
+    async function loadStage(section) {
+      const stage = section.dataset.stage;
+      const countEl = section.querySelector(".stage-count");
+      try {
+        const j = await (await fetch(`/api/categories/${CID}/audit-stats?stage=${stage}`)).json();
+        if (j.error) throw new Error(j.error);
+        countEl.textContent = fmtInt(j.n) + " pages";
+        section.querySelector(".stage-body").hidden = false;
+        section.querySelector(".avg-size").textContent = j.avg_size == null ? "—" : fmtBytes(j.avg_size);
+        section.querySelector(".avg-reading").textContent = j.avg_reading_age == null ? "—" : j.avg_reading_age;
+        section.querySelector(".avg-gds").textContent = j.avg_gds == null ? "—" : j.avg_gds;
+
+        const fmax = Math.max(1, ...j.freshness.map(f => f.count));
+        section.querySelector(".freshness-rows").innerHTML = j.freshness.map(f => bar(f.bucket, f.count, fmax)).join("");
+
+        const note = section.querySelector(".issues-note");
+        note.textContent = j.issues_sampled ? `(from a sample of ${fmtInt(j.issues_scanned)} pages)` : "";
+        section.querySelector(".issues-empty").hidden = j.top_issues.length !== 0;
+        section.querySelector(".issue-rows").innerHTML = j.top_issues.map(t =>
+          `<tr><td>${esc(t.issue)}</td><td class="num">${fmtInt(t.count)}</td></tr>`).join("");
+      } catch (e) {
+        countEl.textContent = "";
+        const err = section.querySelector(".stage-error");
+        err.hidden = false; err.textContent = "Could not load: " + e.message;
+      }
+    }
+    function bar(label, count, max) {
+      const pct = Math.round((count / max) * 100);
+      return `<tr><td style="padding:5px 10px 5px 0;white-space:nowrap;">${esc(label)}</td>` +
+        `<td style="width:100%;padding:5px 10px;"><div style="background:#eee;border-radius:3px;height:14px;">` +
+        `<div style="width:${pct}%;height:100%;background:var(--blue,#1d70b8);border-radius:3px;"></div></div></td>` +
+        `<td class="num" style="font-weight:700;white-space:nowrap;">${fmtInt(count)}</td></tr>`;
+    }
+    function fmtBytes(n) {
+      if (n >= 1e6) return (n / 1e6).toFixed(1) + " MB";
+      if (n >= 1e3) return (n / 1e3).toFixed(1) + " kB";
+      return Math.round(n) + " B";
+    }
+    // Load stages sequentially (cheapest funnel-narrowing last-first would be nicer,
+    // but keep the visual order; each is independent so a slow one won't block a later click).
+    (async () => { for (const s of document.querySelectorAll(".audit-card")) await loadStage(s); })();
+  </script>
+{% endblock %}
