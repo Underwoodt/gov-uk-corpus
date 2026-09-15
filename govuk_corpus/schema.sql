@@ -164,6 +164,17 @@ CREATE TABLE IF NOT EXISTS ai_usage (
 );
 CREATE INDEX IF NOT EXISTS idx_ai_usage_day ON ai_usage(day);
 
+-- User-editable AI models (supplier + model id + prices) for the assistant/evaluation.
+CREATE TABLE IF NOT EXISTS ai_models (
+    id           INTEGER PRIMARY KEY,   -- epoch-ms
+    provider     TEXT,                  -- anthropic | deepseek
+    model_id     TEXT,
+    input_per_m  REAL,                  -- USD per 1M input tokens
+    output_per_m REAL,                  -- USD per 1M output tokens
+    created_at   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_ai_models_provider ON ai_models(provider, model_id);
+
 -- Small key/value app settings (e.g. which AI provider the UI uses).
 CREATE TABLE IF NOT EXISTS app_settings (
     key   TEXT PRIMARY KEY,

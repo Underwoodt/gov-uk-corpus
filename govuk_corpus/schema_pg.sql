@@ -150,6 +150,17 @@ CREATE TABLE IF NOT EXISTS ai_usage (
 );
 CREATE INDEX IF NOT EXISTS idx_ai_usage_day ON ai_usage(day);
 
+-- User-editable AI models (supplier + model id + prices) for the assistant/evaluation.
+CREATE TABLE IF NOT EXISTS ai_models (
+    id           bigint PRIMARY KEY,
+    provider     text,
+    model_id     text,
+    input_per_m  real,
+    output_per_m real,
+    created_at   text
+);
+CREATE INDEX IF NOT EXISTS idx_ai_models_provider ON ai_models(provider, model_id);
+
 -- Small key/value app settings (e.g. which AI provider the UI uses).
 CREATE TABLE IF NOT EXISTS app_settings (
     key   text PRIMARY KEY,

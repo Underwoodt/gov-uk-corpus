@@ -30,7 +30,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 
-from govuk_corpus import audit
+from govuk_corpus import ai_models, audit
 from govuk_corpus import categories as cat
 from govuk_corpus import evaluate, orgs, settings, shortlist
 from govuk_corpus.backend import db
@@ -203,15 +203,25 @@ def _log_ai_usage(conn, cost, in_tok, out_tok, kind: str) -> None:
 
 
 def _ai_config(conn) -> dict:
-    """Resolve the active AI provider config from settings + env."""
-    prov = settings.get_setting(conn, "ai_provider", os.getenv("AI_PROVIDER", DEFAULT_PROVIDER))
-    if prov not in PROVIDERS:
-        prov = DEFAULT_PROVIDER
-    p = PROVIDERS[prov]
-    model = settings.get_setting(conn, f"ai_model_{prov}", "") or p["model"]
-    return {"provider": prov, "label": p["label"], "base_url": p["base_url"], "model": model,
-            "key": _provider_key(prov), "has_key": _provider_key(prov) is not None,
-            "price_in": p["price_in"], "price_out": p["price_out"]}
+    """Resolve the active AI model (from the ai_models table) + provider env."""
+    ai_models.seed_defaults(conn)
+    active = settings.get_setting(conn, "active_model_id", "")
+    m = ai_models.get_model(conn, active) if active else None
+    if not m:
+        models = ai_models.list_models(conn)
+        m = models[0] if models else None
+    if not m:   # nothing configured — fall back to the built-in default
+        p = PROVIDERS[DEFAULT_PROVIDER]
+        return {"provider": DEFAULT_PROVIDER, "label": p["label"], "base_url": p["base_url"],
+                "model": p["model"], "key": _provider_key(DEFAULT_PROVIDER),
+                "has_key": _provider_key(DEFAULT_PROVIDER) is not None,
+                "price_in": p["price_in"], "price_out": p["price_out"]}
+    provider = m["provider"]
+    p = PROVIDERS.get(provider) or PROVIDERS[DEFAULT_PROVIDER]
+    return {"provider": provider, "label": p["label"], "base_url": p["base_url"],
+            "model": m["model_id"], "key": _provider_key(provider),
+            "has_key": _provider_key(provider) is not None,
+            "price_in": m["input_per_m"], "price_out": m["output_per_m"]}
 
 
 def _ai_reply(config: dict, system: str, prompt: str) -> dict:
@@ -497,12 +507,15 @@ def api_results(request: Request, cid: int, limit: int = 10, offset: int = 0):
 
 
 # ---- AI evaluation (inclusion pass over the shortlist), tracked per run --
-def _cfg_for(provider: str, model: str) -> dict:
-    """Build an AI config for a run's fixed provider + model (key from env)."""
+def _cfg_for(conn, provider: str, model: str) -> dict:
+    """Build an AI config for a run's fixed provider + model; prices from ai_models."""
     p = PROVIDERS.get(provider) or PROVIDERS[DEFAULT_PROVIDER]
+    row = ai_models.find(conn, provider, model)
+    price_in = row["input_per_m"] if row else p["price_in"]
+    price_out = row["output_per_m"] if row else p["price_out"]
     return {"provider": provider, "label": p["label"], "base_url": p["base_url"],
             "model": model or p["model"], "key": _provider_key(provider),
-            "price_in": p["price_in"], "price_out": p["price_out"]}
+            "price_in": price_in, "price_out": price_out}
 
 
 def _active_run(conn, cid: int) -> str:
@@ -535,7 +548,7 @@ def _run_evaluation(cid: int, limit: int) -> dict:
 
         run_id = _ensure_run(conn, cid)
         run = evaluate.get_run(conn, run_id)
-        cfg = _cfg_for(run["provider"], run["model"])
+        cfg = _cfg_for(conn, run["provider"], run["model"])
         if not cfg["key"]:
             return {"error": f"No API key for {cfg['label']} (this run's provider) — set one in Settings."}
 
@@ -846,16 +859,20 @@ def settings_page(request: Request, saved: int = 0):
     if not authed(request):
         return login_redirect(request)
     conn = connect()
-    current = settings.get_setting(conn, "ai_provider", DEFAULT_PROVIDER)
-    provs = []
-    for key, p in PROVIDERS.items():
-        provs.append({"key": key, "label": p["label"], "default_model": p["model"],
-                      "model": settings.get_setting(conn, f"ai_model_{key}", "") or "",
-                      "has_key": _provider_key(key) is not None,
-                      "price_in": p["price_in"], "price_out": p["price_out"]})
+    ai_models.seed_defaults(conn)
+    models = ai_models.list_models(conn)
+    active = settings.get_setting(conn, "active_model_id", "")
+    if not active and models:
+        active = str(models[0]["id"])
+    for m in models:                      # is this model's provider usable?
+        m["has_key"] = _provider_key(m["provider"]) is not None
+        m["active"] = str(m["id"]) == str(active)
     resp = templates.TemplateResponse("settings.html", ctx(
-        conn, request, active_nav="settings", providers=provs, current=current, saved=saved,
-        daily_budget=_budget(conn), max_docs=_max_docs(conn), spent_today=round(_daily_spend(conn), 4)))
+        conn, request, active_nav="settings", models=models,
+        providers=list(PROVIDERS.keys()),
+        provider_keys={k: _provider_key(k) is not None for k in PROVIDERS},
+        daily_budget=_budget(conn), max_docs=_max_docs(conn),
+        spent_today=round(_daily_spend(conn), 4), saved=saved))
     conn.close()
     return resp
 
@@ -865,14 +882,10 @@ async def save_settings(request: Request):
     if not authed(request):
         return login_redirect(request)
     form = await request.form()
-    provider = form.get("ai_provider") or DEFAULT_PROVIDER
-    if provider not in PROVIDERS:
-        provider = DEFAULT_PROVIDER
     conn = connect()
-    settings.set_setting(conn, "ai_provider", provider)
-    for key in PROVIDERS:
-        settings.set_setting(conn, f"ai_model_{key}", (form.get(f"model_{key}") or "").strip())
-    # Guardrails
+    active = form.get("active_model_id")
+    if active:
+        settings.set_setting(conn, "active_model_id", active)
     try:
         settings.set_setting(conn, "ai_daily_budget", str(float(form.get("ai_daily_budget") or DEFAULT_DAILY_BUDGET)))
     except ValueError:
@@ -883,6 +896,40 @@ async def save_settings(request: Request):
         pass
     conn.close()
     return RedirectResponse(url=str(request.url_for("settings_page")) + "?saved=1", status_code=303)
+
+
+@app.post("/settings/models/add")
+async def add_model_route(request: Request):
+    if not authed(request):
+        return login_redirect(request)
+    form = await request.form()
+    provider = (form.get("provider") or "").strip()
+    model_id = (form.get("model_id") or "").strip()
+    conn = connect()
+    if provider in PROVIDERS and model_id:
+        try:
+            ai_models.add_model(conn, provider, model_id,
+                                float(form.get("input_per_m") or 0), float(form.get("output_per_m") or 0))
+        except ValueError:
+            pass
+    conn.close()
+    return RedirectResponse(url=str(request.url_for("settings_page")), status_code=303)
+
+
+@app.post("/settings/models/delete")
+async def delete_model_route(request: Request):
+    if not authed(request):
+        return login_redirect(request)
+    form = await request.form()
+    mid = form.get("model_id")
+    conn = connect()
+    if mid:
+        try:
+            ai_models.delete_model(conn, int(mid))
+        except (TypeError, ValueError):
+            pass
+    conn.close()
+    return RedirectResponse(url=str(request.url_for("settings_page")), status_code=303)
 
 
 @app.on_event("startup")
