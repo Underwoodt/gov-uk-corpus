@@ -84,6 +84,17 @@ class TestRuns(unittest.TestCase):
         self.assertEqual((r["in_tokens"], r["out_tokens"]), (2000, 100))
         self.assertEqual((r["hit_tokens"], r["miss_tokens"]), (500, 1500))
 
+    def test_delete_run_removes_run_and_results(self):
+        run = evaluate.create_run(self.conn, 1, "m", "anthropic")
+        evaluate.save_page(self.conn, run, 1, "https://www.gov.uk/p0", {"keep": 1, "score": .9, "reason": "a"}, 10)
+        evaluate.save_page(self.conn, run, 1, "https://www.gov.uk/p1", {"keep": 0, "score": .2, "reason": "b"}, 10)
+        self.assertIsNotNone(evaluate.get_run(self.conn, run))
+        self.assertEqual(len(evaluate.run_results(self.conn, run)), 2)
+        evaluate.delete_run(self.conn, run)
+        self.assertIsNone(evaluate.get_run(self.conn, run))
+        self.assertEqual(len(evaluate.run_results(self.conn, run)), 0)
+        self.assertEqual(len(evaluate.list_runs(self.conn, 1)), 0)
+
     def test_compare_runs(self):
         a = evaluate.create_run(self.conn, 1, "m", "anthropic")
         b = evaluate.create_run(self.conn, 1, "m", "deepseek")
