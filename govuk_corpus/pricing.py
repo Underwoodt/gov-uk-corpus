@@ -26,6 +26,62 @@ def is_peak_now(bitmap: Optional[str], when: datetime = None) -> bool:
     return bitmap[when.weekday() * peak_schedule.HOURS + when.hour] == "1"
 
 
+def _field(usage, *names):
+    """Read the first present field from an SDK usage object or a plain dict."""
+    d = {}
+    if not isinstance(usage, dict):
+        for meth in ("model_dump", "to_dict", "dict"):
+            fn = getattr(usage, meth, None)
+            if callable(fn):
+                try:
+                    d = fn()
+                    break
+                except Exception:
+                    pass
+    else:
+        d = usage
+    for n in names:
+        v = getattr(usage, n, None) if not isinstance(usage, dict) else None
+        if v is None:
+            v = d.get(n)
+        if v is not None:
+            return v
+    return None
+
+
+def usage_breakdown(usage) -> Optional[dict]:
+    """Normalise a provider usage payload to {in_total, hit, miss, out} token counts.
+
+    Handles both shapes:
+      * DeepSeek (OpenAI-style): prompt_tokens, completion_tokens,
+        prompt_cache_hit_tokens, prompt_cache_miss_tokens.
+      * Anthropic: input_tokens (fresh, excludes cache reads), output_tokens,
+        cache_read_input_tokens (hit), cache_creation_input_tokens (billed as miss).
+    """
+    if usage is None:
+        return None
+    out = _field(usage, "output_tokens", "completion_tokens")
+    hit = _field(usage, "prompt_cache_hit_tokens", "cache_read_input_tokens")
+    miss = _field(usage, "prompt_cache_miss_tokens")
+    fresh = _field(usage, "input_tokens")                       # Anthropic: excludes cache reads
+    creation = _field(usage, "cache_creation_input_tokens")
+    total_prompt = _field(usage, "prompt_tokens")
+
+    hit = int(hit or 0)
+    if miss is not None:                                        # DeepSeek gives miss directly
+        miss = int(miss)
+    elif fresh is not None:                                     # Anthropic: fresh + cache-creation
+        miss = int(fresh) + int(creation or 0)
+    elif total_prompt is not None:
+        miss = max(int(total_prompt) - hit, 0)
+    else:
+        miss = 0
+    in_total = int(total_prompt) if total_prompt is not None else miss + hit
+    if out is None:
+        return None
+    return {"in_total": in_total, "hit": hit, "miss": miss, "out": int(out)}
+
+
 def _rate(grid: dict, base: str, peak: bool) -> Optional[float]:
     v = grid.get(f"{base}_{'peak' if peak else 'off'}")
     return None if v is None else float(v)

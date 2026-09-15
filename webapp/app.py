@@ -251,21 +251,22 @@ def _ai_reply(config: dict, system: str, prompt: str) -> dict:
         text = "".join(getattr(b, "text", "") for b in msg.content)
         actual_model = getattr(msg, "model", None)   # what the API actually served
         usage = getattr(msg, "usage", None)
-        in_tok = getattr(usage, "input_tokens", None)
-        out_tok = getattr(usage, "output_tokens", None)
-        cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
+        u = pricing.usage_breakdown(usage)   # {in_total, hit, miss, out} across providers
         # Peak or off-peak for this supplier at the moment the call ran (UTC).
         peak = pricing.is_peak_now(config.get("peak_bitmap"))
+        in_tok = u["in_total"] if u else None
+        out_tok = u["out"] if u else None
+        cache_hit = u["hit"] if u else 0
         cost = None
-        if in_tok is not None and out_tok is not None:
+        if u is not None:
             grid = config.get("grid")
-            if grid:   # tiered price grid × peak schedule
-                cost = pricing.call_cost(grid, peak, in_tok, out_tok, cache_read)
-            if cost is None:   # fall back to the flat standard rate
+            if grid:   # tiered price grid × peak schedule: miss tokens at miss rate, hit at hit rate
+                cost = pricing.call_cost(grid, peak, u["miss"], u["out"], u["hit"])
+            if cost is None:   # fall back to the flat standard rate on the total input
                 cost = round((in_tok / 1e6) * config["price_in"]
                              + (out_tok / 1e6) * config["price_out"], 6)
         return {"reply": text, "model": config["model"], "actual_model": actual_model,
-                "provider": config["provider"], "peak": peak, "cache_read_tokens": cache_read,
+                "provider": config["provider"], "peak": peak, "cache_hit_tokens": cache_hit,
                 "input_tokens": in_tok, "output_tokens": out_tok, "cost_usd": cost,
                 "price_input_per_m": config["price_in"], "price_output_per_m": config["price_out"]}
     except Exception as e:  # network / auth / API errors surfaced to the page

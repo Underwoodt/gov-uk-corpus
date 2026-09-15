@@ -36,6 +36,30 @@ class TestPricing(unittest.TestCase):
     def test_missing_grid_returns_none(self):
         self.assertIsNone(pricing.call_cost({"foo": 1}, peak=False, in_tokens=10, out_tokens=10))
 
+    def test_usage_breakdown_deepseek(self):
+        # OpenAI-style DeepSeek usage with cache hit/miss split.
+        u = pricing.usage_breakdown({"prompt_tokens": 1050, "completion_tokens": 200,
+                                     "total_tokens": 1250, "prompt_cache_hit_tokens": 300,
+                                     "prompt_cache_miss_tokens": 750})
+        self.assertEqual(u, {"in_total": 1050, "hit": 300, "miss": 750, "out": 200})
+
+    def test_usage_breakdown_anthropic(self):
+        # Anthropic input_tokens excludes cache reads; total = fresh + cache_read.
+        class U:  # SDK-like object
+            input_tokens = 800
+            output_tokens = 200
+            cache_read_input_tokens = 200
+        u = pricing.usage_breakdown(U())
+        self.assertEqual(u, {"in_total": 1000, "hit": 200, "miss": 800, "out": 200})
+
+    def test_usage_breakdown_deepseek_cost_matches_fields(self):
+        # 0 hit, 1050 miss, off-peak: only miss billed at cache-miss rate.
+        u = pricing.usage_breakdown({"prompt_tokens": 1050, "completion_tokens": 200,
+                                     "prompt_cache_hit_tokens": 0, "prompt_cache_miss_tokens": 1050})
+        c = pricing.call_cost(GRID, peak=False, in_tokens=u["miss"],
+                              out_tokens=u["out"], cache_read_tokens=u["hit"])
+        self.assertAlmostEqual(c, (1050 / 1e6) * 0.15 + (200 / 1e6) * 0.60, places=6)
+
     def test_is_peak_now_uses_bitmap(self):
         bits = ["0"] * ps.CELLS
         bits[0 * 24 + 9] = "1"      # Monday 09:00 UTC peak
