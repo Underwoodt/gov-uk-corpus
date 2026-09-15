@@ -138,7 +138,11 @@ def corpus_meta(conn) -> str:
 
 
 def ctx(conn, request: Request, **extra) -> dict:
-    base = {"request": request, "corpus_meta": corpus_meta(conn), "active_nav": "categories"}
+    spent = _daily_spend(conn)
+    budget = _budget(conn)
+    pct = round(spent / budget * 100, 1) if budget > 0 else None
+    base = {"request": request, "corpus_meta": corpus_meta(conn), "active_nav": "categories",
+            "budget_bar": {"spent": round(spent, 4), "budget": budget, "pct": pct}}
     base.update(extra)
     return base
 

@@ -1,0 +1,21 @@
+{# Daily AI spend indicator. Green < 50%, orange < 80%, red at/after 80% of budget. #}
+{% if budget_bar %}
+{% set b = budget_bar %}
+{% set pct = b.pct if b.pct is not none else 0 %}
+{% set fill = pct if pct < 100 else 100 %}
+{% set color = '#00703c' if pct < 50 else ('#f47738' if pct < 80 else '#d4351c') %}
+<div class="budget-bar" style="max-width:420px;margin:0 0 18px;">
+  <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;">
+    <span>Daily AI spend</span>
+    <span><strong style="color:{{ color if b.budget and b.budget > 0 }};">${{ '%.4f'|format(b.spent) }}</strong>{%
+      if b.budget and b.budget > 0 %} of ${{ '%.2f'|format(b.budget) }} · {{ '%.0f'|format(pct) }}%{%
+      else %} · no budget set{% endif %}</span>
+  </div>
+  {% if b.budget and b.budget > 0 %}
+  <div title="{{ '%.0f'|format(pct) }}% of today's ${{ '%.2f'|format(b.budget) }} budget"
+    style="background:#e8e8e8;border-radius:5px;height:9px;overflow:hidden;">
+    <div style="width:{{ fill }}%;height:100%;background:{{ color }};transition:width .3s;"></div>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
