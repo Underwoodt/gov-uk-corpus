@@ -28,10 +28,9 @@ class TestBuildQuery(unittest.TestCase):
         self.assertNotIn("DISTINCT", sql)   # EXISTS avoids row fan-out
         self.assertEqual(params[0], "environment-agency")
 
-    def test_pg_count_uses_org_first_cte(self):
-        # On Postgres, an org+doctype COUNT restructures as a JOIN off the org set (via a
-        # NOT-materialised CTE, so the planner can inline it) instead of leading with the
-        # non-selective content.document_type.
+    def test_pg_count_uses_exists_semijoin(self):
+        # Counts and selects both use the EXISTS semi-join (no CTE, no MATERIALIZED) —
+        # the fastest form measured on the live corpus with fresh stats.
         import govuk_corpus.shortlist as sl
         saved_pg, saved_p = sl._IS_PG, sl._P
         sl._IS_PG, sl._P = True, "%s"
@@ -39,16 +38,11 @@ class TestBuildQuery(unittest.TestCase):
             sql, params = sl.build_query(count_only=True,
                                          organisations=["environment-agency"],
                                          document_types=["guidance", "news"])
-            self.assertIn("WITH org_pages AS (", sql)
-            self.assertNotIn("MATERIALIZED", sql)          # inlined form (faster here)
-            self.assertIn("JOIN org_pages op ON op.url = c.url", sql)
-            self.assertNotIn("EXISTS (SELECT 1 FROM page_organisations", sql)
-            # CTE (org) params lead, then the document_type params.
+            self.assertIn("EXISTS (SELECT 1 FROM page_organisations", sql)
+            self.assertNotIn("MATERIALIZED", sql)
+            self.assertNotIn("WITH org_pages", sql)
+            self.assertNotIn("JOIN org_pages", sql)
             self.assertEqual(params, ["environment-agency", "guidance", "news"])
-            # Non-count queries keep the EXISTS form (only counts use the CTE).
-            sql2, _ = sl.build_query(organisations=["environment-agency"])
-            self.assertIn("EXISTS (SELECT 1 FROM page_organisations", sql2)
-            self.assertNotIn("MATERIALIZED", sql2)
         finally:
             sl._IS_PG, sl._P = saved_pg, saved_p
 

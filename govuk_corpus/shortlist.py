@@ -65,30 +65,17 @@ def build_query(
     """Build (sql, params). Pure/deterministic, so it is unit-testable."""
     params: list = []
     where: List[str] = []
-    org_cte = ""            # optional leading CTE (Postgres count path)
-    org_params: list = []   # params that belong to the CTE, emitted before `params`
 
     if organisations:
+        # EXISTS (a semi-join, not a JOIN) so a page with several matching org rows is
+        # counted once without a DISTINCT. With fresh stats + a warm cache Postgres plans
+        # this org-first off idx_page_orgs_slug and it is the fastest form we've measured
+        # for both counts and the shortlist SELECT — no CTE needed.
         placeholders = ",".join([_P] * len(organisations))
-        if _IS_PG and count_only:
-            # Counting org + document_type (no keyword) via a plain EXISTS lets the planner
-            # lead with the non-selective content.document_type and scan a huge intermediate
-            # set (statement_timeout). Restructuring as a JOIN off the selective organisation
-            # set fixes that. NOT MATERIALIZED: on PG12+ this CTE is inlined, so the planner
-            # can still push the document_type filter and pick the best plan — measurably
-            # faster than the materialised form, which forced the whole org set to be built up
-            # front.
-            org_cte = (f"WITH org_pages AS ("
-                       f"SELECT po.page_url AS url FROM page_organisations po "
-                       f"WHERE po.organisation_slug IN ({placeholders}) GROUP BY po.page_url) ")
-            org_params.extend(organisations)
-        else:
-            # EXISTS (not JOIN) so a page with several matching org rows is counted once
-            # without a DISTINCT — index idx_page_orgs_slug makes this cheap even under load.
-            where.append(
-                f"EXISTS (SELECT 1 FROM page_organisations po "
-                f"WHERE po.page_url = c.url AND po.organisation_slug IN ({placeholders}))")
-            params.extend(organisations)
+        where.append(
+            f"EXISTS (SELECT 1 FROM page_organisations po "
+            f"WHERE po.page_url = c.url AND po.organisation_slug IN ({placeholders}))")
+        params.extend(organisations)
 
     if document_types:
         placeholders = ",".join([_P] * len(document_types))
@@ -126,10 +113,7 @@ def build_query(
         select = "c.url AS url, c.title AS title"
     else:
         select = "c.url AS url"
-    from_sql = "content c"
-    if org_cte:   # join the pre-materialised organisation page set by primary key
-        from_sql = "content c JOIN org_pages op ON op.url = c.url"
-    sql = f"{org_cte}SELECT {select} FROM {from_sql}{where_sql}"
+    sql = f"SELECT {select} FROM content c{where_sql}"
     if not count_only:
         sql += " ORDER BY c.url"
         if limit:
@@ -138,8 +122,7 @@ def build_query(
         if offset:
             sql += f" OFFSET {_P}"
             params.append(offset)
-    # CTE placeholders come first in the SQL text, so their params lead.
-    return sql, org_params + params
+    return sql, params
 
 
 def _quote_literal(v) -> str:
