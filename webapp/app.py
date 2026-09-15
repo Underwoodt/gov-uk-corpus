@@ -642,6 +642,24 @@ def api_funnel(request: Request, cid: int, stage: str = "all"):
     return JSONResponse({"stage": stage, "label": label, "count": n, "cached": False})
 
 
+@app.post("/api/categories/{cid}/funnel/refresh")
+def api_funnel_refresh(request: Request, cid: int):
+    """Clear this category's cached funnel counts (and the in-memory count/total caches)
+    so the next funnel load re-queries from scratch."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    conn = connect()
+    if not cat.get_category(conn, cid):
+        conn.close()
+        return JSONResponse({"error": "not found"}, status_code=404)
+    settings.set_setting(conn, f"funnel_cache_{cid}", "")   # persistent funnel cache
+    conn.close()
+    with _COUNT_LOCK:
+        _COUNT_CACHE.clear()   # in-memory TTL counts (funnel + org/keyword breakdowns)
+    _META_CACHE.clear()        # cached corpus total ("All pages")
+    return JSONResponse({"ok": True})
+
+
 @app.get("/categories/{cid}/audit-dashboard", response_class=HTMLResponse)
 def audit_dashboard_page(request: Request, cid: int):
     if not authed(request):
