@@ -136,6 +136,14 @@ class TestShortlistResults(unittest.TestCase):
     def test_count(self):
         self.assertEqual(count(self.conn, keywords=["slurry"]), 2)
 
+    def test_per_keyword_counts_for_breakdown(self):
+        # The "which terms matched" breakdown counts each keyword on its own within
+        # the org/doctype set; independent counts, so they can overlap.
+        base = dict(organisations=["environment-agency"], document_types=["guidance"])
+        self.assertEqual(count(self.conn, keywords=["slurry"], match="any", **base), 1)   # only /a
+        self.assertEqual(count(self.conn, keywords=["nitrate"], match="any", **base), 1)  # only /b
+        self.assertEqual(count(self.conn, keywords=["whey"], match="any", **base), 0)     # none
+
     def test_shortlist_rows_has_url_and_title(self):
         rows = shortlist_rows(self.conn, keywords=["slurry"])
         self.assertEqual([r["url"] for r in rows], ["https://www.gov.uk/a", "https://www.gov.uk/c"])
