@@ -240,6 +240,16 @@ CREATE INDEX IF NOT EXISTS idx_content_parent_document_type ON content(parent_do
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS slug text;
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS include_child_orgs smallint DEFAULT 0;
 
+-- Precomputed "input shortlist" size per category (organisations + document
+-- types, no keywords). Refreshed as the tidy-up phase of the nightly corpus
+-- cycle (run_all) and on every category create/edit, so the Categories list
+-- reads a stored number instead of running a live corpus COUNT per row.
+CREATE TABLE IF NOT EXISTS category_page_counts (
+    category_id  bigint PRIMARY KEY,
+    pages_kept   integer,
+    computed_at  text
+);
+
 -- Partial indexes over the "usable page" guard (is_redirect=0 AND content_hash
 -- IS NOT NULL) that every shortlist count carries. Lets the total count do an
 -- index-only scan and the document-type count skip the dead rows.

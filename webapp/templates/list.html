@@ -31,7 +31,8 @@
         </td>
         <td>{{ c.owner_email or '' }}</td>
         <td>{{ c.updated }}</td>
-        <td class="num">{{ c.pages_kept }}</td>
+        <td class="num">{{ c.pages_kept }}
+          {% if c.pages_kept_at %}<span class="sub" title="Recomputed nightly and on edit">as of {{ c.pages_kept_at }}</span>{% endif %}</td>
         <td><span class="pill {{ c.status }}">{{ c.status }}</span></td>
         <td><span class="actions">
           <a href="{{ url_for('preview_category_page', cid=c.id) }}">Run</a>
