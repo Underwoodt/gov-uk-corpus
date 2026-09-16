@@ -108,7 +108,7 @@ summary::-webkit-details-marker { display:none; }
   border-bottom:1px solid var(--white); margin-bottom:-1px; }
 .tabs a { background:var(--surface-3); color:var(--blue); }
 .tabs a:hover { background:var(--surface-2); }
-.tabpanel { border:1px solid var(--border); border-top:none; padding:28px 24px; background:var(--white);
+.tabpanel { position:relative; border:1px solid var(--border); border-top:none; padding:28px 24px 30px; background:var(--white);
   border-radius:0 0 var(--radius) var(--radius); }
 
 /* ---- tables ---- */
@@ -179,4 +179,7 @@ td.num.timing, th.num { font-variant-numeric:tabular-nums; }
 
 /* Per-sub-tab identifier (page-id + a letter, e.g. guc-0003a) — light grey,
    shown inside the tab label so a tab can be named in support. See PAGE_INDEX.md. */
-.tab-id { color:var(--muted); font-weight:400; font-size:11px; letter-spacing:.02em; }
+/* Active sub-tab identifier ({page-id}{letter}), bottom-left of the tab pane. */
+.pane-id { position:absolute; left:14px; bottom:8px; color:var(--muted);
+  font-weight:400; font-size:11px; letter-spacing:.02em; }
+.pane-id:empty { display:none; }

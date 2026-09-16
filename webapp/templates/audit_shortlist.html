@@ -23,8 +23,8 @@
 
   <div class="tabpanel">
     <div class="tabs" role="tablist" style="margin-bottom:22px;">
-      <a href="#" class="subtab current" data-tab="shortlist" role="tab">Shortlist <span class="tab-id">{{ page_ref }}a</span></a>
-      <a href="#" class="subtab" data-tab="dashboard" role="tab">Dashboard <span class="tab-id">{{ page_ref }}b</span></a>
+      <a href="#" class="subtab current" data-tab="shortlist" data-tabid="{{ page_ref }}a" role="tab">Shortlist</a>
+      <a href="#" class="subtab" data-tab="dashboard" data-tabid="{{ page_ref }}b" role="tab">Dashboard</a>
     </div>
 
     <section id="tab-shortlist" class="subpanel" role="tabpanel">
@@ -105,6 +105,8 @@
         </div>
       </div>
     </section>
+
+    <span class="pane-id" id="pane-id"></span>
   </div>
 
   <script>
@@ -236,6 +238,8 @@
         btns.forEach(b => b.classList.toggle("current", b.dataset.tab === tab));
         document.getElementById("tab-shortlist").hidden = tab !== "shortlist";
         document.getElementById("tab-dashboard").hidden = tab !== "dashboard";
+        const active = [...btns].find(b => b.dataset.tab === tab);
+        document.getElementById("pane-id").textContent = active ? active.dataset.tabid : "";
         if (tab === "shortlist" && !shortlistLoaded) { shortlistLoaded = true; loadAudit(); }
         if (tab === "dashboard" && !dashboardLoaded) { dashboardLoaded = true; showStage("keyword"); }
         try { localStorage.setItem("audit-subtab-" + CID, tab); } catch (e) {}
