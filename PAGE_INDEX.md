@@ -57,6 +57,18 @@ we can pin the report to an exact page.
 | guc-0013 | Category assistant (guided create) | `category_assistant.html` | `GET /categories/new/assistant` | Active |
 | guc-0014 | Sign in | inline in `webapp/app.py` | `GET /login` | Active |
 
+## Sub-tab IDs
+
+Sub-tabs within a page carry the page's ID plus a letter, shown in light grey inside
+the tab label (`<span class="tab-id">`). Keep the letters contiguous and update this
+list when sub-tabs change.
+
+| ID | Sub-tab | Page |
+|----|---------|------|
+| guc-0003a | Keyword Matching | Preview and run (`guc-0003`) |
+| guc-0003b | Semantic Match | Preview and run (`guc-0003`) |
+| guc-0003c | Funnel Results | Preview and run (`guc-0003`) |
+
 ## Retired IDs
 
 _None yet._ When a page is removed, move its row here (keep the ID, set Status

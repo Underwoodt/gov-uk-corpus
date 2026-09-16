@@ -169,3 +169,7 @@ td.num.timing, th.num { font-variant-numeric:tabular-nums; }
 .budget-inline .meta { font-size:14px; color:var(--muted); }
 .budget-track { width:80px; height:8px; background:#e8e8e8; border-radius:5px; overflow:hidden; display:inline-block; vertical-align:middle; }
 .budget-fill { display:block; height:100%; transition:width .3s; }
+
+/* Per-sub-tab identifier (page-id + a letter, e.g. guc-0003a) — light grey,
+   shown inside the tab label so a tab can be named in support. See PAGE_INDEX.md. */
+.tab-id { color:var(--muted); font-weight:400; font-size:11px; letter-spacing:.02em; }

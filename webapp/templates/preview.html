@@ -1,5 +1,6 @@
 {% extends "base.html" %}
-{% block page_id %}guc-0003{% endblock %}
+{% set page_ref = "guc-0003" %}
+{% block page_id %}{{ page_ref }}{% endblock %}
 {% block title %}{{ category.display_name }} — preview{% endblock %}
 {% block content %}
   <style>
@@ -19,10 +20,7 @@
   </style>
 
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
-  <h1 style="margin:20px 0 5px;">{{ category.display_name }}</h1>
-  <p class="secondary" style="margin:0 0 20px;">
-    <span class="mono">{{ category.slug or '' }}</span> · Owner: {{ category.owner_email or '—' }}
-    · Status: {{ category.status }}</p>
+  <h1 style="margin:20px 0 20px;">{{ category.display_name }}</h1>
 
   <div class="tabs">
     <a href="{{ url_for('edit_category_page', cid=category.id) }}">Definition</a>
@@ -74,9 +72,9 @@
     </table>
 
     <div class="tabs" role="tablist" style="margin-bottom:22px;">
-      <a href="#" class="subtab current" data-tab="exact" role="tab">Keyword Matching</a>
-      <a href="#" class="subtab" data-tab="semantic" role="tab">Semantic Match</a>
-      <a href="#" class="subtab" data-tab="results" role="tab">Funnel Results</a>
+      <a href="#" class="subtab current" data-tab="exact" role="tab">Keyword Matching <span class="tab-id">{{ page_ref }}a</span></a>
+      <a href="#" class="subtab" data-tab="semantic" role="tab">Semantic Match <span class="tab-id">{{ page_ref }}b</span></a>
+      <a href="#" class="subtab" data-tab="results" role="tab">Funnel Results <span class="tab-id">{{ page_ref }}c</span></a>
     </div>
 
     <section id="tab-exact" class="subpanel" role="tabpanel">

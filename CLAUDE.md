@@ -14,6 +14,13 @@ Project conventions that must be followed for every change. This file is the hom
   the row, don't reuse the number).
 - Pages are Jinja templates under `webapp/templates/` that `extends "base.html"`; the
   ID is a `{% block page_id %}` set right after the `extends` line.
+- **Sub-tabs carry an identifier too**, so a specific tab can be named in a bug report:
+  the page's ID plus a letter (`a`, `b`, `c`, …) — e.g. the Preview page (`guc-0003`)
+  sub-tabs are `guc-0003a` / `guc-0003b` / `guc-0003c`. It renders inside the tab label
+  as a `<span class="tab-id">` in light grey (like the page ID). Set the page ID once as
+  `{% set page_ref = "guc-NNNN" %}` at the top and reuse it for both the `page_id` block
+  and the tab tags. When you add or remove a sub-tab, keep the letters contiguous and
+  update the tab list in [PAGE_INDEX.md](PAGE_INDEX.md).
 
 ## App structure
 

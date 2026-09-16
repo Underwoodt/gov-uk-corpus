@@ -4,8 +4,7 @@
 {% block content %}
 
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
-  <h1 style="margin:20px 0 5px;">{{ category.display_name }}</h1>
-  <p class="secondary" style="margin:0 0 20px;"><span class="mono">{{ category.slug or '' }}</span></p>
+  <h1 style="margin:20px 0 20px;">{{ category.display_name }}</h1>
 
   <div class="tabs">
     <a href="{{ url_for('edit_category_page', cid=category.id) }}">Definition</a>
