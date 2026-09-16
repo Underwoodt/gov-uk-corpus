@@ -100,6 +100,10 @@ summary::-webkit-details-marker { display:none; }
 .btn.secondary-btn { background:var(--white); color:var(--ink); border-color:var(--border-mid);
   box-shadow:0 1px 0 rgba(11,12,12,.06); }
 .btn.secondary-btn:hover { background:var(--surface-3); color:var(--black); border-color:var(--muted); }
+/* Keep button labels their own colour when the <a> has been visited (a:visited
+   otherwise outranks .btn and turns the label blue). */
+.btn:visited { color:var(--white); }
+.btn.secondary-btn:visited { color:var(--ink); }
 
 /* ---- tabs ---- */
 .tabs { display:flex; gap:4px; border-bottom:1px solid var(--border); }
