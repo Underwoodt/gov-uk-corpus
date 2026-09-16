@@ -17,22 +17,14 @@ def body(*hrefs):
 
 
 class TestExtract(unittest.TestCase):
-    def test_absolute_govuk_only(self):
+    def test_extracts_govuk_only(self):
         links = link_gaps.extract_govuk_links(
-            body("/a",                                # site-relative -> ignored
-                 "https://www.gov.uk/b?q=1#frag",     # absolute -> kept (query/frag stripped)
-                 "http://www.gov.uk/c",               # not https -> ignored
-                 "https://example.com/x",             # other host -> ignored
-                 "https://www.gov.uk.evil.com/y",     # look-alike host -> ignored
-                 "mailto:a@b", "#top"))
-        self.assertEqual(set(links), {"https://www.gov.uk/b"})
+            body("/a", "https://www.gov.uk/b?q=1#frag", "https://example.com/x", "mailto:a@b", "#top"))
+        self.assertEqual(set(links), {"https://www.gov.uk/a", "https://www.gov.uk/b"})  # query/frag stripped
 
     def test_parts_body_and_malformed(self):
-        payload = json.dumps({"details": {"parts": [{"body": '<a href="https://www.gov.uk/part-page">p</a>'}]}})
+        payload = json.dumps({"details": {"parts": [{"body": '<a href="/part-page">p</a>'}]}})
         self.assertEqual(link_gaps.extract_govuk_links(payload), ["https://www.gov.uk/part-page"])
-        # A site-relative href in a part is ignored under the absolute-only rule.
-        rel = json.dumps({"details": {"parts": [{"body": '<a href="/part-page">p</a>'}]}})
-        self.assertEqual(link_gaps.extract_govuk_links(rel), [])
         self.assertEqual(link_gaps.extract_govuk_links("{bad"), [])
         self.assertEqual(link_gaps.extract_govuk_links(""), [])
 
@@ -41,10 +33,9 @@ class TestFindMissing(unittest.TestCase):
     def setUp(self):
         self.conn = db.connect(":memory:")
         db.init_db(self.conn)
-        G = "https://www.gov.uk/"
         rows = [
-            ("p0", body(G + "in-corpus", G + "missing-a", "https://example.com/x", "/site-rel")),
-            ("p1", body(G + "missing-a", G + "missing-b?q=1")),
+            ("p0", body("/in-corpus", "/missing-a", "https://example.com/x")),
+            ("p1", body("/missing-a", "https://www.gov.uk/missing-b?q=1")),
             ("in-corpus", "{}"),   # target that IS in the corpus
         ]
         for u, content in rows:

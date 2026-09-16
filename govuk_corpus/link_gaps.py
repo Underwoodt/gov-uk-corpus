@@ -1,8 +1,8 @@
 """Find gov.uk links referenced by a category's pages that are NOT in the corpus.
 
-Scans the body HTML of the shortlisted pages, pulls out every fully-qualified
-`https://www.gov.uk/...` <a href> (site-relative and other links are ignored),
-canonicalises it to a page URL, and reports the targets that don't exist in `content`.
+Scans the body HTML of the shortlisted pages, pulls out every gov.uk <a href>,
+canonicalises it to a page URL, and reports the targets that don't exist in `content`
+— ranked by how many shortlist pages link to each (the most-referenced gaps first).
 
 Reading page bodies (the TOASTed content JSON) is expensive, so the scan is capped at
 `sample_limit` pages and flags when the cap bit.
@@ -34,13 +34,7 @@ def _body_html(payload: dict) -> str:
 
 
 def extract_govuk_links(content_json: Optional[str]) -> List[str]:
-    """Canonical gov.uk page URLs referenced by <a href> in a page's body.
-
-    Only fully-qualified `https://www.gov.uk/...` hrefs are considered — the same
-    form the corpus stores, so the lookup is like-for-like with no host guessing.
-    Everything else (site-relative `/...`, `http://`, protocol-relative, other
-    hosts, mailto:, anchors) is ignored.
-    """
+    """Canonical gov.uk page URLs referenced by <a href> in a page's body."""
     if not content_json:
         return []
     try:
@@ -51,10 +45,14 @@ def extract_govuk_links(content_json: Optional[str]) -> List[str]:
         return []
     out = []
     for href in _HREF_RE.findall(_body_html(payload)):
-        low = href.strip().lower()
-        if not (low == "https://www.gov.uk" or low.startswith("https://www.gov.uk/")):
-            continue                                        # absolute https://www.gov.uk links only
-        cu = canonicalise(href.strip())                     # strips query/fragment/trailing slash
+        href = href.strip()
+        if href.startswith("/"):
+            target = "https://www.gov.uk" + href           # site-relative
+        elif href.lower().startswith(("http://", "https://")):
+            target = href                                   # absolute (canonicalise filters non-gov.uk)
+        else:
+            continue                                        # mailto:, anchors, other schemes
+        cu = canonicalise(target)
         if cu:
             out.append(cu)
     return out
