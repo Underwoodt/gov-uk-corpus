@@ -58,17 +58,11 @@
       <thead><tr><th>Selection criterion</th><th class="num">Rows returned</th><th class="num">Time</th></tr></thead>
       <tbody>
         {% for s in stages %}
-        {% set astage = {'org':'dept','doctype':'doctype','keyword':'keyword'}.get(s.stage) %}
         <tr data-stage="{{ s.stage }}">
-          <td>{% if astage %}<a href="{{ url_for('shortlist_page', cid=category.id) }}?stage={{ astage }}">{{ s.label }}</a>{% else %}{{ s.label }}{% endif %}
-            {% if s.vals %}
-            <details class="filter-values">
-              <summary>{{ s.vals|length }} value{{ '' if s.vals|length == 1 else 's' }}</summary>
+          <td>{% if s.vals %}<details class="filter-values">
+              <summary>{{ s.label }} ({{ s.vals|length }})</summary>
               <div class="detail" style="max-width:none;">{{ s.vals|join(', ') }}</div>
-            </details>
-            {% elif s.stage != 'all' %}
-            <span class="secondary" style="font-size:14px;">(no filter — all pages)</span>
-            {% endif %}
+            </details>{% else %}{{ s.label }}{% if s.stage != 'all' %} <span class="secondary" style="font-size:13px;">(no filter — all pages)</span>{% endif %}{% endif %}
           </td>
           <td class="num val"><span class="spinner"></span></td>
           <td class="num timing"></td>
