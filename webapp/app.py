@@ -641,7 +641,7 @@ def preview_category_page(request: Request, cid: int):
     conn.close()
     return templates.TemplateResponse("preview.html", ctx(
         connect(), request, category=category, sql=pretty, stages=stages,
-        eval_max_docs=eval_max_docs))
+        eval_max_docs=eval_max_docs, audit_stages=_AUDIT_STAGES, audit_sections=_DOWNLOAD_SECTIONS))
 
 
 @app.get("/api/categories/{cid}/funnel")
@@ -1369,8 +1369,100 @@ def api_results_table(request: Request, cid: int, limit: int = 50, offset: int =
     return JSONResponse({"total": total, "rows": rows, "limit": limit, "offset": offset, "q": q})
 
 
+# ---- audit shortlist (browse/extract the pages at any funnel stage) -----
+# Stage key -> label. Deterministic stages progressively narrow the corpus; the two
+# LLM stages restrict to the pages a run kept.
+_AUDIT_STAGES = [
+    ("dept", "Department"),
+    ("doctype", "Document type"),
+    ("keyword", "Keyword (Input Shortlist)"),
+    ("include", "Included (LLM inclusion keeps)"),
+    ("final", "Final (after exclusion / adjudication)"),
+]
+_AUDIT_STAGE_KEYS = [k for k, _ in _AUDIT_STAGES]
+_AUDIT_DEFAULT_FIELDS = [k for _, fs in _DOWNLOAD_SECTIONS for (k, l, d, dis, w) in fs if d]
+
+
+def _stage_query(conn, category, stage):
+    """Filters for export_rows/count at an audit stage, or None if an LLM stage has
+    no run yet. Deterministic stages drop the later filters; LLM stages restrict the
+    content rows to the URLs their run kept."""
+    eff = _effective_filters(conn, category)
+    if stage == "dept":
+        return dict(organisations=eff["organisations"], document_types=(), keywords=(), match=eff["match"])
+    if stage == "doctype":
+        return dict(organisations=eff["organisations"], document_types=eff["document_types"],
+                    keywords=(), match=eff["match"])
+    if stage == "keyword":
+        return dict(eff)
+    inc = evaluate.latest_inclusion_run(conn, category["id"])
+    if not inc:
+        return None
+    run_id = (evaluate.latest_exclusion_run(conn, inc) if stage == "final" else None) or inc
+    return dict(organisations=(), document_types=(), keywords=(), match="any",
+                extra_where=f"c.url IN (SELECT url FROM evaluation_results "
+                            f"WHERE run_id = {shortlist._P} AND keep = 1)",
+                extra_params=[run_id])
+
+
+def _merge_extra(filters, q):
+    """Combine a stage filter's extra_where with an optional title search (q)."""
+    f = dict(filters)
+    clauses, params = [], []
+    ew = f.pop("extra_where", None)
+    if ew:
+        clauses.append(ew)
+        params.extend(f.pop("extra_params", []))
+    else:
+        f.pop("extra_params", None)
+    if q:
+        clauses.append(f"LOWER(c.title) LIKE LOWER({shortlist._P})")
+        params.append("%" + q + "%")
+    if clauses:
+        f["extra_where"] = " AND ".join(clauses)
+        f["extra_params"] = params
+    return f
+
+
+@app.get("/api/categories/{cid}/audit-shortlist")
+def api_audit_shortlist(request: Request, cid: int, stage: str = "keyword",
+                        limit: int = 50, offset: int = 0, q: str = "",
+                        fields: List[str] = Query(default=[])):
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+    conn = connect()
+    category = cat.get_category(conn, cid)
+    if not category:
+        conn.close()
+        return JSONResponse({"error": "not found"}, status_code=404)
+    if stage not in _AUDIT_STAGE_KEYS:
+        stage = "keyword"
+    sq = _stage_query(conn, category, stage)
+    if sq is None:
+        conn.close()
+        return JSONResponse({"stage": stage, "no_data": True, "rows": [], "keys": [], "total": 0,
+                             "message": "No AI evaluation run yet — run it on the Semantic Match tab first."})
+    keys_wanted = [f for f in fields if f in shortlist.EXPORT_FIELDS] or list(_AUDIT_DEFAULT_FIELDS)
+    filters = _merge_extra(sq, (q or "").strip())
+    try:
+        keys, rows = shortlist.export_rows(conn, keys_wanted, limit=limit, offset=offset, **filters)
+    except Exception as e:
+        conn.close()
+        return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=500)
+    try:
+        total = shortlist.count(conn, **filters)
+    except Exception:
+        total = None
+    conn.close()
+    return JSONResponse({"stage": stage, "keys": keys, "rows": rows, "total": total,
+                         "limit": limit, "offset": offset, "q": (q or "").strip()})
+
+
 @app.get("/categories/{cid}/download", response_class=HTMLResponse)
-def download_page(request: Request, cid: int):
+def download_page(request: Request, cid: int, stage: str = "keyword",
+                  fields: List[str] = Query(default=[])):
     if not authed(request):
         return login_redirect(request)
     conn = connect()
@@ -1379,18 +1471,28 @@ def download_page(request: Request, cid: int):
         conn.close()
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
     category["display_name"] = cat.prettify(category.get("slug")) or (category.get("description") or "Untitled")
-    total = cached_count(conn, **_effective_filters(conn, category))
+    if stage not in _AUDIT_STAGE_KEYS:
+        stage = "keyword"
+    sq = _stage_query(conn, category, stage)
+    total = None
+    if sq is not None:
+        try:
+            total = shortlist.count(conn, **_merge_extra(sq, ""))
+        except Exception:
+            total = None
     resp = templates.TemplateResponse("download.html", ctx(
-        conn, request, category=category, total=total, sections=_DOWNLOAD_SECTIONS))
+        conn, request, category=category, total=total, sections=_DOWNLOAD_SECTIONS,
+        stage=stage, stage_label=dict(_AUDIT_STAGES).get(stage, stage),
+        preselect=[f for f in fields if f in shortlist.EXPORT_FIELDS]))
     conn.close()
     return resp
 
 
 @app.get("/categories/{cid}/export")
-def export_category(request: Request, cid: int, format: str = "csv",
+def export_category(request: Request, cid: int, format: str = "csv", stage: str = "keyword",
                     fields: List[str] = Query(default=[])):
-    """Build the chosen-format, chosen-field export. Sync route -> runs in a
-    threadpool so a large export doesn't block the event loop."""
+    """Build the chosen-format, chosen-field export for an audit stage. Sync route ->
+    runs in a threadpool so a large export doesn't block the event loop."""
     if not authed(request):
         return login_redirect(request)
     conn = connect()
@@ -1398,7 +1500,13 @@ def export_category(request: Request, cid: int, format: str = "csv",
     if not category:
         conn.close()
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
-    keys, rows = shortlist.export_rows(conn, fields, **_effective_filters(conn, category))
+    if stage not in _AUDIT_STAGE_KEYS:
+        stage = "keyword"
+    sq = _stage_query(conn, category, stage)
+    if sq is None:
+        conn.close()
+        return RedirectResponse(url=str(request.url_for("download_page", cid=cid)), status_code=303)
+    keys, rows = shortlist.export_rows(conn, fields, **_merge_extra(sq, ""))
     conn.close()
     labels = [shortlist.EXPORT_FIELDS[k][1] for k in keys]
     name = category.get("slug") or f"category-{cid}"
