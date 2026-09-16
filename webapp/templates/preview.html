@@ -10,6 +10,19 @@
     .subtab-btn small { font-weight:400; font-size:13px; color:#505a5f; }
     .subtab-btn.current { background:var(--black,#0b0c0c); color:#fff; }
     .subtab-btn.current small { color:#c9c9c9; }
+    /* Side-by-side breakdown panels with compact bars. auto-fit lets a single
+       visible panel (e.g. no keywords) expand to full width. */
+    .breakdowns { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));
+      gap:10px 32px; margin-top:24px; align-items:start; }
+    .breakdowns > div { margin-top:0 !important; }
+    .breakdowns table { margin-bottom:0; }
+    .bd-name { max-width:190px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+      font-size:13px; padding:2px 8px 2px 0; }
+    .bd-cell { width:100%; padding:2px 8px; }
+    .bd-track { background:#eef0f1; border-radius:999px; height:9px; }
+    .bd-fill { height:100%; background:var(--blue,#1d70b8); border-radius:999px; }
+    .bd-val { text-align:right; font-weight:700; font-size:13px; white-space:nowrap;
+      padding:2px 0; font-variant-numeric:tabular-nums; }
   </style>
 
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
@@ -29,7 +42,7 @@
   <div class="tabpanel">
     <div class="subtabs" role="tablist">
       <button type="button" class="subtab-btn current" data-tab="exact" role="tab">
-        Exact Match<small>SQL + keywords</small></button>
+        Keyword Matching<small>SQL + keywords</small></button>
       <button type="button" class="subtab-btn" data-tab="semantic" role="tab">
         Semantic Match<small>AI inference + confidence</small></button>
     </div>
@@ -44,6 +57,13 @@
       Counts are cached until the definition or corpus changes — use Refresh to force a recompute.</p>
     <p style="margin:0 0 16px;font-size:14px;">
       <a href="{{ url_for('download_audit', cid=category.id) }}">Download Audit File (Debugging only)</a></p>
+
+    <p class="hint" style="margin:0 0 8px;">How pages flow through the three filters — organisation, document type,
+      then keyword. The dark bars are the pages that pass each stage; the red wedges are those dropped.</p>
+    <div style="overflow-x:auto;margin:0 0 22px;">
+      <svg id="sankey" style="width:100%;min-width:560px;height:250px;"></svg>
+    </div>
+
     <table id="funnel">
       <thead><tr><th>Selection criterion</th><th class="num">Rows returned</th><th class="num">Time</th></tr></thead>
       <tbody>
@@ -66,35 +86,31 @@
       </tbody>
     </table>
 
-    <div id="org-breakdown" hidden style="margin-top:24px;">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;">
-        <h2 style="margin:0;">Which organisations matched</h2>
-        <a href="#" id="org-toggle" hidden style="font-size:14px;">Show all organisations</a>
+    <div class="breakdowns">
+      <div id="org-breakdown" hidden>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;">
+          <h2 style="margin:0;font-size:19px;">Which organisations matched</h2>
+          <a href="#" id="org-toggle" hidden style="font-size:14px;">Show all</a>
+        </div>
+        <p class="hint" style="margin-top:2px;">Pages contributed by each organisation (within the document-type
+          and keyword filters). Organisations overlap, so these don't sum to the total.</p>
+        <table style="width:100%;"><tbody id="org-rows"></tbody></table>
+        <p id="org-empty" class="secondary" hidden>No organisations set for this category.</p>
       </div>
-      <p class="hint" style="margin-top:2px;">Pages contributed by each organisation (within the document-type
-        and keyword filters). Organisations overlap, so these don't sum to the total.</p>
-      <table style="width:100%;"><tbody id="org-rows"></tbody></table>
-      <p id="org-empty" class="secondary" hidden>No organisations set for this category.</p>
+
+      <div id="kw-breakdown" hidden>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;">
+          <h2 style="margin:0;font-size:19px;">Which terms matched</h2>
+          <a href="#" id="kw-toggle" hidden style="font-size:14px;">Show all</a>
+        </div>
+        <p class="hint" style="margin-top:2px;">Pages matching each keyword on its own (within the organisation and
+          document-type filters). Terms overlap, so these don't sum to the keyword total.</p>
+        <table style="width:100%;"><tbody id="kw-rows"></tbody></table>
+        <p id="kw-empty" class="secondary" hidden>No keywords set for this category.</p>
+      </div>
     </div>
 
-    <div id="kw-breakdown" hidden style="margin-top:24px;">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;">
-        <h2 style="margin:0;">Which terms matched</h2>
-        <a href="#" id="kw-toggle" hidden style="font-size:14px;">Show all terms</a>
-      </div>
-      <p class="hint" style="margin-top:2px;">Pages matching each keyword on its own (within the organisation and
-        document-type filters). Terms overlap, so these don't sum to the keyword total.</p>
-      <table style="width:100%;"><tbody id="kw-rows"></tbody></table>
-      <p id="kw-empty" class="secondary" hidden>No keywords set for this category.</p>
-    </div>
-
-    <h2 style="margin-top:24px;">Result</h2>
-    <p class="hint" style="margin-top:-20px;">How pages flow through the three filters — organisation, document type,
-      then keyword. The dark bars are the pages that pass each stage; the red wedges are those dropped.</p>
-    <div style="overflow-x:auto;">
-      <svg id="sankey" style="width:100%;min-width:560px;height:250px;"></svg>
-    </div>
-    <span class="actions" style="margin-top:10px;">
+    <span class="actions" style="margin-top:24px;">
       <a class="btn secondary-btn" href="{{ url_for('results_table_page', cid=category.id) }}">View results table</a>
       <a class="btn secondary-btn" href="{{ url_for('missing_links_page', cid=category.id) }}">Missing links</a>
       <a class="btn secondary-btn" href="{{ url_for('download_page', cid=category.id) }}">Download…</a>
@@ -220,19 +236,16 @@
       document.getElementById("org-rows").innerHTML = shown.map(o => {
         const pct = o.count == null ? 0 : Math.round((o.count / max) * 100);
         return `<tr>` +
-          `<td style="padding:6px 10px 6px 0;white-space:nowrap;">${esc(o.organisation)}</td>` +
-          `<td style="width:100%;padding:6px 10px;">` +
-            `<div style="background:#eee;border-radius:3px;height:14px;">` +
-              `<div style="width:${pct}%;height:100%;background:var(--blue,#1d70b8);border-radius:3px;"></div>` +
-            `</div></td>` +
-          `<td class="num" style="padding:6px 0;font-weight:700;white-space:nowrap;">${fmtInt(o.count)}</td>` +
+          `<td class="bd-name" title="${esc(o.organisation)}">${esc(o.organisation)}</td>` +
+          `<td class="bd-cell"><div class="bd-track"><div class="bd-fill" style="width:${pct}%;"></div></div></td>` +
+          `<td class="bd-val">${fmtInt(o.count)}</td>` +
         `</tr>`;
       }).join("");
     }
     document.getElementById("org-toggle").addEventListener("click", e => {
       e.preventDefault();
       orgExpanded = !orgExpanded;
-      e.target.textContent = orgExpanded ? "Show top " + ORG_TOP : "Show all organisations";
+      e.target.textContent = orgExpanded ? "Show top " + ORG_TOP : "Show all";
       renderOrgRows();
     });
 
@@ -258,19 +271,16 @@
         const pct = t.count == null ? 0 : Math.round((t.count / max) * 100);
         const val = t.count == null ? "error" : fmtInt(t.count);
         return `<tr>` +
-          `<td style="padding:6px 10px 6px 0;white-space:nowrap;">${esc(t.keyword)}</td>` +
-          `<td style="width:100%;padding:6px 10px;">` +
-            `<div style="background:#eee;border-radius:3px;height:14px;">` +
-              `<div style="width:${pct}%;height:100%;background:var(--blue,#1d70b8);border-radius:3px;"></div>` +
-            `</div></td>` +
-          `<td class="num" style="padding:6px 0;font-weight:700;white-space:nowrap;">${val}</td>` +
+          `<td class="bd-name" title="${esc(t.keyword)}">${esc(t.keyword)}</td>` +
+          `<td class="bd-cell"><div class="bd-track"><div class="bd-fill" style="width:${pct}%;"></div></div></td>` +
+          `<td class="bd-val">${val}</td>` +
         `</tr>`;
       }).join("");
     }
     document.getElementById("kw-toggle").addEventListener("click", e => {
       e.preventDefault();
       kwExpanded = !kwExpanded;
-      e.target.textContent = kwExpanded ? "Show top " + KW_TOP : "Show all terms";
+      e.target.textContent = kwExpanded ? "Show top " + KW_TOP : "Show all";
       renderKeywordRows();
     });
 
