@@ -41,6 +41,16 @@ class TestPromptAndParse(unittest.TestCase):
         self.assertIsNone(evaluate.parse_decision(""))
 
 
+class TestPhaseMode(unittest.TestCase):
+    def test_normalise_mode(self):
+        self.assertEqual(evaluate.normalise_mode("batch"), evaluate.MODE_BATCH)
+        self.assertEqual(evaluate.normalise_mode("  BATCH "), evaluate.MODE_BATCH)
+        self.assertEqual(evaluate.normalise_mode("synchronous"), evaluate.MODE_SYNC)
+        # Anything unrecognised / empty / None defaults to synchronous.
+        for v in ("", None, "async", "sync", "on"):
+            self.assertEqual(evaluate.normalise_mode(v), evaluate.MODE_SYNC)
+
+
 class TestRuns(unittest.TestCase):
     def setUp(self):
         self.conn = db.connect(":memory:")

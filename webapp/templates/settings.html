@@ -72,8 +72,11 @@
     <p class="hint">Each evaluation phase runs on its own model (the current pipeline uses a cheap,
       recall-first model for Inclusion and a stronger model for Exclusion). Pick a model per phase;
       leave as "Use active model" to fall back to the selected active model above.</p>
+    <p class="hint"><strong>Mode</strong> — <em>Synchronous</em> makes one API call per page (current behaviour).
+      <em>Batch</em> submits the phase as one asynchronous Anthropic Message Batches job (~50% cheaper).
+      Batch needs an <strong>Anthropic</strong> model — DeepSeek has no batch API, so a DeepSeek phase always runs synchronously.</p>
     <table>
-      <thead><tr><th>Phase</th><th>Model</th></tr></thead>
+      <thead><tr><th>Phase</th><th>Model</th><th>Mode</th></tr></thead>
       <tbody>
         {% for pm in phase_models %}
         <tr>
@@ -85,6 +88,15 @@
               <option value="{{ m.id }}" {{ 'selected' if pm.current == (m.id|string) }}>{{ m.provider }} / {{ m.model_id }}</option>
               {% endfor %}
             </select>
+          </td>
+          <td>
+            <select name="{{ pm.mode_key }}" style="font-size:14px;padding:4px;border:2px solid var(--black);">
+              <option value="synchronous" {{ 'selected' if pm.mode != 'batch' }}>Synchronous</option>
+              <option value="batch" {{ 'selected' if pm.mode == 'batch' }}>Batch</option>
+            </select>
+            {% if pm.mode == 'batch' and pm.provider != 'anthropic' %}
+            <div class="hint" style="color:var(--red,#b00);margin-top:4px;">Batch needs an Anthropic model — this phase is on {{ pm.provider }}.</div>
+            {% endif %}
           </td>
         </tr>
         {% endfor %}

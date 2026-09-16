@@ -27,6 +27,19 @@ PHASE_INCLUSION = "Phase 1 - Inclusion"
 PHASE_EXCLUSION = "Phase 2 - Exclusion"
 PHASE_ADJUDICATION = "Phase 3 - Adjudication"
 
+# Execution mode for a phase's inference. Synchronous = one blocking API call per
+# page (the current behaviour). Batch = submit the whole phase as one asynchronous
+# job via the Anthropic Message Batches API (~50% cheaper; Anthropic models only —
+# DeepSeek's endpoint has no batch API, so a DeepSeek phase always runs synchronously).
+MODE_SYNC = "synchronous"
+MODE_BATCH = "batch"
+PHASE_MODES = (MODE_SYNC, MODE_BATCH)
+
+
+def normalise_mode(value: Optional[str]) -> str:
+    """Coerce a stored/form value to a valid mode, defaulting to synchronous."""
+    return MODE_BATCH if (value or "").strip().lower() == MODE_BATCH else MODE_SYNC
+
 
 def build_prompt(inclusion: str, exclusion: str, title: str, description: str,
                  body: str, body_limit: int = BODY_CHAR_LIMIT) -> str:

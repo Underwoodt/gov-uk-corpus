@@ -225,6 +225,18 @@ PHASE_MODEL_KEYS = {
     evaluate.PHASE_ADJUDICATION: "phase_model_adjudication",
 }
 
+# Phase → settings key holding the execution mode (synchronous | batch) for that phase.
+PHASE_MODE_KEYS = {
+    evaluate.PHASE_INCLUSION: "phase_mode_inclusion",
+    evaluate.PHASE_EXCLUSION: "phase_mode_exclusion",
+    evaluate.PHASE_ADJUDICATION: "phase_mode_adjudication",
+}
+
+
+def _phase_mode(conn, phase: str) -> str:
+    """The stored execution mode for a phase (defaults to synchronous)."""
+    return evaluate.normalise_mode(settings.get_setting(conn, PHASE_MODE_KEYS.get(phase, ""), ""))
+
 
 def _config_from_model(conn, m: dict) -> dict:
     """Build an AI config dict from an ai_models row."""
@@ -1369,7 +1381,9 @@ def settings_page(request: Request, saved: int = 0):
         m["active"] = str(m["id"]) == str(active)
     phase_models = [
         {"phase": ph, "key": PHASE_MODEL_KEYS[ph],
-         "current": settings.get_setting(conn, PHASE_MODEL_KEYS[ph], "")}
+         "current": settings.get_setting(conn, PHASE_MODEL_KEYS[ph], ""),
+         "mode_key": PHASE_MODE_KEYS[ph], "mode": _phase_mode(conn, ph),
+         "provider": _ai_config_for_phase(conn, ph).get("provider")}
         for ph in (evaluate.PHASE_INCLUSION, evaluate.PHASE_EXCLUSION, evaluate.PHASE_ADJUDICATION)]
     resp = templates.TemplateResponse("settings.html", ctx(
         conn, request, active_nav="settings", models=models,
@@ -1407,6 +1421,10 @@ async def save_settings(request: Request):
     for ph, key in PHASE_MODEL_KEYS.items():
         if key in form:
             settings.set_setting(conn, key, (form.get(key) or "").strip())
+    # Per-phase execution mode (synchronous | batch).
+    for ph, key in PHASE_MODE_KEYS.items():
+        if key in form:
+            settings.set_setting(conn, key, evaluate.normalise_mode(form.get(key)))
     # Save edits to existing model rows.
     for m in ai_models.list_models(conn):
         rid = m["id"]
