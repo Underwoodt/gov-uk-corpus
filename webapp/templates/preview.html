@@ -127,8 +127,12 @@
       <span class="secondary">(max {{ eval_max_docs }}/run — Settings)</span>
       <button type="button" class="btn secondary-btn" id="run-eval">Evaluate (active run)</button>
       <button type="button" class="btn secondary-btn" id="new-run">Start new run</button>
+      <button type="button" class="btn secondary-btn" id="run-bg" title="Runs the whole shortlist on the server — you can close this page">Run to completion (background)</button>
+      <button type="button" class="btn secondary-btn" id="stop-bg" hidden style="color:#d4351c;">Stop background run</button>
       <span id="eval-status" class="secondary"></span>
     </div>
+    <p id="bg-note" class="hint" style="margin:0 0 10px;" hidden>Running on the server — it keeps going even if you
+      leave this page. Come back any time to see progress.</p>
     <p id="active-run-line" class="secondary" style="margin:0 0 10px;"></p>
     <div id="eval-progress-wrap" hidden style="max-width:640px;margin:0 0 15px;">
       <div style="height:18px;border:1px solid var(--grey-border);background:var(--white);">
@@ -544,6 +548,70 @@
       }
     }
     runEvalBtn.addEventListener("click", runEval);
+
+    // ---- server-side background run (keeps going with the page closed) ----
+    const runBgBtn = document.getElementById("run-bg");
+    const stopBgBtn = document.getElementById("stop-bg");
+    const bgNote = document.getElementById("bg-note");
+    let bgTimer = null;
+
+    function bgUiRunning(on) {
+      runBgBtn.disabled = on; runEvalBtn.disabled = on; newRunBtn.disabled = on;
+      stopBgBtn.hidden = !on; bgNote.hidden = !on;
+    }
+    function renderBgStatus(s) {
+      const st = document.getElementById("eval-status");
+      const done = s.done || 0, remaining = (s.remaining == null ? null : s.remaining);
+      const total = (remaining == null ? null : done + remaining);
+      if (total && total > 0) {
+        document.getElementById("eval-progress-wrap").hidden = false;
+        document.getElementById("eval-progress-bar").style.width =
+          Math.min(100, (done / total) * 100).toFixed(1) + "%";
+      }
+      let msg = `Background ${s.phase ? "(" + s.phase + ") " : ""}— evaluated ${fmtInt(done)}`
+              + (remaining != null ? ` · ${fmtInt(remaining)} left` : "")
+              + ` · $${(s.cost || 0).toFixed(6)}`;
+      if (s.spent_today != null) msg += ` · $${s.spent_today.toFixed(4)}/$${(s.budget || 0).toFixed(2)} today`;
+      if (!s.running) {
+        if (s.error) msg = "Background run error: " + s.error;
+        else if (s.stopped === "budget") msg += " · ⛔ stopped: daily budget reached";
+        else msg += " · ✅ finished";
+      }
+      st.textContent = msg;
+    }
+    async function pollBg() {
+      let s;
+      try { s = await (await fetch(`/api/categories/${CID}/evaluate-bg/status`)).json(); }
+      catch (e) { return; }
+      renderBgStatus(s);
+      await loadRuns();
+      if (s.run_id) await loadRunResults(s.run_id, "");
+      if (!s.running) { bgUiRunning(false); if (bgTimer) { clearInterval(bgTimer); bgTimer = null; } }
+    }
+    function beginBgPolling() {
+      bgUiRunning(true);
+      if (!bgTimer) bgTimer = setInterval(pollBg, 3000);
+      pollBg();
+    }
+    runBgBtn.addEventListener("click", async () => {
+      runBgBtn.disabled = true;
+      try {
+        const j = await (await fetch(`/api/categories/${CID}/evaluate-bg/start`, { method: "POST" })).json();
+        if (j.error) { document.getElementById("eval-status").textContent = "Error: " + j.error; runBgBtn.disabled = false; return; }
+        beginBgPolling();
+      } catch (e) { document.getElementById("eval-status").textContent = "Could not start background run."; runBgBtn.disabled = false; }
+    });
+    stopBgBtn.addEventListener("click", async () => {
+      stopBgBtn.disabled = true;
+      try { await fetch(`/api/categories/${CID}/evaluate-bg/stop`, { method: "POST" }); } catch (e) {}
+      stopBgBtn.disabled = false;
+      document.getElementById("eval-status").textContent = "Stopping after the current batch…";
+    });
+    // On load: if a background run is already going (e.g. started before you left), resume showing it.
+    (async () => {
+      try { const s = await (await fetch(`/api/categories/${CID}/evaluate-bg/status`)).json(); if (s.running) beginBgPolling(); }
+      catch (e) {}
+    })();
     // Sub-tabs: Exact Match (deterministic funnel) vs Semantic Match (AI).
     (function () {
       const btns = document.querySelectorAll(".subtab");

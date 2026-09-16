@@ -954,6 +954,86 @@ async def api_evaluate(request: Request, cid: int, limit: int = 10):
     return JSONResponse(result)
 
 
+# ---- server-side background evaluation ----------------------------------
+# A background thread drives _run_evaluation in chunks until the shortlist is
+# exhausted (through the auto-advanced exclusion phase), the daily budget stops
+# it, it's stopped, or it errors — so a run finishes without the browser open.
+# Progress lives in-memory per category; it does NOT survive a service restart
+# (the DB run does, and can be resumed from the page).
+BG_EVAL_CHUNK = 25
+_bg_evals: Dict[int, dict] = {}
+_bg_lock = threading.Lock()
+
+
+def _background_eval_loop(cid: int, stop_event: threading.Event, status: dict) -> None:
+    try:
+        while not stop_event.is_set():
+            res = _run_evaluation(cid, BG_EVAL_CHUNK)
+            if res.get("error"):
+                status["error"] = res["error"]
+                break
+            status["done"] += res.get("evaluated_this_run", 0)
+            status["cost"] += res.get("cost_usd") or 0.0
+            status["phase"] = res.get("phase")
+            status["remaining"] = res.get("remaining")
+            status["run_id"] = res.get("run_id")
+            status["spent_today"] = res.get("spent_today")
+            status["budget"] = res.get("budget")
+            if res.get("stopped") == "budget":
+                status["stopped"] = "budget"
+                break
+            # No auto-advance and nothing left (or nothing progressed) -> finished.
+            if not res.get("advanced") and (res.get("evaluated_this_run", 0) == 0
+                                            or res.get("remaining") == 0):
+                break
+    except Exception as e:                      # never let the thread die silently
+        status["error"] = f"{type(e).__name__}: {e}"
+    finally:
+        status["running"] = False
+        status["finished_at"] = db.now_iso()
+
+
+@app.post("/api/categories/{cid}/evaluate-bg/start")
+async def api_bg_eval_start(request: Request, cid: int):
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    conn = connect()
+    ok = cat.get_category(conn, cid) is not None
+    conn.close()
+    if not ok:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    with _bg_lock:
+        ent = _bg_evals.get(cid)
+        if ent and ent["status"].get("running"):
+            return JSONResponse({"already_running": True, "status": ent["status"]})
+        stop_event = threading.Event()
+        status = {"running": True, "done": 0, "cost": 0.0, "phase": None, "remaining": None,
+                  "run_id": None, "stopped": None, "error": None,
+                  "started_at": db.now_iso(), "finished_at": None}
+        t = threading.Thread(target=_background_eval_loop, args=(cid, stop_event, status), daemon=True)
+        _bg_evals[cid] = {"thread": t, "stop": stop_event, "status": status}
+        t.start()
+    return JSONResponse({"started": True, "status": status})
+
+
+@app.get("/api/categories/{cid}/evaluate-bg/status")
+async def api_bg_eval_status(request: Request, cid: int):
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    ent = _bg_evals.get(cid)
+    return JSONResponse(ent["status"] if ent else {"running": False})
+
+
+@app.post("/api/categories/{cid}/evaluate-bg/stop")
+async def api_bg_eval_stop(request: Request, cid: int):
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    ent = _bg_evals.get(cid)
+    if ent:
+        ent["stop"].set()
+    return JSONResponse({"stopping": ent is not None})
+
+
 @app.get("/categories/{cid}/performance", response_class=HTMLResponse)
 def performance_page(request: Request, cid: int):
     if not authed(request):

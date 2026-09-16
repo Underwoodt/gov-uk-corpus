@@ -264,6 +264,35 @@ class TestRunEvaluationMocked(unittest.TestCase):
         self.assertGreater(app._daily_spend(conn), 0)
         conn.close()
 
+    def _bg_status(self, app):
+        return {"running": True, "done": 0, "cost": 0.0, "phase": None, "remaining": None,
+                "run_id": None, "stopped": None, "error": None,
+                "started_at": app.db.now_iso(), "finished_at": None}
+
+    def test_background_loop_runs_to_completion(self):
+        import threading
+        app, cid = self._app(n=5)
+        status = self._bg_status(app)
+        app._background_eval_loop(cid, threading.Event(), status)   # runs synchronously here
+        self.assertFalse(status["running"])
+        self.assertIsNone(status["error"])
+        self.assertGreaterEqual(status["done"], 5)
+        conn = app.connect()
+        phases = {r["phase"] for r in evaluate.list_runs(conn, cid)}
+        conn.close()
+        # Ran the inclusion phase and auto-advanced through exclusion — no browser needed.
+        self.assertIn(evaluate.PHASE_INCLUSION, phases)
+        self.assertIn(evaluate.PHASE_EXCLUSION, phases)
+
+    def test_background_loop_respects_stop(self):
+        import threading
+        app, cid = self._app(n=5)
+        ev = threading.Event(); ev.set()               # already stopped
+        status = self._bg_status(app)
+        app._background_eval_loop(cid, ev, status)
+        self.assertFalse(status["running"])
+        self.assertEqual(status["done"], 0)            # nothing evaluated
+
     def test_new_run_reevaluates_same_pages(self):
         app, cid = self._app(n=3)
         r1 = app._run_evaluation(cid, 3)
