@@ -143,7 +143,8 @@
 
     <h3 style="margin:20px 0 6px;">Runs</h3>
     <table id="runs-table" hidden>
-      <thead><tr><th>Name</th><th>Started</th><th>Elapsed</th>
+      <thead><tr><th title="The run that Evaluate / background runs add to">Active</th>
+        <th>Name</th><th>Started</th><th>Elapsed</th>
         <th class="num">Pages</th><th class="num">Keep</th><th class="num">Drop</th>
         <th class="num">Tokens in</th><th class="num">Tokens out</th><th class="num">Cost</th>
         <th></th></tr></thead>
@@ -404,6 +405,9 @@
         const tr = document.createElement("tr");
         if (r.run_id === activeRun) tr.style.fontWeight = "700";
         tr.innerHTML =
+          `<td><input type="radio" name="active-run" class="active-run" data-run="${r.run_id}" ` +
+          `${r.run_id === activeRun ? "checked" : ""} title="Make this the active run" ` +
+          `style="width:18px;height:18px;accent-color:var(--black);"></td>` +
           `<td><a class="name-link" href="/categories/${CID}/runs/${r.run_id}" ` +
           `title="Open run details">${esc(r.name || r.run_id)}</a></td>` +
           `<td>${fmtDate(r.started_at)}</td>` +
@@ -422,6 +426,17 @@
       document.getElementById("runs-empty").hidden = j.runs.length !== 0;
       table.querySelectorAll("a.del-run").forEach(a =>
         a.addEventListener("click", e => { e.preventDefault(); deleteRun(a.dataset.run, a.dataset.pages); }));
+      table.querySelectorAll("input.active-run").forEach(radio =>
+        radio.addEventListener("change", async () => {
+          if (!radio.checked) return;
+          try {
+            await fetch(`/api/categories/${CID}/runs/${radio.dataset.run}/activate`, { method: "POST" });
+          } catch (e) {}
+          await loadRuns();
+        }));
+      // Radios can't switch the target mid-run — lock them while evaluating.
+      const lockRadios = runEvalBtn.disabled || (stopBgBtn && !stopBgBtn.hidden);
+      table.querySelectorAll("input.active-run").forEach(radio => { radio.disabled = lockRadios; });
 
       // Feed the latest inclusion (and its exclusion) run into the pipeline Sankey.
       const incl = j.runs.find(r => /inclusion/i.test(r.phase || ""));
