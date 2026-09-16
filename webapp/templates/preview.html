@@ -139,10 +139,10 @@
 
     <h3 style="margin:20px 0 6px;">Runs</h3>
     <table id="runs-table" hidden>
-      <thead><tr><th>Name</th><th>Started</th><th>Phase</th><th>Supplier</th><th>Model</th><th class="num">Pages</th><th class="num">Keep</th>
-        <th class="num">Drop</th><th class="num">Tokens in</th><th class="num">Cache hit</th><th class="num">Cache miss</th>
-        <th class="num">Tokens out</th><th class="num">Cost</th>
-        <th class="num">Avg s</th><th></th></tr></thead>
+      <thead><tr><th>Name</th><th>Started</th><th>Elapsed</th>
+        <th class="num">Pages</th><th class="num">Keep</th><th class="num">Drop</th>
+        <th class="num">Tokens in</th><th class="num">Tokens out</th><th class="num">Cost</th>
+        <th></th></tr></thead>
       <tbody></tbody>
     </table>
     <p id="runs-empty" class="secondary" hidden>No runs yet. Click <em>Evaluate</em> to start one.</p>
@@ -378,6 +378,14 @@
     let selectedRun = null, activeRun = null;
 
     function fmtDate(s) { return s ? String(s).slice(0, 19).replace("T", " ") : "—"; }
+    // Wall-clock elapsed between start and finish as H:MM:SS ("—" if unfinished).
+    function fmtElapsed(startIso, finishIso) {
+      if (!startIso || !finishIso) return "—";
+      let s = Math.round((new Date(finishIso) - new Date(startIso)) / 1000);
+      if (!isFinite(s) || s < 0) return "—";
+      const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+      return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+    }
 
     async function loadRuns() {
       const j = await (await fetch(`/api/categories/${CID}/runs`)).json();
@@ -389,21 +397,18 @@
       const tbody = table.querySelector("tbody");
       tbody.innerHTML = "";
       for (const r of j.runs) {
-        const avg = r.pages ? (r.total_ms / r.pages / 1000).toFixed(1) : "—";
         const tr = document.createElement("tr");
         if (r.run_id === activeRun) tr.style.fontWeight = "700";
         tr.innerHTML =
           `<td><a class="name-link" href="/categories/${CID}/runs/${r.run_id}" ` +
           `title="Open run details">${esc(r.name || r.run_id)}</a></td>` +
-          `<td>${fmtDate(r.started_at)}</td><td>${esc(r.phase || "")}</td><td>${esc(r.provider || "")}</td>` +
-          `<td>${esc(r.actual_model || r.model || "")}</td>` +
+          `<td>${fmtDate(r.started_at)}</td>` +
+          `<td class="num timing">${fmtElapsed(r.started_at, r.finished_at)}</td>` +
           `<td class="num">${fmtInt(r.pages)}</td><td class="num">${fmtInt(r.kept)}</td>` +
           `<td class="num">${fmtInt(r.dropped)}</td>` +
           `<td class="num">${fmtInt(r.in_tokens)}</td>` +
-          `<td class="num">${fmtInt(r.hit_tokens)}</td><td class="num">${fmtInt(r.miss_tokens)}</td>` +
           `<td class="num">${fmtInt(r.out_tokens)}</td>` +
           `<td class="num">$${(r.cost||0).toFixed(6)}</td>` +
-          `<td class="num">${avg}</td>` +
           `<td><a href="#" data-run="${r.run_id}">View</a>` +
           ` · <a href="#" class="del-run" data-run="${r.run_id}" data-pages="${r.pages||0}" ` +
           `style="color:#d4351c;">Delete</a></td>`;
