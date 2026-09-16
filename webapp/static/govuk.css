@@ -151,9 +151,13 @@ tbody tr:hover { background:var(--surface-2); }
 td.num.timing, th.num { font-variant-numeric:tabular-nums; }
 .controls { display:flex; gap:18px; align-items:baseline; flex-wrap:wrap; margin:0 0 16px; }
 .controls select { font-size:15px; padding:8px 10px; border:1.5px solid var(--border-mid); border-radius:var(--radius-sm); }
-.filter-values { display:inline; }
-.filter-values summary { display:inline; font-size:14px; margin-left:12px; }
-.filter-values .detail { font-size:14px; margin:6px 0 0; padding:6px 0 6px 12px; }
+/* Funnel stage label as a roll-down: the label is the <summary>; opening it
+   reveals the filter values / keywords. The count is appended in the label. */
+.filter-values { display:block; }
+.filter-values summary { display:list-item; list-style-position:inside; margin-left:0;
+  font-size:13px; color:var(--blue,#1d70b8); cursor:pointer; }
+.filter-values summary:hover { text-decoration:underline; }
+.filter-values .detail { font-size:13px; margin:6px 0 0; padding:6px 0 6px 18px; white-space:normal; }
 .filter-values:not([open]) .detail { display:none; }
 
 /* Per-page tracking ID (guc-####) — bottom-left, mid-grey. One unique ID per
