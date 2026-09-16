@@ -642,7 +642,23 @@ def preview_category_page(request: Request, cid: int):
     conn.close()
     return templates.TemplateResponse("preview.html", ctx(
         connect(), request, category=category, sql=pretty, stages=stages,
-        eval_max_docs=eval_max_docs, audit_stages=_AUDIT_STAGES, audit_sections=_DOWNLOAD_SECTIONS))
+        eval_max_docs=eval_max_docs))
+
+
+@app.get("/categories/{cid}/shortlist", response_class=HTMLResponse)
+def shortlist_page(request: Request, cid: int):
+    """Standalone Audit Shortlist tab — browse/extract pages at any funnel stage.
+    Data loads from /api/categories/{cid}/audit-shortlist."""
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    category = cat.get_category(conn, cid)
+    if not category:
+        return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
+    category["display_name"] = cat.prettify(category.get("slug")) or (category.get("description") or "Untitled")
+    return templates.TemplateResponse("audit_shortlist.html", ctx(
+        conn, request, category=category,
+        audit_stages=_AUDIT_STAGES, audit_sections=_DOWNLOAD_SECTIONS))
 
 
 @app.get("/api/categories/{cid}/funnel")

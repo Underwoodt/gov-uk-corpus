@@ -28,6 +28,7 @@
   <div class="tabs">
     <a href="{{ url_for('edit_category_page', cid=category.id) }}">Definition</a>
     <span class="current">Preview and run</span>
+    <a href="{{ url_for('shortlist_page', cid=category.id) }}">Audit Shortlist</a>
     <a href="{{ url_for('performance_page', cid=category.id) }}">Run performance</a>
   </div>
 
@@ -77,7 +78,6 @@
       <a href="#" class="subtab current" data-tab="exact" role="tab">Keyword Matching</a>
       <a href="#" class="subtab" data-tab="semantic" role="tab">Semantic Match</a>
       <a href="#" class="subtab" data-tab="results" role="tab">Funnel Results</a>
-      <a href="#" class="subtab" data-tab="audit" role="tab">Audit Shortlist</a>
     </div>
 
     <section id="tab-exact" class="subpanel" role="tabpanel">
@@ -185,50 +185,9 @@
       <p id="rr-empty" class="secondary" hidden>No runs yet — evaluate a category first on the Semantic Match tab.</p>
     </section>
 
-    <section id="tab-audit" class="subpanel" role="tabpanel" hidden>
-      <h2 style="margin-top:10px;">Audit shortlist</h2>
-      <p class="hint" style="margin-top:-14px;">Browse and extract the pages at any stage of the funnel. Choose a
-        stage and the fields to show; the same fields pre-fill the download (customise it there).</p>
-      <div class="controls" style="align-items:center;gap:12px;">
-        <label>Stage
-          <select id="audit-stage" style="font-size:15px;padding:6px;border:2px solid var(--black);">
-            {% for k, lbl in audit_stages %}<option value="{{ k }}" {{ 'selected' if k == 'keyword' }}>{{ lbl }}</option>{% endfor %}
-          </select>
-        </label>
-        <input id="audit-search" type="search" placeholder="Search titles…"
-          style="padding:8px 10px;border:2px solid var(--black);border-radius:5px;min-width:220px;font:inherit;">
-        <button class="btn secondary-btn" id="audit-download" type="button">Download…</button>
-      </div>
-      <details style="margin:6px 0 14px;max-width:760px;">
-        <summary style="cursor:pointer;font-weight:700;">Fields</summary>
-        <div style="display:flex;flex-wrap:wrap;gap:8px 28px;margin-top:10px;">
-          {% for section, section_fields in audit_sections %}
-          <div>
-            <div class="secondary" style="font-weight:700;font-size:13px;margin-bottom:4px;">{{ section }}</div>
-            {% for key, label, default_on, disabled, warning in section_fields %}{% if key != 'content' %}
-            <label class="check" style="display:block;font-size:14px;">
-              <input type="checkbox" class="audit-col" value="{{ key }}" {{ 'checked' if default_on }}> {{ label }}
-            </label>
-            {% endif %}{% endfor %}
-          </div>
-          {% endfor %}
-        </div>
-      </details>
-      <p class="secondary" id="audit-count" style="margin:0 0 8px;"></p>
-      <div style="overflow-x:auto;"><table id="audit-table" style="font-size:14px;"><thead></thead><tbody></tbody></table></div>
-      <p id="audit-empty" class="secondary" hidden>No pages at this stage.</p>
-      <div id="audit-pager" class="controls" style="margin-top:12px;align-items:center;" hidden>
-        <button class="btn secondary-btn" id="audit-prev" type="button">‹ Prev</button>
-        <span id="audit-range" class="secondary"></span>
-        <button class="btn secondary-btn" id="audit-next" type="button">Next ›</button>
-      </div>
-    </section>
   </div>
 
   <script>
-    // Field-key -> label + stage-key -> label for the Audit Shortlist tab.
-    const AUDIT_LABELS = { {% for s, fs in audit_sections %}{% for k, l, d, dis, w in fs %}"{{ k }}": "{{ l }}", {% endfor %}{% endfor %} };
-    const AUDIT_STAGE_LABELS = { {% for k, lbl in audit_stages %}"{{ k }}": "{{ lbl }}", {% endfor %} };
     const CID = {{ category.id }};
     const STAGES = [{% for s in stages %}"{{ s.stage }}"{{ "," if not loop.last }}{% endfor %}];
 
@@ -711,67 +670,6 @@
       try { const s = await (await fetch(`/api/categories/${CID}/evaluate-bg/status`)).json(); if (s.running) beginBgPolling(); }
       catch (e) {}
     })();
-    // ---- Audit Shortlist tab: browse/extract pages at any funnel stage ----
-    const AUDIT_PAGE = 50;
-    let auditLoaded = false, auditOffset = 0, auditTotal = 0;
-    function auditFields() {
-      return [...document.querySelectorAll(".audit-col:checked")].map(c => c.value);
-    }
-    function auditCell(k, r) {
-      const v = r[k];
-      if (k === "url") return `<a href="${esc(v)}">${esc(v)}</a>`;
-      if (k === "title") return v == null ? "—" : `<a href="${esc(r.url)}">${esc(v)}</a>`;
-      if (k === "public_updated_at" || k === "first_published_at") return v ? esc(String(v).slice(0, 10)) : "—";
-      return (v == null || v === "") ? "—" : esc(v);
-    }
-    async function loadAudit() {
-      const stage = document.getElementById("audit-stage").value;
-      const q = document.getElementById("audit-search").value.trim();
-      const params = new URLSearchParams({ stage, limit: AUDIT_PAGE, offset: auditOffset, q });
-      auditFields().forEach(f => params.append("fields", f));
-      const cnt = document.getElementById("audit-count");
-      cnt.innerHTML = '<span class="spinner"></span> Loading…';
-      const table = document.getElementById("audit-table");
-      try {
-        const j = await (await fetch(`/api/categories/${CID}/audit-shortlist?${params}`)).json();
-        if (j.error) { cnt.textContent = "Error: " + j.error; return; }
-        if (j.no_data) {
-          cnt.textContent = j.message || "No data at this stage yet.";
-          table.hidden = true; document.getElementById("audit-empty").hidden = true;
-          document.getElementById("audit-pager").hidden = true; return;
-        }
-        const keys = j.keys || [], rows = j.rows || [];
-        auditTotal = j.total;
-        document.querySelector("#audit-table thead").innerHTML =
-          "<tr>" + keys.map(k => `<th>${esc(AUDIT_LABELS[k] || k)}</th>`).join("") + "</tr>";
-        document.querySelector("#audit-table tbody").innerHTML =
-          rows.map(r => "<tr>" + keys.map(k => `<td>${auditCell(k, r)}</td>`).join("") + "</tr>").join("");
-        table.hidden = rows.length === 0;
-        document.getElementById("audit-empty").hidden = rows.length !== 0;
-        const known = auditTotal != null;
-        const from = rows.length ? auditOffset + 1 : 0, to = auditOffset + rows.length;
-        cnt.textContent = `${AUDIT_STAGE_LABELS[stage] || stage} · `
-          + (known ? `${fmtInt(auditTotal)} pages` : `${fmtInt(to)}+ pages`)
-          + (q ? ` matching “${q}”` : "");
-        document.getElementById("audit-range").textContent =
-          `${fmtInt(from)}–${fmtInt(to)}` + (known ? ` of ${fmtInt(auditTotal)}` : "");
-        document.getElementById("audit-prev").disabled = auditOffset <= 0;
-        document.getElementById("audit-next").disabled = known ? (auditOffset + AUDIT_PAGE >= auditTotal) : (rows.length < AUDIT_PAGE);
-        document.getElementById("audit-pager").hidden = auditOffset === 0 && rows.length < AUDIT_PAGE;
-      } catch (e) { cnt.textContent = "Could not load."; }
-    }
-    function auditReload() { auditOffset = 0; loadAudit(); }
-    document.getElementById("audit-stage").addEventListener("change", auditReload);
-    document.getElementById("audit-search").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); auditReload(); } });
-    document.querySelectorAll(".audit-col").forEach(c => c.addEventListener("change", auditReload));
-    document.getElementById("audit-prev").addEventListener("click", () => { auditOffset = Math.max(0, auditOffset - AUDIT_PAGE); loadAudit(); });
-    document.getElementById("audit-next").addEventListener("click", () => { auditOffset += AUDIT_PAGE; loadAudit(); });
-    document.getElementById("audit-download").addEventListener("click", () => {
-      const params = new URLSearchParams({ stage: document.getElementById("audit-stage").value });
-      auditFields().forEach(f => params.append("fields", f));
-      window.location.href = `/categories/${CID}/download?${params}`;
-    });
-
     // Sub-tabs: Exact Match (deterministic funnel) vs Semantic Match (AI).
     (function () {
       const btns = document.querySelectorAll(".subtab");
@@ -780,18 +678,17 @@
         document.getElementById("tab-exact").hidden = tab !== "exact";
         document.getElementById("tab-semantic").hidden = tab !== "semantic";
         document.getElementById("tab-results").hidden = tab !== "results";
-        document.getElementById("tab-audit").hidden = tab !== "audit";
         if (tab === "exact") drawSankey();   // redraw at the now-visible width
         if (tab === "results") {
           const v = document.getElementById("rr-run-select").value;
           if (v) loadRunResults(v, "");
         }
-        if (tab === "audit" && !auditLoaded) { auditLoaded = true; loadAudit(); }
         try { localStorage.setItem("preview-subtab-" + CID, tab); } catch (e) {}
       }
       btns.forEach(b => b.addEventListener("click", e => { e.preventDefault(); show(b.dataset.tab); }));
       let initial = "exact";
       try { initial = localStorage.getItem("preview-subtab-" + CID) || "exact"; } catch (e) {}
+      if (!["exact", "semantic", "results"].includes(initial)) initial = "exact";  // "audit" is now its own page
       show(initial);
     })();
 

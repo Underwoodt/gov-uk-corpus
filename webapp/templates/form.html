@@ -25,9 +25,11 @@
     <span class="current">Definition</span>
     {% if is_edit %}
     <a href="{{ url_for('preview_category_page', cid=category.id) }}">Preview and run</a>
+    <a href="{{ url_for('shortlist_page', cid=category.id) }}">Audit Shortlist</a>
     <a href="{{ url_for('performance_page', cid=category.id) }}">Run performance</a>
     {% else %}
     <a href="#" onclick="return false" style="color:#505a5f;cursor:default;">Preview and run</a>
+    <a href="#" onclick="return false" style="color:#505a5f;cursor:default;">Audit Shortlist</a>
     <a href="#" onclick="return false" style="color:#505a5f;cursor:default;">Run performance</a>
     {% endif %}
   </div>
