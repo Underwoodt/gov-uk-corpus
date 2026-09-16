@@ -76,6 +76,7 @@
     <div class="tabs" role="tablist" style="margin-bottom:22px;">
       <a href="#" class="subtab current" data-tab="exact" role="tab">Keyword Matching</a>
       <a href="#" class="subtab" data-tab="semantic" role="tab">Semantic Match</a>
+      <a href="#" class="subtab" data-tab="results" role="tab">Funnel Results</a>
     </div>
 
     <section id="tab-exact" class="subpanel" role="tabpanel">
@@ -153,23 +154,34 @@
     </table>
     <p id="runs-empty" class="secondary" hidden>No runs yet. Click <em>Evaluate</em> to start one.</p>
 
-    <div id="run-results-wrap" hidden>
-      <div class="controls">
-        <span id="run-results-title" class="secondary"></span>
-        <a href="#" id="rr-all">All</a>
-        <a href="#" id="rr-keep">Keep</a>
-        <a href="#" id="rr-drop">Drop</a>
-        <a href="#" id="rr-csv">Download CSV</a>
-      </div>
-      <table id="run-results">
-        <thead><tr><th>Page</th><th>Decision</th><th class="num">Score</th><th>Reason</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-
     <p style="margin-top:30px;border-top:1px solid var(--mid-grey);padding-top:16px;">
       <a href="{{ url_for('audit_dashboard_page', cid=category.id) }}">Audit dashboard →</a>
       <span class="secondary" style="font-size:14px;"> — freshness, page size, reading age and GDS issues at each funnel level</span></p>
+    </section>
+
+    <section id="tab-results" class="subpanel" role="tabpanel" hidden>
+      <h2 style="margin-top:10px;">Funnel results</h2>
+      <p class="hint" style="margin-top:-14px;">Per-page keep / drop decisions for a run. Pick a run (defaults to the
+        latest). <strong>Confidence</strong> describes how central the topic is to the page.</p>
+      <div class="controls" style="align-items:center;">
+        <label>Run
+          <select id="rr-run-select" style="font-size:15px;padding:6px;border:2px solid var(--black);min-width:280px;"></select>
+        </label>
+      </div>
+      <div id="run-results-wrap" hidden>
+        <div class="controls">
+          <span id="run-results-title" class="secondary"></span>
+          <a href="#" id="rr-all">All</a>
+          <a href="#" id="rr-keep">Keep</a>
+          <a href="#" id="rr-drop">Drop</a>
+          <a href="#" id="rr-csv">Download CSV</a>
+        </div>
+        <table id="run-results">
+          <thead><tr><th>Page</th><th>Decision</th><th>Confidence</th><th>Reason</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p id="rr-empty" class="secondary" hidden>No runs yet — evaluate a category first on the Semantic Match tab.</p>
     </section>
   </div>
 
@@ -380,6 +392,17 @@
     // AI evaluation
     const runEvalBtn = document.getElementById("run-eval");
     function decisionText(k) { return k === 1 ? "keep" : k === 0 ? "drop" : "—"; }
+    // Model score → a confidence description of how central the topic is to the page.
+    function confidence(score) {
+      if (score == null) return "—";
+      const s = Number(score);
+      let label;
+      if (s <= 0)         label = "Wrong sense";
+      else if (s <= 0.35) label = "Mentioned once or in passing";
+      else if (s <= 0.65) label = "Discussed a little";
+      else                label = "Major focus";
+      return `${label} (${s.toFixed(1)})`;
+    }
     const newRunBtn = document.getElementById("new-run");
     let selectedRun = null, activeRun = null;
 
@@ -425,6 +448,22 @@
       }
       table.hidden = j.runs.length === 0;
       document.getElementById("runs-empty").hidden = j.runs.length !== 0;
+
+      // Funnel Results tab: run selector, defaulting to the latest run.
+      const rrSel = document.getElementById("rr-run-select");
+      const prevSel = rrSel.value;
+      rrSel.innerHTML = j.runs.map(r =>
+        `<option value="${r.run_id}">${esc(r.name || r.run_id)} · ${fmtDate(r.started_at)}</option>`).join("");
+      if (prevSel && j.runs.some(r => r.run_id === prevSel)) rrSel.value = prevSel;
+      else if (j.runs.length) rrSel.value = j.runs[0].run_id;   // newest (list is DESC)
+      document.getElementById("rr-empty").hidden = j.runs.length !== 0;
+      if (j.runs.length === 0) document.getElementById("run-results-wrap").hidden = true;
+      // If the Funnel Results tab is open but empty (e.g. restored on load), fill it.
+      if (j.runs.length && !document.getElementById("tab-results").hidden
+          && document.getElementById("run-results-wrap").hidden) {
+        loadRunResults(rrSel.value, "");
+      }
+
       table.querySelectorAll("a.del-run").forEach(a =>
         a.addEventListener("click", e => { e.preventDefault(); deleteRun(a.dataset.run, a.dataset.pages); }));
       table.querySelectorAll("input.active-run").forEach(radio =>
@@ -466,6 +505,8 @@
 
     async function loadRunResults(runId, keep) {
       selectedRun = runId;
+      const rrSel = document.getElementById("rr-run-select");
+      if (rrSel && [...rrSel.options].some(o => o.value === runId)) rrSel.value = runId;
       const j = await (await fetch(`/api/categories/${CID}/runs/${runId}/results?keep=${keep}`)).json();
       document.getElementById("run-results-wrap").hidden = false;
       const run = j.run || {};
@@ -480,7 +521,7 @@
         tr.innerHTML =
           `<td><a href="${esc(row.url)}">${esc(row.url)}</a></td>` +
           `<td>${decisionText(row.keep)}</td>` +
-          `<td class="num">${row.score == null ? "—" : row.score.toFixed(2)}</td>` +
+          `<td>${confidence(row.score)}</td>` +
           `<td>${esc(row.reason || "")}</td>`;
         tbody.appendChild(tr);
       }
@@ -488,6 +529,7 @@
     document.getElementById("rr-all").addEventListener("click", e => { e.preventDefault(); if (selectedRun) loadRunResults(selectedRun, ""); });
     document.getElementById("rr-keep").addEventListener("click", e => { e.preventDefault(); if (selectedRun) loadRunResults(selectedRun, "1"); });
     document.getElementById("rr-drop").addEventListener("click", e => { e.preventDefault(); if (selectedRun) loadRunResults(selectedRun, "0"); });
+    document.getElementById("rr-run-select").addEventListener("change", e => { if (e.target.value) loadRunResults(e.target.value, ""); });
 
     async function newRun() {
       newRunBtn.disabled = true;
@@ -633,7 +675,12 @@
         btns.forEach(b => b.classList.toggle("current", b.dataset.tab === tab));
         document.getElementById("tab-exact").hidden = tab !== "exact";
         document.getElementById("tab-semantic").hidden = tab !== "semantic";
+        document.getElementById("tab-results").hidden = tab !== "results";
         if (tab === "exact") drawSankey();   // redraw at the now-visible width
+        if (tab === "results") {
+          const v = document.getElementById("rr-run-select").value;
+          if (v) loadRunResults(v, "");
+        }
         try { localStorage.setItem("preview-subtab-" + CID, tab); } catch (e) {}
       }
       btns.forEach(b => b.addEventListener("click", e => { e.preventDefault(); show(b.dataset.tab); }));
