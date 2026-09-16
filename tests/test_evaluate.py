@@ -320,5 +320,40 @@ class TestRunEvaluationMocked(unittest.TestCase):
         self.assertLessEqual(result["evaluated_this_run"], 2)
 
 
+class TestRunCommentary(unittest.TestCase):
+    def _run(self, **kw):
+        base = {"run_id": "x", "phase": evaluate.PHASE_INCLUSION, "pages": 0, "kept": 0,
+                "dropped": 0, "unparseable": 0, "finished_at": None, "source_run_id": None}
+        base.update(kw)
+        return base
+
+    def test_perfect_reconcile_and_no_errors(self):
+        inc = self._run(run_id="i", pages=100, kept=60, dropped=40, finished_at="t")
+        c = evaluate.run_commentary([inc], shortlist_total=100)
+        self.assertEqual(c["reconcile"][0]["kind"], "ok")
+        self.assertEqual(c["errors"], [])
+        self.assertTrue(any("complete" in n["text"] for n in c["phases"]))
+        # inclusion done with keeps and no exclusion -> pending-exclusion note
+        self.assertTrue(any("not run yet" in n["text"] for n in c["phases"]))
+
+    def test_unparseable_explained_in_reconcile_and_errors(self):
+        inc = self._run(run_id="i", pages=571, kept=155, dropped=415, unparseable=1, finished_at="t")
+        c = evaluate.run_commentary([inc], shortlist_total=571)
+        self.assertTrue(any("could not be" in n["text"] for n in c["errors"]))
+        rec = c["reconcile"][0]
+        self.assertEqual(rec["kind"], "warn")           # 155 + 415 != 571 because of the 1 unparseable
+        self.assertIn("unparseable", rec["text"])
+
+    def test_exclusion_input_is_inclusion_keeps(self):
+        inc = self._run(run_id="i", phase=evaluate.PHASE_INCLUSION, pages=100, kept=60, dropped=40, finished_at="t")
+        exc = self._run(run_id="e", phase=evaluate.PHASE_EXCLUSION, source_run_id="i",
+                        pages=50, kept=45, dropped=5, finished_at=None)
+        c = evaluate.run_commentary([inc, exc], shortlist_total=100)
+        exc_rec = [n for n in c["reconcile"] if "Exclusion" in n["text"]][0]
+        self.assertEqual(exc_rec["kind"], "warn")       # input 60 (kept) vs 45+5 evaluated so far
+        self.assertIn("not evaluated yet", exc_rec["text"])
+        self.assertTrue(any("has not finished" in n["text"] for n in c["errors"]))
+
+
 if __name__ == "__main__":
     unittest.main()

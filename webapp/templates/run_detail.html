@@ -70,6 +70,30 @@
     </table>
   </div>
 
+  {% macro notelist(items) %}
+  <ul style="list-style:none;padding:0;margin:0 0 18px;max-width:840px;">
+    {% for n in items %}
+    <li style="padding:9px 13px;margin:0 0 6px;font-size:15px;border-radius:0 5px 5px 0;background:var(--surface-2);
+      border-left:4px solid {{ {'ok':'var(--green)','warn':'var(--red,#d4351c)','info':'var(--border-mid)'}[n.kind] }};">{{ n.text }}</li>
+    {% endfor %}
+  </ul>
+  {% endmacro %}
+
+  <h2 style="margin-top:30px;">Run commentary</h2>
+  <p class="hint">An automatic read of this run's phases — what has run, any errors, and whether each phase's
+    output reconciles with its input (input = kept + dropped, allowing for unparseable replies).</p>
+
+  <h3 style="margin:16px 0 6px;">What has run</h3>
+  {{ notelist(commentary.phases) }}
+
+  <h3 style="margin:16px 0 6px;">Errors</h3>
+  {% if commentary.errors %}{{ notelist(commentary.errors) }}
+  {% else %}<p class="secondary" style="margin:0 0 18px;">None — no unparseable replies, and every phase shown has finished.</p>{% endif %}
+
+  <h3 style="margin:16px 0 6px;">Input vs output</h3>
+  {% if commentary.reconcile %}{{ notelist(commentary.reconcile) }}
+  {% else %}<p class="secondary" style="margin:0 0 18px;">Shortlist total unavailable, so input/output couldn't be reconciled.</p>{% endif %}
+
   <script>
     const CID = {{ category.id }}, RUN_ID = {{ run.run_id|tojson }};
     const nameInput = document.getElementById("run-name");

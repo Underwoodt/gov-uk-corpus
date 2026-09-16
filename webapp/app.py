@@ -1097,8 +1097,14 @@ def run_detail_page(request: Request, cid: int, run_id: str):
     chain = evaluate.run_chain(conn, run_id)
     totals = {k: sum((r.get(k) or 0) for r in chain)
               for k in ("cost", "in_tokens", "out_tokens", "hit_tokens", "miss_tokens", "pages")}
+    try:
+        shortlist_total = cached_count(conn, **_effective_filters(conn, category))
+    except Exception:
+        shortlist_total = None
+    commentary = evaluate.run_commentary(chain, shortlist_total)
     resp = templates.TemplateResponse("run_detail.html", ctx(
-        conn, request, category=category, run=run, chain=chain, totals=totals))
+        conn, request, category=category, run=run, chain=chain, totals=totals,
+        commentary=commentary))
     conn.close()
     return resp
 

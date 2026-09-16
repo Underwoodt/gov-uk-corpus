@@ -316,6 +316,89 @@ def run_chain(conn, run_id: str) -> List[dict]:
     return chain
 
 
+def run_commentary(chain: List[dict], shortlist_total: Optional[int] = None) -> Dict[str, list]:
+    """Plain-English notes about a run's phase chain (oldest-first), grouped into:
+      phases   — what has run (and what's pending),
+      errors   — unparseable replies / unfinished phases,
+      reconcile — whether each phase's input equals kept + dropped (+ unparseable).
+
+    Pure/deterministic so it's unit-testable; the web layer supplies shortlist_total
+    (the inclusion phase's input) and renders the result.
+    """
+    by_id = {r["run_id"]: r for r in chain}
+    phases: list = []
+    errors: list = []
+    reconcile: list = []
+    have_excl = any("exclusion" in (r.get("phase") or "").lower() for r in chain)
+
+    for r in chain:
+        phase = r.get("phase") or "Phase"
+        pages = r.get("pages") or 0
+        kept = r.get("kept") or 0
+        dropped = r.get("dropped") or 0
+        unpar = r.get("unparseable") or 0
+        finished = bool(r.get("finished_at"))
+        is_excl = "exclusion" in phase.lower()
+        if is_excl:
+            src = by_id.get(r.get("source_run_id"))
+            inp = (src.get("kept") if src else None)
+            inp_desc = (f"{inp:,} kept by the previous phase" if inp is not None
+                        else "the previous phase's keeps")
+        else:
+            inp = shortlist_total
+            inp_desc = f"{inp:,} shortlist pages" if inp is not None else "the shortlist"
+
+        # (a) what ran
+        phases.append({"kind": "ok" if finished else "info",
+                       "text": f"{phase}: {'complete' if finished else 'in progress'} — "
+                               f"{pages:,} evaluated ({kept:,} kept, {dropped:,} dropped"
+                               + (f", {unpar:,} unparseable" if unpar else "") + ")."})
+        # (b) errors
+        if unpar:
+            errors.append({"kind": "warn",
+                           "text": f"{phase}: {unpar:,} model repl{'y' if unpar == 1 else 'ies'} could not be "
+                                   "parsed (counted as errors — neither kept nor dropped)."})
+        if not finished:
+            errors.append({"kind": "warn", "text": f"{phase} has not finished — its totals are partial."})
+
+        # (c) reconciliation: input == kept + dropped (+ unparseable)
+        if inp is None:
+            continue
+        settled = kept + dropped + unpar
+        if pages == inp and settled == pages and unpar == 0:
+            reconcile.append({"kind": "ok",
+                              "text": f"{phase}: input {inp:,} = kept {kept:,} + dropped {dropped:,}. ✓"})
+        else:
+            bits = []
+            if pages < inp:
+                bits.append(f"{inp - pages:,} of the {inp_desc} not evaluated yet")
+            elif pages > inp:
+                bits.append(f"evaluated {pages:,}, more than the {inp:,} input")
+            if unpar:
+                bits.append(f"{unpar:,} unparseable, so kept + dropped is short by {unpar:,}")
+            if settled != pages:
+                bits.append(f"kept + dropped{' + unparseable' if unpar else ''} ({settled:,}) ≠ pages ({pages:,})")
+            reconcile.append({"kind": "warn",
+                              "text": f"{phase}: input {inp:,} vs {kept:,} kept + {dropped:,} dropped"
+                                      + (f" + {unpar:,} unparseable" if unpar else "")
+                                      + " — " + "; ".join(bits) + "."})
+
+    # Pending exclusion phase
+    if not have_excl:
+        incl = next((r for r in chain if "inclusion" in (r.get("phase") or "").lower()), None)
+        if incl:
+            ik = incl.get("kept") or 0
+            if incl.get("finished_at") and ik > 0:
+                phases.append({"kind": "info",
+                               "text": f"Phase 2 – Exclusion: not run yet — {ik:,} kept pages are waiting to "
+                                       "be re-checked."})
+            elif not incl.get("finished_at"):
+                phases.append({"kind": "info",
+                               "text": "Phase 2 – Exclusion: starts automatically once inclusion finishes "
+                                       "(if any pages are kept)."})
+    return {"phases": phases, "errors": errors, "reconcile": reconcile}
+
+
 def compare(conn, base_run: str, other_run: str) -> Dict[str, int]:
     """Compare `other_run` to `base_run` over pages evaluated in BOTH: how many the
     other run kept/dropped, and how many decisions disagree with the base run."""
