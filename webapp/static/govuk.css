@@ -116,9 +116,12 @@ summary::-webkit-details-marker { display:none; }
   box-shadow:var(--shadow-sm); overflow:hidden; margin:0 0 32px; }
 table { width:100%; border-collapse:collapse; font-size:15px; margin-bottom:32px; }
 .table-wrap table { margin:0; }
+/* Column headers wrap aggressively rather than widening the column: a long
+   heading breaks onto multiple lines (even mid-word if needed) instead of
+   forcing the column wider than its data. See CLAUDE.md. */
 th { text-align:left; font-weight:700; font-size:13px; letter-spacing:.02em; text-transform:uppercase;
   color:var(--grey-text); padding:12px 18px; background:var(--surface-2);
-  border-bottom:1px solid var(--border-mid); white-space:nowrap; }
+  border-bottom:1px solid var(--border-mid); white-space:normal; overflow-wrap:break-word; }
 th.num, td.num { text-align:right; font-variant-numeric:tabular-nums; }
 td { padding:13px 18px; border-bottom:1px solid var(--border); vertical-align:top; }
 tbody tr:last-child td { border-bottom:none; }

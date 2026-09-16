@@ -22,6 +22,14 @@ Project conventions that must be followed for every change. This file is the hom
   and the tab tags. When you add or remove a sub-tab, keep the letters contiguous and
   update the tab list in [PAGE_INDEX.md](PAGE_INDEX.md).
 
+## Tables / lists
+
+- **Column headers wrap aggressively.** A table/list heading must never widen its
+  column just to fit on one line — it wraps onto multiple lines (breaking mid-word if
+  needed) so the column can stay as narrow as its data. This is the global default
+  (`th { white-space: normal; overflow-wrap: break-word }` in `govuk.css`); don't set
+  `white-space: nowrap` on a `th` to force a single line.
+
 ## App structure
 
 - Web app: FastAPI + Jinja in [webapp/app.py](webapp/app.py); domain logic in the
