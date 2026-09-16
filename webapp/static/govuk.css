@@ -42,7 +42,7 @@ a:focus, button:focus, input:focus, textarea:focus, select:focus, summary:focus 
   border-bottom:3px solid transparent; margin-bottom:-1px; transition:color .12s, border-color .12s; }
 .navbar a:hover { color:var(--dark-blue); }
 .navbar a.active { font-weight:700; color:var(--black); border-bottom-color:var(--blue); }
-.wrap { max-width:1040px; margin:0 auto; padding:0 24px; }
+.wrap { max-width:none; margin:0; padding:0 32px; }
 .body { padding-bottom:72px; }
 
 .phase { display:flex; gap:12px; align-items:center; padding:14px 0; flex-wrap:wrap; }
