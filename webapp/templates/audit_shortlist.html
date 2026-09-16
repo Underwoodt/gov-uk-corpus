@@ -68,9 +68,28 @@
 
     <section id="tab-dashboard" class="subpanel" role="tabpanel" hidden>
       <h2 style="margin-top:10px;">Audit dashboard</h2>
-      <p class="hint" style="margin-top:-14px;max-width:680px;">Quality and freshness of the pages at a chosen level of the
-        funnel. Freshness is by last public update; averages ignore pages without a value; the top issues are the
-        individual GDS plain-English findings summed across pages.</p>
+      <p class="hint" style="margin-top:-14px;max-width:720px;">Plain-English quality and freshness of the pages at a
+        chosen level of the funnel. Quality is a 1–5 star rating (5 = healthy) from the plain-English issue classes
+        below, weighted by severity and normalised by page length. Freshness is by last public update.</p>
+
+      <details style="margin:0 0 18px;max-width:720px;">
+        <summary style="cursor:pointer;font-weight:700;">What these checks mean &amp; how quality is scored</summary>
+        <div class="detail" style="max-width:none;">
+          <p class="secondary" style="margin:8px 0;">Each page's body text is scanned for classes of plain-English
+            problem. Every occurrence is counted per class, turned into an <strong>impact</strong> of
+            <span class="mono">weight&nbsp;×&nbsp;log₂(1&nbsp;+&nbsp;count)</span> (so a few serious issues outweigh
+            many trivial ones), and the total impact per 1,000 words maps to a <strong>1–5 star</strong> rating.
+            Weights: 3 = high impact, 1 = low.</p>
+          <table style="max-width:640px;">
+            <thead><tr><th>Check class</th><th class="num">Weight</th><th>Why it matters</th></tr></thead>
+            <tbody>
+              {% for c in gds_check_meta %}
+              <tr><td style="white-space:nowrap;">{{ c.name }}</td><td class="num">{{ c.weight }}</td><td>{{ c.reason }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </details>
 
       <div class="stage-pills" role="tablist">
         {% for stg, label in stages %}
@@ -85,23 +104,24 @@
         <div id="stage-body" hidden>
           <p class="secondary" style="font-weight:700;margin:0 0 12px;"><span id="stage-count">—</span> pages</p>
           <div style="display:flex;flex-wrap:wrap;gap:14px;margin:0 0 16px;">
-            <div class="stat"><div class="secondary" style="font-size:13px;">Avg page size</div>
-              <div id="avg-size" style="font-size:20px;font-weight:700;">—</div></div>
+            <div class="stat"><div class="secondary" style="font-size:13px;">Plain-English quality</div>
+              <div id="avg-stars" style="font-size:20px;font-weight:700;">—</div></div>
             <div class="stat"><div class="secondary" style="font-size:13px;">Avg reading age</div>
               <div id="avg-reading" style="font-size:20px;font-weight:700;">—</div></div>
-            <div class="stat"><div class="secondary" style="font-size:13px;">Avg GDS issues</div>
-              <div id="avg-gds" style="font-size:20px;font-weight:700;">—</div></div>
+            <div class="stat"><div class="secondary" style="font-size:13px;">Avg page size</div>
+              <div id="avg-size" style="font-size:20px;font-weight:700;">—</div></div>
           </div>
 
           <h3 style="margin:14px 0 6px;">Freshness</h3>
           <table style="width:100%;max-width:560px;"><tbody id="freshness-rows"></tbody></table>
 
-          <h3 style="margin:18px 0 6px;">Top GDS issues <span id="issues-note" class="secondary" style="font-weight:400;font-size:13px;"></span></h3>
-          <table style="max-width:560px;">
-            <thead><tr><th>Issue</th><th class="num">Count</th></tr></thead>
+          <h3 style="margin:18px 0 6px;">Top plain-English issues <span id="issues-note" class="secondary" style="font-weight:400;font-size:13px;"></span></h3>
+          <p class="hint" style="margin:0 0 6px;">By impact (severity × how often), so the classes pulling the rating down come first.</p>
+          <table style="max-width:760px;">
+            <thead><tr><th>Issue class</th><th class="num">Count</th><th class="num">Impact</th><th>Why it matters</th></tr></thead>
             <tbody id="issue-rows"></tbody>
           </table>
-          <p id="issues-empty" class="secondary" hidden>No GDS issues recorded for these pages.</p>
+          <p id="issues-empty" class="secondary" hidden>No plain-English issues recorded for these pages.</p>
         </div>
       </div>
     </section>
@@ -202,18 +222,27 @@
       renderDash(dashCache[stage]);
       body.hidden = false;
     }
+    function starRating(avg) {
+      if (avg == null) return "—";
+      const full = Math.max(0, Math.min(5, Math.round(avg)));
+      return `<span style="color:#1d70b8;letter-spacing:1px;">${"★".repeat(full)}${"☆".repeat(5 - full)}</span>`
+        + ` <span class="secondary" style="font-weight:400;font-size:14px;">${Number(avg).toFixed(1)}</span>`;
+    }
     function renderDash(j) {
       document.getElementById("stage-count").textContent = fmtInt(j.n);
-      document.getElementById("avg-size").textContent = j.avg_size == null ? "—" : fmtBytes(j.avg_size);
+      document.getElementById("avg-stars").innerHTML = starRating(j.avg_stars);
       document.getElementById("avg-reading").textContent = j.avg_reading_age == null ? "—" : j.avg_reading_age;
-      document.getElementById("avg-gds").textContent = j.avg_gds == null ? "—" : j.avg_gds;
+      document.getElementById("avg-size").textContent = j.avg_size == null ? "—" : fmtBytes(j.avg_size);
       const fmax = Math.max(1, ...j.freshness.map(f => f.count));
       document.getElementById("freshness-rows").innerHTML = j.freshness.map(f => dashBar(f.bucket, f.count, fmax)).join("");
       document.getElementById("issues-note").textContent =
         j.issues_sampled ? `(from a sample of ${fmtInt(j.issues_scanned)} pages)` : "";
-      document.getElementById("issues-empty").hidden = j.top_issues.length !== 0;
-      document.getElementById("issue-rows").innerHTML = j.top_issues.map(t =>
-        `<tr><td>${esc(t.issue)}</td><td class="num">${fmtInt(t.count)}</td></tr>`).join("");
+      const classes = j.top_classes || [];
+      document.getElementById("issues-empty").hidden = classes.length !== 0;
+      document.getElementById("issue-rows").innerHTML = classes.map(t =>
+        `<tr><td style="white-space:nowrap;">${esc(t.name)}</td>`
+        + `<td class="num">${fmtInt(t.count)}</td><td class="num">${t.impact}</td>`
+        + `<td class="secondary" style="font-size:13px;">${esc(t.reason)}</td></tr>`).join("");
     }
     function dashBar(label, count, max) {
       const pct = Math.round((count / max) * 100);

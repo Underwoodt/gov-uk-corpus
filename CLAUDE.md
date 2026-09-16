@@ -40,6 +40,13 @@ Project conventions that must be followed for every change. This file is the hom
   Use the active `db` placeholder (`_P`) for SQL; never hardcode `?`/`%s`.
 - See [README.md](README.md) for the overview and [RUNBOOK.md](RUNBOOK.md) for setup.
 
+## Requirements & decisions
+
+- **Feature specs / reference docs** live in `docs/` (e.g. [docs/gds-audit.md](docs/gds-audit.md)).
+- **Decisions** are recorded as lightweight ADRs in `docs/decisions/NNNN-*.md`
+  (Context / Decision / Consequences). Add one when you make a non-obvious choice; this
+  is the durable "why". This file (CLAUDE.md) is for coding conventions, not decisions.
+
 ## Tests
 
 - `python -m unittest discover -s tests` — runs on SQLite; Postgres-only tests skip

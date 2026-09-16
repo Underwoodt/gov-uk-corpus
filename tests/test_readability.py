@@ -36,7 +36,8 @@ class TestReadability(unittest.TestCase):
         self.assertGreaterEqual(r.gds_issue_count(text), 5)
 
     def test_gds_clean_text_scores_zero(self):
-        self.assertEqual(r.gds_issue_count("We will pay you within 5 days. You do not need to apply."), 0)
+        # No avoid-words/phrases, no we/us/our, no vague/nominalised terms.
+        self.assertEqual(r.gds_issue_count("Send the form within 5 days. You can pay online."), 0)
 
     def test_gds_flags_long_sentence(self):
         long = " ".join(["word"] * 40) + "."
@@ -53,6 +54,36 @@ class TestReadability(unittest.TestCase):
         self.assertIn("Phrases to avoid", findings)
         self.assertEqual(r.gds_findings(""), "")   # clean/empty -> no findings
         self.assertEqual(r.gds_findings("Pay within 5 days."), "")
+
+    def test_scan_counts_new_classes(self):
+        s = r.scan("The implementation and completion of the assessment. "
+                   "Some pages are often updated. We will help you. "
+                   "The applicant must apply. You must not wait. It is required that you attend.")
+        c = s["counts"]
+        self.assertGreaterEqual(c.get("nominalisation", 0), 3)
+        self.assertGreaterEqual(c.get("vague_language", 0), 2)
+        self.assertGreaterEqual(c.get("gov_focused", 0), 1)
+        self.assertGreaterEqual(c.get("applicant", 0), 1)
+        self.assertGreaterEqual(c.get("negative_phrasing", 0), 1)
+        self.assertGreaterEqual(c.get("impersonal_it_is", 0), 1)
+
+    def test_it_is_narrowed_to_templates(self):
+        self.assertEqual(r.scan("It is nice today. It is sunny.")["counts"].get("impersonal_it_is", 0), 0)
+        self.assertGreaterEqual(r.scan("It is required that you pay.")["counts"].get("impersonal_it_is", 0), 1)
+
+    def test_impact_weights_severity_over_volume(self):
+        heavy = r.scan("The implementation. The completion.")   # 2 nominalisations (weight 3)
+        light = r.scan("There is. There are. There is. There are. There is. There are.")  # 6 (weight 1)
+        self.assertGreater(heavy["impact"], light["impact"])
+
+    def test_stars_clean_beats_poor(self):
+        clean = "The form is clear. You can send it today. " * 6   # short sentences, no flags
+        poor = clean + " " + "The implementation is done. The completion is done. " * 6
+        self.assertEqual(r.scan(clean)["stars"], 5)
+        self.assertLess(r.scan(poor)["stars"], 5)
+
+    def test_stars_none_for_short_text(self):
+        self.assertIsNone(r.scan("Short and clean.")["stars"])
 
 
 class TestBackfill(unittest.TestCase):
@@ -71,10 +102,11 @@ class TestBackfill(unittest.TestCase):
         counters = build(conn)
         self.assertEqual(counters["scanned"], 2)
 
-        a = conn.execute("SELECT reading_age, gds_english_score, gds_findings FROM content WHERE url='https://www.gov.uk/a'").fetchone()
+        a = conn.execute("SELECT reading_age, gds_english_score, gds_findings, gds_checks FROM content WHERE url='https://www.gov.uk/a'").fetchone()
         self.assertIsNotNone(a["reading_age"])
-        self.assertGreaterEqual(a["gds_english_score"], 2)   # utilise, in order to, leverage
-        self.assertIn("utilise", a["gds_findings"])          # findings text describes the flags
+        self.assertGreaterEqual(a["gds_english_score"], 2)   # weighted impact of the flags
+        self.assertIn("Words to avoid", a["gds_findings"])   # class-level summary
+        self.assertIsNotNone(a["gds_checks"])                # raw per-class JSON stored
         b = conn.execute("SELECT reading_age, gds_english_score FROM content WHERE url='https://www.gov.uk/b'").fetchone()
         self.assertIsNone(b["reading_age"])
         self.assertEqual(b["gds_english_score"], 0)
