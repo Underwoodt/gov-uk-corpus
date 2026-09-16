@@ -393,9 +393,8 @@
         const tr = document.createElement("tr");
         if (r.run_id === activeRun) tr.style.fontWeight = "700";
         tr.innerHTML =
-          `<td><input class="run-name" data-run="${r.run_id}" value="${esc(r.name || "")}" ` +
-          `title="Click to rename this run" ` +
-          `style="font-size:13px;padding:3px;border:2px solid var(--black);width:110px;"></td>` +
+          `<td><a class="name-link" href="/categories/${CID}/runs/${r.run_id}" ` +
+          `title="Open run details">${esc(r.name || r.run_id)}</a></td>` +
           `<td>${fmtDate(r.started_at)}</td><td>${esc(r.phase || "")}</td><td>${esc(r.provider || "")}</td>` +
           `<td>${esc(r.actual_model || r.model || "")}</td>` +
           `<td class="num">${fmtInt(r.pages)}</td><td class="num">${fmtInt(r.kept)}</td>` +
@@ -416,11 +415,6 @@
         a.addEventListener("click", e => { e.preventDefault(); loadRunResults(a.dataset.run, ""); }));
       table.querySelectorAll("a.del-run").forEach(a =>
         a.addEventListener("click", e => { e.preventDefault(); deleteRun(a.dataset.run, a.dataset.pages); }));
-      table.querySelectorAll("input.run-name").forEach(inp => {
-        inp.dataset.orig = inp.value;
-        inp.addEventListener("keydown", e => { if (e.key === "Enter") inp.blur(); });
-        inp.addEventListener("blur", () => renameRun(inp));
-      });
 
       // Feed the latest inclusion (and its exclusion) run into the pipeline Sankey.
       const incl = j.runs.find(r => /inclusion/i.test(r.phase || ""));
@@ -432,15 +426,6 @@
       drawSankey();
     }
 
-    async function renameRun(inp) {
-      const name = inp.value.trim();
-      if (name === inp.dataset.orig) return;
-      if (!name) { inp.value = inp.dataset.orig; return; }   // don't allow blanking
-      const body = new URLSearchParams({name});
-      const res = await fetch(`/api/categories/${CID}/runs/${inp.dataset.run}/rename`, {method: "POST", body});
-      if (res.ok) { inp.dataset.orig = name; }
-      else { inp.value = inp.dataset.orig; alert("Rename failed."); }
-    }
 
     async function deleteRun(runId, pages) {
       if (!confirm(`Delete this run and its ${Number(pages).toLocaleString()} page decision(s)?\n\n` +

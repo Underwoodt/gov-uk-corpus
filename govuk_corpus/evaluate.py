@@ -285,6 +285,37 @@ def list_runs(conn, category_id: int) -> List[dict]:
     return [dict(r) for r in rows]
 
 
+def run_chain(conn, run_id: str) -> List[dict]:
+    """The inclusion → exclusion (→ …) chain of runs this run belongs to, ordered
+    oldest-first (so the inclusion phase comes first). Runs are linked by
+    source_run_id; an evaluation's phases share one lineage."""
+    start = get_run(conn, run_id)
+    if not start:
+        return []
+    root = start
+    for _ in range(20):                      # walk up to the lineage root
+        parent_id = root.get("source_run_id")
+        if not parent_id:
+            break
+        parent = get_run(conn, parent_id)
+        if not parent:
+            break
+        root = parent
+    chain = [root]
+    ids = {root["run_id"]}
+    pool = list_runs(conn, root["category_id"])
+    added = True
+    while added:                             # walk down, collecting descendants
+        added = False
+        for r in pool:
+            if r["run_id"] not in ids and r.get("source_run_id") in ids:
+                chain.append(r)
+                ids.add(r["run_id"])
+                added = True
+    chain.sort(key=lambda r: (r.get("started_at") or ""))
+    return chain
+
+
 def compare(conn, base_run: str, other_run: str) -> Dict[str, int]:
     """Compare `other_run` to `base_run` over pages evaluated in BOTH: how many the
     other run kept/dropped, and how many decisions disagree with the base run."""

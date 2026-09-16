@@ -979,6 +979,28 @@ def api_list_runs(request: Request, cid: int):
     return JSONResponse(out)
 
 
+@app.get("/categories/{cid}/runs/{run_id}", response_class=HTMLResponse)
+def run_detail_page(request: Request, cid: int, run_id: str):
+    """Per-run detail: the LLM phase chain (inclusion → exclusion), model used,
+    tokens and cost per phase, with rename."""
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    category = cat.get_category(conn, cid)
+    run = evaluate.get_run(conn, run_id)
+    if not category or not run or str(run["category_id"]) != str(cid):
+        conn.close()
+        return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
+    category["display_name"] = cat.prettify(category.get("slug")) or (category.get("description") or "Untitled")
+    chain = evaluate.run_chain(conn, run_id)
+    totals = {k: sum((r.get(k) or 0) for r in chain)
+              for k in ("cost", "in_tokens", "out_tokens", "hit_tokens", "miss_tokens", "pages")}
+    resp = templates.TemplateResponse("run_detail.html", ctx(
+        conn, request, category=category, run=run, chain=chain, totals=totals))
+    conn.close()
+    return resp
+
+
 @app.post("/api/categories/{cid}/runs/{run_id}/rename")
 async def api_rename_run(request: Request, cid: int, run_id: str):
     if not authed(request):
