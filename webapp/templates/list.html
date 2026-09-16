@@ -5,8 +5,11 @@
 
   {% if flash %}<div class="success">{{ flash }}</div>{% endif %}
 
-  <h1>Categories</h1>
-  <p class="lede" style="margin:0 0 30px;">A category is a saved set of rules for finding gov.uk pages
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;">
+    <h1 style="margin:0;">Categories</h1>
+    <a class="btn" href="{{ url_for('new_category_page') }}">Create a new category</a>
+  </div>
+  <p class="lede" style="margin:14px 0 30px;">A category is a saved set of rules for finding gov.uk pages
     about one topic. Choose a category to run it or change it, or create a new one.</p>
 
   <div style="margin-bottom:30px;">
@@ -47,8 +50,6 @@
   {% else %}
   <p style="margin:20px 0 40px;">No categories yet. Create one to get started.</p>
   {% endif %}
-
-  <a class="btn" href="{{ url_for('new_category_page') }}">Create a new category</a>
 
   <script>
     function filterCats(q) {
