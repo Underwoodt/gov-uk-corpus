@@ -1103,6 +1103,23 @@ def run_detail_page(request: Request, cid: int, run_id: str):
     return resp
 
 
+@app.post("/api/categories/{cid}/runs/{run_id}/activate")
+async def api_activate_run(request: Request, cid: int, run_id: str):
+    """Make this run the active run for the category — Evaluate / background runs
+    then add to it."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    conn = connect()
+    try:
+        run = evaluate.get_run(conn, run_id)
+        if not run or str(run["category_id"]) != str(cid):
+            return JSONResponse({"error": "not found"}, status_code=404)
+        settings.set_setting(conn, f"active_run_{cid}", run_id)
+        return JSONResponse({"ok": True, "active": run_id})
+    finally:
+        conn.close()
+
+
 @app.post("/api/categories/{cid}/runs/{run_id}/rename")
 async def api_rename_run(request: Request, cid: int, run_id: str):
     if not authed(request):
