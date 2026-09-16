@@ -1,4 +1,6 @@
-psycopg2-binary==2.9.9
+# Postgres driver: the code uses psycopg 3 (import psycopg / psycopg.rows.dict_row),
+# not psycopg2. Range (not an exact pin) so it matches the 3.x already on the box.
+psycopg[binary]>=3.1,<4
 requests==2.31.0
 python-dotenv==1.0.0
 fastapi==0.104.1
