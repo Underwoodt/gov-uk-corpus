@@ -2,14 +2,6 @@
 {% block title %}{{ category.display_name }} — preview{% endblock %}
 {% block content %}
   <style>
-    .subtabs { display:flex; gap:0; margin:0 0 22px; border:2px solid var(--black); border-radius:6px; overflow:hidden; max-width:640px; }
-    .subtab-btn { flex:1; display:flex; flex-direction:column; align-items:center; gap:2px;
-      padding:12px 10px; background:var(--white,#fff); border:0; border-right:2px solid var(--black);
-      font-size:17px; font-weight:700; cursor:pointer; color:var(--black); }
-    .subtab-btn:last-child { border-right:0; }
-    .subtab-btn small { font-weight:400; font-size:13px; color:#505a5f; }
-    .subtab-btn.current { background:var(--black,#0b0c0c); color:#fff; }
-    .subtab-btn.current small { color:#c9c9c9; }
     /* Side-by-side breakdown panels with compact bars. auto-fit lets a single
        visible panel (e.g. no keywords) expand to full width. */
     .breakdowns { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));
@@ -40,11 +32,9 @@
   </div>
 
   <div class="tabpanel">
-    <div class="subtabs" role="tablist">
-      <button type="button" class="subtab-btn current" data-tab="exact" role="tab">
-        Keyword Matching<small>SQL + keywords</small></button>
-      <button type="button" class="subtab-btn" data-tab="semantic" role="tab">
-        Semantic Match<small>AI inference + confidence</small></button>
+    <div class="tabs" role="tablist" style="margin-bottom:22px;">
+      <a href="#" class="subtab current" data-tab="exact" role="tab">Keyword Matching</a>
+      <a href="#" class="subtab" data-tab="semantic" role="tab">Semantic Match</a>
     </div>
 
     <section id="tab-exact" class="subpanel" role="tabpanel">
@@ -499,7 +489,7 @@
     runEvalBtn.addEventListener("click", runEval);
     // Sub-tabs: Exact Match (deterministic funnel) vs Semantic Match (AI).
     (function () {
-      const btns = document.querySelectorAll(".subtab-btn");
+      const btns = document.querySelectorAll(".subtab");
       function show(tab) {
         btns.forEach(b => b.classList.toggle("current", b.dataset.tab === tab));
         document.getElementById("tab-exact").hidden = tab !== "exact";
@@ -507,7 +497,7 @@
         if (tab === "exact") drawSankey();   // redraw at the now-visible width
         try { localStorage.setItem("preview-subtab-" + CID, tab); } catch (e) {}
       }
-      btns.forEach(b => b.addEventListener("click", () => show(b.dataset.tab)));
+      btns.forEach(b => b.addEventListener("click", e => { e.preventDefault(); show(b.dataset.tab); }));
       let initial = "exact";
       try { initial = localStorage.getItem("preview-subtab-" + CID) || "exact"; } catch (e) {}
       show(initial);
