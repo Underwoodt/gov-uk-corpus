@@ -1,266 +1,177 @@
-# Gov.uk URL Corpus & Search API
+# GOV.UK Corpus — Content Shortlist Builder
 
-A scalable, cost-effective system for collecting, enriching, and searching ~1M URLs from gov.uk using PostgreSQL and FastAPI.
+A FastAPI + Jinja web app, styled in the GOV.UK / Defra Design System, for building
+**content shortlists** from a corpus of ~877k gov.uk pages. You define a *category*
+(organisations + document types + keywords + inclusion/exclusion context), the app
+narrows the corpus with a deterministic **selection funnel**, then optionally runs
+**LLM inclusion/exclusion passes** to produce a reviewable, exportable shortlist.
 
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                  Lightship VPS (1-2 CPU, 2GB RAM)            │
-├─────────────────────────────────────────────────────────────┤
-│                                                               │
-│  ┌─────────────────┐      ┌────────────────┐                │
-│  │  Crawlers       │◄────►│  PostgreSQL    │                │
-│  │  - Discover     │      │  gov_uk_urls   │                │
-│  │  - Enrich       │      │  + FTS Index   │                │
-│  └─────────────────┘      └────────────────┘                │
-│           ▲                                                   │
-│           │ Rate: 2 req/sec                                  │
-│           ▼                                                   │
-│  ┌─────────────────────────────┐                            │
-│  │  gov.uk Content API          │                            │
-│  │  (public, no auth)           │                            │
-│  └─────────────────────────────┘                            │
-│                                                               │
-│  ┌─────────────────┐      ┌────────────────┐                │
-│  │  FastAPI        │      │  APScheduler   │                │
-│  │  - Search API   │      │  - Daily jobs  │                │
-│  │  - Stats        │      │  - Reports     │                │
-│  └─────────────────┘      └────────────────┘                │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## Quick Start
-
-### 1. Prerequisites
-
-- Python 3.8+
-- PostgreSQL 13+
-- 2GB RAM minimum
-- ~10GB disk space
-
-### 2. Installation
-
-```bash
-cd /Users/tomunderwood/AI\ Brain/gov-uk-corpus
-
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Copy environment template
-cp .env.example .env
-# Edit .env with your PostgreSQL credentials
-```
-
-### 3. Database Setup
-
-```bash
-# Create PostgreSQL database
-createdb gov_uk_urls
-createuser gov_uk_crawler
-psql -U postgres -d gov_uk_urls -f database/schema.sql
-```
-
-### 4. Run Discovery (collect URLs)
-
-```bash
-python crawlers/discover_urls.py
-# Expected: ~1M URLs found in 30 minutes
-# Progress logged to: logs/run_YYYYMMDD_HHMMSS_discover_urls.log
-```
-
-### 5. Run Enrichment (fetch metadata)
-
-```bash
-python crawlers/enrich_metadata.py
-# Expected: ~5.8 days for 1M URLs at 2 req/sec
-# Check progress in logs/
-# Rerunnable - resumes where it left off
-```
-
-### 6. Start Search API
-
-```bash
-python -m api.app
-# Server starts at http://localhost:8000
-# API docs: http://localhost:8000/docs
-```
-
-### 7. Start Background Scheduler (optional)
-
-```bash
-python jobs/scheduler.py
-# Runs daily discovery, batch enrichment, weekly reports
-```
-
-## Usage
-
-### Search API Examples
-
-**Basic keyword search:**
-```bash
-curl "http://localhost:8000/search?q=climate+change&limit=10"
-```
-
-**Faceted search:**
-```bash
-curl "http://localhost:8000/search?q=climate&organisations=DEFRA&document_type=policy"
-```
-
-**Corpus statistics:**
-```bash
-curl "http://localhost:8000/search/stats"
-```
-
-### Monitoring Progress
-
-**Check URL counts:**
-```bash
-psql -d gov_uk_urls -c "SELECT status, COUNT(*) FROM gov_uk_urls GROUP BY status;"
-```
-
-**View crawl runs:**
-```bash
-psql -d gov_uk_urls -c "SELECT * FROM crawl_runs ORDER BY started_at DESC LIMIT 10;"
-```
-
-**Check logs:**
-```bash
-ls -lh logs/
-tail -f logs/run_*.log
-```
-
-**View reports:**
-```bash
-ls -lh reports/
-cat reports/report_*.md
-```
-
-## Project Structure
-
-```
-gov-uk-corpus/
-├── database/
-│   ├── schema.sql          # PostgreSQL schema
-│   └── connection.py       # Connection pooling & queries
-├── crawlers/
-│   ├── discover_urls.py    # Phase B: Sitemap discovery
-│   ├── enrich_metadata.py  # Phase C: Content API fetch
-│   ├── config.py           # Configuration constants
-│   └── utils.py            # HTML parsing, logging
-├── api/
-│   ├── app.py              # FastAPI application
-│   ├── routes.py           # Search endpoints
-│   ├── models.py           # Pydantic models
-│   └── queries.py          # Database queries
-├── jobs/
-│   ├── scheduler.py        # APScheduler setup
-│   └── tasks.py            # Scheduled task functions
-├── monitoring/             # Progress tracking (future)
-├── logs/                   # Crawler logs
-├── reports/                # Generated reports
-├── requirements.txt        # Python dependencies
-├── .env.example            # Environment template
-└── README.md              # This file
-```
-
-## Key Features
-
-### ✅ Scalable Design
-- Fits on small VPS ($5-10/mo)
-- PostgreSQL with full-text search index
-- Rate-limited API crawling (2 req/sec)
-- Batch processing to avoid memory spikes
-
-### ✅ Rerunnable & Resumable
-- Status tracking: discovered → fetched → indexed
-- Can restart at any point
-- Failed URLs marked and can be retried
-- Progress logged to database
-
-### ✅ Cost-Effective
-- No external dependencies or services
-- Public APIs only (no auth keys needed)
-- ~6GB total storage (5GB for body_text)
-- Minimal bandwidth
-
-### ✅ Monitoring
-- Real-time progress logging
-- Generated reports (hourly, daily, weekly)
-- Database statistics queryable at any time
-- Search API health endpoint
-
-## Database Schema
-
-**Main table:** `gov_uk_urls`
-- `url` - Full URL (unique)
-- `title`, `description`, `body_text` - Content
-- `document_type`, `organisations` - Metadata
-- `status` - discovered | fetched | indexed | failed
-- Full-text search index on title + description + body_text
-
-**Tracking table:** `crawl_runs`
-- Logs each crawl run (discovery, enrichment)
-- Tracks progress, timing, and status
-
-## Troubleshooting
-
-### "Could not connect to PostgreSQL"
-- Ensure PostgreSQL is running: `psql -U postgres`
-- Check .env database credentials
-- Verify database exists: `psql -l`
-
-### Crawlers running slowly
-- Check network: `curl https://www.gov.uk/sitemap.xml`
-- Monitor CPU/RAM: `top`
-- Check if rate limiting is working (should be ~2 req/sec)
-
-### Search API returns empty results
-- Ensure enrichment has completed: Check `crawl_runs` table
-- Check database: `SELECT COUNT(*) FROM gov_uk_urls WHERE body_text IS NOT NULL;`
-- Verify full-text index: `SELECT COUNT(*) FROM gov_uk_urls WHERE to_tsvector('english', body_text) @@ plainto_tsquery('english', 'climate');`
-
-### High disk usage
-- Body text is ~5KB per URL, expected ~5GB for 1M URLs
-- Consider: selective indexing, compression, or partitioning for scale
-
-## Cost Analysis
-
-| Component | Est. Monthly |
-|-----------|--------------|
-| VPS (1-2 CPU, 2GB RAM) | $5-10 |
-| PostgreSQL (included) | Included |
-| Bandwidth (API) | Free (local) |
-| **Total** | **$5-10** |
-
-## Future Enhancements
-
-- [ ] Document caching (ETag support)
-- [ ] Incremental updates (change detection)
-- [ ] Search result caching/ranking
-- [ ] Data export (CSV, JSON)
-- [ ] Web UI for searching and analytics
-- [ ] Alert system for failed URLs
-- [ ] Distributed crawling across multiple VPS instances
-
-## License
-
-MIT - Feel free to use and modify
-
-## Support
-
-For issues or questions:
-1. Check logs in `logs/` directory
-2. Review PostgreSQL logs
-3. Test API endpoints manually with curl
-4. Check GitHub issues if applicable
+- **Live pilot:** `http://18.171.159.148:8600`
+- **Repo:** `Underwoodt/gov-uk-corpus`
+- **Full schema reference:** [database.md](database.md)
 
 ---
 
-**Last Updated:** 2025-09-06
-**Status:** Production-Ready
-**Scale:** 1M+ URLs, full-text search, 2 req/sec rate limit
+## What it does
+
+```
+                       ┌──────────────────────── Category (saved spec) ────────────────────────┐
+                       │  organisations · document types · keywords · inclusion/exclusion ctx   │
+                       └───────────────────────────────────────────────────────────────────────┘
+                                                     │
+   corpus (content)  ──▶  Selection funnel (deterministic, SQL)                    ──▶  Input Shortlist
+   ~877k pages            org semi-join → document-type filter → keyword (tsvector/LIKE)
+                                                     │
+                                                     ▼
+                          LLM evaluation (optional, chained)
+                          Inclusion pass  →  Exclusion pass  →  Final shortlist
+                          (sync or batch; runs in the foreground or as a
+                           server-side background job)
+                                                     │
+                                                     ▼
+                          Review + export  (CSV · XLSX · JSON, custom field selector)
+```
+
+### Key features
+
+- **Categories** — create/edit saved shortlist specs, or start from a worked example
+  (e.g. the "slurry" preset) or the guided **category interview** assistant.
+- **Selection funnel** — a live, cached Sankey + table showing how each filter narrows
+  the corpus (organisation → document type → keyword → input shortlist, then the LLM
+  inclusion/exclusion branches with dropped counts).
+- **Keyword Matching / Semantic Match / Funnel Results** tabs on the category page,
+  with organisation and keyword breakdowns.
+- **AI evaluation** — inclusion then exclusion passes, chained via `source_run_id`.
+  Runs **synchronously** or in **batch** mode (per-phase selector on Settings), and
+  can run **server-side in the background** so you can leave the page. Multiple
+  categories can evaluate concurrently; one background run per category.
+- **Run performance & detail** — per-run keep/drop totals, "pages evaluated / target"
+  context, run commentary, *Continue LLM evaluation* / *Complete this run* actions,
+  and identification of any unparsed page.
+- **Audit Shortlist tab** — inspect and export the shortlist at any pipeline stage:
+  **Department → Document type → Keyword → Included → Final** — with a column picker,
+  title search, paging, and a stage-aware download page.
+- **Export** — CSV, XLSX, or JSON with a customisable field selector; the download page
+  defaults to the fields on screen but every field is selectable.
+- **Settings** — AI model catalogue (add/test models), daily AI spend budget and guard,
+  sync/batch mode per phase, peak-hours schedule, and user-role configuration.
+
+---
+
+## Architecture
+
+| Layer | What | Where |
+|-------|------|-------|
+| Web app | FastAPI + Jinja2, GOV.UK-styled | [webapp/app.py](webapp/app.py), `webapp/templates/`, `webapp/static/` |
+| Domain logic | Categories, shortlist queries, funnel, evaluation, settings, roles | `govuk_corpus/` (e.g. [shortlist.py](govuk_corpus/shortlist.py), [evaluate.py](govuk_corpus/evaluate.py), [categories.py](govuk_corpus/categories.py)) |
+| Data layer | **Backend-agnostic** — SQLite locally, Postgres in production | [govuk_corpus/backend.py](govuk_corpus/backend.py) selects [db.py](govuk_corpus/db.py) (SQLite) or [db_pg.py](govuk_corpus/db_pg.py) (psycopg 3) |
+| Corpus build | Crawl/ingest stages that populate the `content` corpus | `govuk_corpus/stage_*.py`, [pilot.py](govuk_corpus/pilot.py) |
+| Schema | SQLite + Postgres DDL, applied on startup (`IF NOT EXISTS`) | [schema.sql](govuk_corpus/schema.sql), [schema_pg.sql](govuk_corpus/schema_pg.sql), [schema_auth.sql](govuk_corpus/schema_auth.sql) |
+
+**Backend selection** is by environment (see [backend.py](govuk_corpus/backend.py)):
+
+- Postgres when `DB_BACKEND=postgres` **or** `DB_HOST` is set → `db_pg` (psycopg 3, `%s` placeholders).
+- SQLite otherwise (the default; used by the pilot and the test suite) → `db`.
+
+`psycopg` is only imported when Postgres is selected, so local SQLite runs and the
+tests need no Postgres driver installed.
+
+---
+
+## Quick start (local, SQLite)
+
+```bash
+cd "/Users/tomunderwood/AI Brain/gov-uk-corpus"
+
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+# Build a small local SQLite corpus (see RUNBOOK.md for options)
+python -m govuk_corpus.pilot --db data/pilot.db --from-content-db ~/Downloads/content.db --limit 200
+
+# Run the app against that SQLite DB
+CORPUS_DB=data/pilot.db DASHBOARD_PASSWORD=devpass \
+  uvicorn webapp.app:app --reload --port 8600
+```
+
+Open <http://localhost:8600> and sign in with the `DASHBOARD_PASSWORD` you set.
+
+> Full step-by-step for both local and production (Postgres on Lightsail/EC2 with
+> systemd) lives in **[RUNBOOK.md](RUNBOOK.md)**.
+
+---
+
+## Configuration
+
+Set via environment (production values live in `~/gov-uk-corpus.env`, `chmod 600`,
+loaded by the systemd unit — never commit real secrets):
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `CORPUS_DB` | SQLite path (local dev) | `data/pilot.db` |
+| `DB_BACKEND` | `postgres` to force the Postgres backend | *(unset → SQLite)* |
+| `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` | Postgres connection (setting `DB_HOST` also selects Postgres) | — |
+| `DASHBOARD_PASSWORD` | Shared password for the login gate (HMAC `sb_auth` cookie) | — |
+| `ANTHROPIC_API_KEY` / provider keys | LLM evaluation (server only, in the env file) | — |
+| `COUNT_CACHE_TTL` | Funnel/count cache TTL (seconds) | `300` |
+| `DB_STATEMENT_TIMEOUT_MS` | Postgres statement timeout | `15000` |
+| `AI_TIMEOUT` | Per-call LLM timeout (seconds) | `45` |
+
+> **Auth note:** access is currently a single shared `DASHBOARD_PASSWORD`. Real user
+> accounts, sessions, and per-user RBAC are being built on the `accounts` branch
+> (see the plan in `.claude/plans/`); they are not on `main` yet.
+
+---
+
+## Running the tests
+
+```bash
+python -m unittest discover -s tests
+# ~194 tests, runs on SQLite. Postgres-only (auth) tests skip unless
+# DB_BACKEND=postgres and DB_* are set.
+```
+
+---
+
+## Deploying
+
+Production runs under **systemd** as `uvicorn webapp.app:app` on port **8600**,
+with `DB_*` + `DASHBOARD_PASSWORD` + API keys sourced from `~/gov-uk-corpus.env`.
+See [deploy/corpus-shortlist.service](deploy/corpus-shortlist.service) and the
+**Production** section of [RUNBOOK.md](RUNBOOK.md).
+
+---
+
+## Project layout
+
+```
+gov-uk-corpus/
+├── webapp/
+│   ├── app.py               # FastAPI app: routes, funnel, evaluation, export
+│   ├── templates/           # Jinja2 (GOV.UK-styled) — preview.html, download.html, settings.html, …
+│   └── static/              # govuk.css and assets
+├── govuk_corpus/            # domain package
+│   ├── backend.py           # SQLite/Postgres selector
+│   ├── db.py / db_pg.py     # data layer (SQLite / psycopg 3)
+│   ├── categories.py        # saved shortlist specs
+│   ├── shortlist.py         # funnel query builder + export
+│   ├── evaluate.py          # LLM inclusion/exclusion passes, run chaining
+│   ├── settings.py, roles.py, ai_models.py, pricing.py, …
+│   ├── stage_*.py, pilot.py # corpus ingest / crawl stages
+│   └── schema*.sql          # SQLite / Postgres / auth DDL
+├── deploy/corpus-shortlist.service   # systemd unit
+├── tests/                   # unittest suite (SQLite)
+├── database.md              # full schema & data-model reference
+├── RUNBOOK.md               # step-by-step setup (local + production)
+├── requirements.txt
+└── README.md                # this file
+```
+
+> **Legacy:** the original crawler/search-API prototype (`crawlers/`, `api/`,
+> `database/schema.sql`, `dashboard.py`) predates the Shortlist Builder and is kept
+> for reference only. The active application is `webapp/` + `govuk_corpus/`.
+
+---
+
+**Status:** pilot in use · **Corpus:** ~877k gov.uk pages · **Stack:** FastAPI · Jinja2 · psycopg 3 · Postgres (prod) / SQLite (dev & tests) · Anthropic + configurable LLM providers
