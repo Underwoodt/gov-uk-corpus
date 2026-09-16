@@ -159,6 +159,14 @@ def latest_inclusion_run(conn, category_id: int) -> Optional[str]:
     return row["run_id"] if row else None
 
 
+def latest_exclusion_run(conn, source_run_id: str) -> Optional[str]:
+    """The most recent Phase-2 exclusion run built on a given inclusion run."""
+    row = conn.execute(
+        f"SELECT run_id FROM evaluation_runs WHERE source_run_id = {_P} AND phase = {_P} "
+        f"ORDER BY started_at DESC LIMIT 1", (source_run_id, PHASE_EXCLUSION)).fetchone()
+    return row["run_id"] if row else None
+
+
 def kept_count(conn, run_id: str) -> int:
     return conn.execute(
         f"SELECT COUNT(*) AS c FROM evaluation_results WHERE run_id = {_P} AND keep = 1",

@@ -6,9 +6,11 @@
 
   <h1 style="margin:20px 0 5px;">Download shortlist</h1>
   <p class="secondary" style="margin:0 0 25px;">{{ category.display_name }}
-    (<span class="mono">{{ category.slug or '' }}</span>) · {{ '{:,}'.format(total) }} pages</p>
+    (<span class="mono">{{ category.slug or '' }}</span>){% if stage_label %} · stage:
+    <strong>{{ stage_label }}</strong>{% endif %}{% if total is not none %} · {{ '{:,}'.format(total) }} pages{% endif %}</p>
 
   <form method="get" action="{{ url_for('export_category', cid=category.id) }}">
+    <input type="hidden" name="stage" value="{{ stage or 'keyword' }}">
     <div class="field">
       <label class="q" for="format">Format</label>
       <select id="format" name="format">
@@ -29,7 +31,7 @@
             {% for key, label, default_on, disabled, warning in section_fields %}
             <label class="check">
               <input type="checkbox" name="fields" value="{{ key }}"
-                {{ 'checked' if default_on }} {{ 'disabled' if disabled }}>
+                {{ 'checked' if (disabled and default_on) or (key in preselect if preselect else default_on) }} {{ 'disabled' if disabled }}>
               {{ label }}{% if warning %} <span class="secondary">— {{ warning }}</span>{% endif %}
             </label>
             {% endfor %}
