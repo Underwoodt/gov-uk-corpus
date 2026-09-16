@@ -308,9 +308,13 @@
       const W = svg.clientWidth || 900, nw = 13;
       const maxVal = Math.max(...nodes.map(n => n.val || 1));
       // Height transform: a power law (exponent < 1) sits between log (→0) and
-      // linear (1). ~0.33 keeps small stages visible like a log scale but gives the
-      // big left-hand stages more height, for a clearer left-to-right funnel taper.
-      const P = 0.33, MAX_H = 150, MIN_H = 14;
+      // linear (1). Heights are anchored to one scale — the largest node is the
+      // reference (MAX_H) and every other node is a fraction of it, so a bigger
+      // count is always a taller bar (right side never taller than the left).
+      // ~0.45 gives a clear left-to-right funnel taper; MIN_H keeps tiny stages
+      // (e.g. a handful of dropped pages) visible. Raise P toward 1 for a stronger
+      // taper, lower it toward 0 for flatter/more even bars.
+      const P = 0.45, MAX_H = 150, MIN_H = 14;
       const tf = v => Math.pow(Math.max(1, v || 1), P);
       const K = MAX_H / tf(maxVal);
       const hOf = v => Math.max(MIN_H, K * tf(v));
