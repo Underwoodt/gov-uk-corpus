@@ -20,6 +20,7 @@
   <div class="wrap body">
     <div class="phase">
       <span class="tag">Alpha</span>
+      {% if role is defined and role %}<span class="tag" title="Active system role (set in Settings)">{{ role }}</span>{% endif %}
       <span class="meta">{{ corpus_meta }}</span>
     </div>
     {% block content %}{% endblock %}
