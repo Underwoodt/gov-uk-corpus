@@ -375,7 +375,8 @@ def login(request: Request, bad: int = 0):
         <form method=post action='{request.url_for('do_login')}'>
         <div class='field'><label class='q' for='p'>Password</label>
         <input id='p' name='password' type='password'></div>
-        <button class='btn' type=submit>Sign in</button></form></div>""")
+        <button class='btn' type=submit>Sign in</button></form></div>
+        <div class='page-id'>guc-0014</div>""")
 
 
 @app.post("/login")

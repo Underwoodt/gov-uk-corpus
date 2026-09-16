@@ -25,5 +25,8 @@
     </div>
     {% block content %}{% endblock %}
   </div>
+
+  <!-- Per-page tracking ID (guc-####). Every page sets this — see PAGE_INDEX.md. -->
+  <div class="page-id">{% block page_id %}{% endblock %}</div>
 </body>
 </html>
