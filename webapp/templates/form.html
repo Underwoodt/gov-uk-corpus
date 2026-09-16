@@ -10,8 +10,9 @@
     about one topic. These rules build a shortlist of pages, which you can then run.</p>
 
   {% if not is_edit %}
-  <p style="margin:0 0 20px;"><a href="{{ url_for('category_assistant_page') }}">Not sure where to start?
-    Let the assistant interview you →</a></p>
+  <p style="margin:0 0 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+    <a class="btn secondary-btn" href="{{ url_for('category_assistant_page') }}">Let AI Help</a>
+    <span class="secondary">Not sure where to start? Let the assistant interview you.</span></p>
   <div id="prefill-banner" class="success" hidden>Pre-filled by the assistant — review the fields and save.</div>
   {% endif %}
 

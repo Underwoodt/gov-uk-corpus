@@ -1261,6 +1261,11 @@ def api_run_results(request: Request, cid: int, run_id: str, keep: str = ""):
     return JSONResponse(out)
 
 
+def _dl_stamp() -> str:
+    """UTC timestamp for download filenames: yy-mm-dd-hr-min."""
+    return time.strftime("%y-%m-%d-%H-%M", time.gmtime())
+
+
 @app.get("/categories/{cid}/runs/{run_id}/download")
 def download_run(request: Request, cid: int, run_id: str):
     if not authed(request):
@@ -1275,7 +1280,7 @@ def download_run(request: Request, cid: int, run_id: str):
         decision = "keep" if r["keep"] == 1 else "drop" if r["keep"] == 0 else "unparseable"
         w.writerow([r["url"], decision, r["score"], r["reason"]])
     return Response(buf.getvalue(), media_type="text/csv",
-                    headers={"Content-Disposition": f'attachment; filename="run-{run_id}.csv"'})
+                    headers={"Content-Disposition": f'attachment; filename="gov-uk-funnel-pages-{_dl_stamp()}.csv"'})
 
 
 # ---- download page (choose format + fields) -----------------------------
@@ -1527,7 +1532,7 @@ def export_category(request: Request, cid: int, format: str = "csv", stage: str 
     keys, rows = shortlist.export_rows(conn, fields, **_merge_extra(sq, ""))
     conn.close()
     labels = [shortlist.EXPORT_FIELDS[k][1] for k in keys]
-    name = category.get("slug") or f"category-{cid}"
+    name = f"gov-uk-audit-shortlist-{_dl_stamp()}"
 
     if format == "json":
         payload = [{k: r.get(k) for k in keys} for r in rows]

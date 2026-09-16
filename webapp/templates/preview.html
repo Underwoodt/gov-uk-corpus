@@ -177,7 +177,7 @@
           <a href="#" id="rr-csv">Download CSV</a>
         </div>
         <table id="run-results">
-          <thead><tr><th>Page</th><th>Decision</th><th>Confidence</th><th>Reason</th></tr></thead>
+          <thead><tr><th>Page</th><th>Decision</th><th>Confidence</th><th class="num">Score</th><th>Reason</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -394,16 +394,16 @@
     const runEvalBtn = document.getElementById("run-eval");
     function decisionText(k) { return k === 1 ? "keep" : k === 0 ? "drop" : "—"; }
     // Model score → a confidence description of how central the topic is to the page.
+    // The label (this fn) and the raw score (scoreText) are shown in separate columns.
     function confidence(score) {
       if (score == null) return "—";
       const s = Number(score);
-      let label;
-      if (s <= 0)         label = "Wrong sense";
-      else if (s <= 0.35) label = "Mentioned once or in passing";
-      else if (s <= 0.65) label = "Discussed a little";
-      else                label = "Major focus";
-      return `${label} (${s.toFixed(1)})`;
+      if (s <= 0)         return "Wrong sense";
+      if (s <= 0.35)      return "Mentioned once or in passing";
+      if (s <= 0.65)      return "Discussed a little";
+      return "Major focus";
     }
+    function scoreText(score) { return score == null ? "—" : Number(score).toFixed(1); }
     const newRunBtn = document.getElementById("new-run");
     let selectedRun = null, activeRun = null;
 
@@ -523,6 +523,7 @@
           `<td><a href="${esc(row.url)}">${esc(row.url)}</a></td>` +
           `<td>${decisionText(row.keep)}</td>` +
           `<td>${confidence(row.score)}</td>` +
+          `<td class="num">${scoreText(row.score)}</td>` +
           `<td>${esc(row.reason || "")}</td>`;
         tbody.appendChild(tr);
       }
