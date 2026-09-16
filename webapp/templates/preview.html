@@ -306,20 +306,27 @@
     function drawSankey() {
       const svg = document.getElementById("sankey");
       if (!svg || ["org", "doctype", "keyword"].some(k => sankeyCounts[k] == null)) return;
-      const BLUE = "#1d70b8", PURPLE = "#4c2c92", GREEN = "#00703c", RED = "#d4351c", ORANGE = "#f47738";
+      const BLUE = "#1d70b8", PURPLE = "#4c2c92", GREEN = "#00703c", RED = "#d4351c", ORANGE = "#f47738", GREY = "#b1b4b6";
+      const dropDoc = Math.max(0, sankeyCounts.org - sankeyCounts.doctype);
+      const dropKw = Math.max(0, sankeyCounts.doctype - sankeyCounts.keyword);
       const nodes = [
-        { key:"org",       col:0, band:"main", name:"Matching organisation",  val:sankeyCounts.org,     color:BLUE },
-        { key:"doctype",   col:1, band:"main", name:"Matching document type", val:sankeyCounts.doctype, color:PURPLE },
-        { key:"shortlist", col:2, band:"main", name:"Input Shortlist",        val:sankeyCounts.keyword, color:BLUE },
+        { key:"org",       col:0, band:"main", name:"Matched Orgs",      val:sankeyCounts.org,     color:BLUE },
+        { key:"dropDoc",   col:1, band:"up",   name:"Wrong Doc Type",    val:dropDoc,              color:GREY },
+        { key:"doctype",   col:1, band:"main", name:"Matched Doc Type",  val:sankeyCounts.doctype, color:PURPLE },
+        { key:"dropKw",    col:2, band:"up",   name:"No Keywords",       val:dropKw,               color:GREY },
+        { key:"shortlist", col:2, band:"main", name:"Contains Keywords", val:sankeyCounts.keyword, color:BLUE },
       ];
-      const links = [ { s:"org", t:"doctype" }, { s:"doctype", t:"shortlist" } ];
+      const links = [
+        { s:"org", t:"doctype" }, { s:"org", t:"dropDoc", top:true },
+        { s:"doctype", t:"shortlist" }, { s:"doctype", t:"dropKw", top:true },
+      ];
       if (sankeyLLM) {
-        nodes.push({ key:"drop1", col:3, band:"up",   name:"Dropped", val:sankeyLLM.inclDropped, color:RED });
-        nodes.push({ key:"incl",  col:3, band:"main", name:"Filtered by LLM Inclusion Rules", val:sankeyLLM.inclKept, color:PURPLE });
+        nodes.push({ key:"drop1", col:3, band:"up",   name:"Excluded by AI", val:sankeyLLM.inclDropped, color:RED });
+        nodes.push({ key:"incl",  col:3, band:"main", name:"Included by AI",  val:sankeyLLM.inclKept, color:PURPLE });
         links.push({ s:"shortlist", t:"drop1", top:true }, { s:"shortlist", t:"incl" });
         if (sankeyLLM.exclKept != null) {
-          nodes.push({ key:"drop2", col:4, band:"up",   name:"Dropped", val:sankeyLLM.exclDropped, color:ORANGE });
-          nodes.push({ key:"excl",  col:4, band:"main", name:"Filtered by LLM Exclusion Rules", val:sankeyLLM.exclKept, color:GREEN });
+          nodes.push({ key:"drop2", col:4, band:"up",   name:"Excluded by AI-Judge", val:sankeyLLM.exclDropped, color:ORANGE });
+          nodes.push({ key:"excl",  col:4, band:"main", name:"Shortlist", val:sankeyLLM.exclKept, color:GREEN });
           links.push({ s:"incl", t:"drop2", top:true }, { s:"incl", t:"excl" });
         }
       }
