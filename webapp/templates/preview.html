@@ -408,7 +408,8 @@
           `title="Open run details">${esc(r.name || r.run_id)}</a></td>` +
           `<td>${fmtDate(r.started_at)}</td>` +
           `<td class="num timing">${fmtElapsed(r.started_at, r.finished_at)}</td>` +
-          `<td class="num">${fmtInt(r.pages)}</td><td class="num">${fmtInt(r.kept)}</td>` +
+          `<td class="num">${fmtInt(r.pages)}${r.target != null ? " / " + fmtInt(r.target) : ""}</td>` +
+          `<td class="num">${fmtInt(r.kept)}</td>` +
           `<td class="num">${fmtInt(r.dropped)}</td>` +
           `<td class="num">${fmtInt(r.in_tokens)}</td>` +
           `<td class="num">${fmtInt(r.out_tokens)}</td>` +

@@ -1054,7 +1054,29 @@ def api_list_runs(request: Request, cid: int):
     if not authed(request):
         return JSONResponse({"error": "auth"}, status_code=401)
     conn = connect()
-    out = {"runs": evaluate.list_runs(conn, cid), "active": _active_run(conn, cid)}
+    runs = evaluate.list_runs(conn, cid)
+    category = cat.get_category(conn, cid)
+    # Annotate each run with the total it evaluates toward, for the "X / N" display:
+    # inclusion runs work through the whole shortlist; exclusion runs only re-check
+    # the pages their source inclusion run kept.
+    _shortlist_total = [None]   # memoised (one count per request, only if needed)
+
+    def shortlist_total():
+        if _shortlist_total[0] is None and category:
+            try:
+                _shortlist_total[0] = cached_count(conn, **_effective_filters(conn, category))
+            except Exception:
+                _shortlist_total[0] = None
+        return _shortlist_total[0]
+
+    by_id = {r["run_id"]: r for r in runs}
+    for r in runs:
+        if "exclusion" in (r.get("phase") or "").lower():
+            src = by_id.get(r.get("source_run_id"))
+            r["target"] = src.get("kept") if src else None   # exclusion re-checks the inclusion's keeps
+        else:
+            r["target"] = shortlist_total()
+    out = {"runs": runs, "active": _active_run(conn, cid)}
     conn.close()
     return JSONResponse(out)
 
