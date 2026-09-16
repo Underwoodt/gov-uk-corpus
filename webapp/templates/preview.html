@@ -47,13 +47,6 @@
     </div>
     <p class="hint" style="margin-top:6px;">How each filter narrows the corpus. Each row is timed as it runs.
       Counts are cached until the definition or corpus changes — use Refresh to force a recompute.</p>
-    <p style="margin:0 0 16px;font-size:14px;">
-      <a href="{{ url_for('download_audit', cid=category.id) }}">Download Audit File (Debugging only)</a></p>
-
-    <p class="hint" style="margin:0 0 8px;">How pages flow through the pipeline — organisation → document type →
-      shortlist, then (once the category has been evaluated) the LLM inclusion and exclusion passes, with the
-      dropped counts branching off. Bar heights use a <strong>compressed scale</strong> so small stages stay visible
-      next to the corpus-sized ones, so widths are indicative, not to scale.</p>
     <div class="funnel-layout">
       <div class="funnel-sankey">
         <svg id="sankey" style="width:100%;min-width:460px;height:300px;"></svg>
@@ -194,6 +187,9 @@
     </section>
 
   </div>
+
+  <p class="secondary" style="margin:22px 0 0;font-size:14px;">
+    <a href="{{ url_for('download_audit', cid=category.id) }}">Download Audit File (Debugging only)</a></p>
 
   <script>
     const CID = {{ category.id }};
