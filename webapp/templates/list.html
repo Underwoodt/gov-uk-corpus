@@ -16,6 +16,7 @@
   <p class="secondary" id="count-line" style="margin:0 0 10px;">{{ categories|length }} categor{{ 'y' if categories|length == 1 else 'ies' }}</p>
 
   {% if categories %}
+  <div class="table-wrap">
   <table id="cat-table">
     <thead><tr>
       <th>Category</th><th>Owner</th><th>Last updated</th>
@@ -31,7 +32,7 @@
         <td>{{ c.owner_email or '' }}</td>
         <td>{{ c.updated }}</td>
         <td class="num">{{ c.pages_kept }}</td>
-        <td>{{ c.status }}</td>
+        <td><span class="pill {{ c.status }}">{{ c.status }}</span></td>
         <td><span class="actions">
           <a href="{{ url_for('preview_category_page', cid=c.id) }}">Run</a>
           <a href="{{ url_for('edit_category_page', cid=c.id) }}">Change</a>
@@ -40,6 +41,7 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
   {% else %}
   <p style="margin:20px 0 40px;">No categories yet. Create one to get started.</p>
   {% endif %}
