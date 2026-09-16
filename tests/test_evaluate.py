@@ -378,6 +378,24 @@ class TestRunCommentary(unittest.TestCase):
         c = evaluate.run_commentary([inc], shortlist_total=571, opened_run_id="i")
         self.assertTrue(any("could not be parsed" in n["text"] for n in c["next_steps"]))
 
+    def test_continuable_in_progress(self):
+        inc = self._run(run_id="i", pages=100, kept=60, dropped=40, finished_at=None)
+        self.assertIn("in progress", evaluate.continuable_reason([inc], shortlist_total=200))
+
+    def test_continuable_finished_but_short(self):
+        inc = self._run(run_id="i", pages=100, kept=60, dropped=40, finished_at="t")
+        self.assertIn("100 of 200", evaluate.continuable_reason([inc], shortlist_total=200))
+
+    def test_continuable_pending_exclusion(self):
+        inc = self._run(run_id="i", pages=200, kept=60, dropped=140, finished_at="t")
+        self.assertIn("Exclusion", evaluate.continuable_reason([inc], shortlist_total=200))
+
+    def test_continuable_none_when_complete(self):
+        inc = self._run(run_id="i", pages=200, kept=60, dropped=140, finished_at="t")
+        exc = self._run(run_id="e", phase=evaluate.PHASE_EXCLUSION, source_run_id="i",
+                        pages=60, kept=55, dropped=5, finished_at="t")
+        self.assertIsNone(evaluate.continuable_reason([inc, exc], shortlist_total=200))
+
 
 if __name__ == "__main__":
     unittest.main()
