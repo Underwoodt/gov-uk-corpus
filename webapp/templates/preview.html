@@ -50,8 +50,8 @@
 
     <p class="hint" style="margin:0 0 8px;">How pages flow through the pipeline — organisation → document type →
       shortlist, then (once the category has been evaluated) the LLM inclusion and exclusion passes, with the
-      dropped counts branching off. Bar heights use a <strong>log scale</strong> so small stages stay visible next
-      to the corpus-sized ones, so widths are indicative, not to scale.</p>
+      dropped counts branching off. Bar heights use a <strong>compressed scale</strong> so small stages stay visible
+      next to the corpus-sized ones, so widths are indicative, not to scale.</p>
     <div style="overflow-x:auto;margin:0 0 22px;">
       <svg id="sankey" style="width:100%;min-width:720px;height:300px;"></svg>
     </div>
@@ -307,8 +307,13 @@
       const maxCol = Math.max(...nodes.map(n => n.col));
       const W = svg.clientWidth || 900, nw = 13;
       const maxVal = Math.max(...nodes.map(n => n.val || 1));
-      const K = 150 / Math.log(Math.max(2, maxVal)), MIN_H = 14;
-      const hOf = v => Math.max(MIN_H, K * Math.log(Math.max(1, v || 1)));
+      // Height transform: a power law (exponent < 1) sits between log (→0) and
+      // linear (1). ~0.33 keeps small stages visible like a log scale but gives the
+      // big left-hand stages more height, for a clearer left-to-right funnel taper.
+      const P = 0.33, MAX_H = 150, MIN_H = 14;
+      const tf = v => Math.pow(Math.max(1, v || 1), P);
+      const K = MAX_H / tf(maxVal);
+      const hOf = v => Math.max(MIN_H, K * tf(v));
       const midY = 190, upY = 74, padL = 150, padR = 168;
       const colGap = (W - padL - padR - nw) / Math.max(1, maxCol);
       nodes.forEach(n => {
