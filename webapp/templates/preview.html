@@ -54,20 +54,28 @@
         <svg id="sankey" style="width:100%;min-width:460px;height:300px;"></svg>
       </div>
 
+      {# Funnel table mirrors the Sankey stages: label, count passing (Next Stage),
+         count dropped here (Rejected), and time. Deterministic rows are server-
+         rendered; the AI rows (Included by AI / Shortlist) are revealed by JS once
+         their runs exist. #}
+      {% set stage_names = {'all':'All Pages','org':'Matched Orgs','doctype':'Matched Doc Type','keyword':'Contains Keywords'} %}
       <table id="funnel">
-      <thead><tr><th>Selection criterion</th><th class="num">Rows returned</th><th class="num">Time</th></tr></thead>
+      <thead><tr><th>Labels</th><th class="num">Next Stage</th><th class="num">Rejected</th><th class="num">Time</th></tr></thead>
       <tbody>
         {% for s in stages %}
         <tr data-stage="{{ s.stage }}">
           <td>{% if s.vals %}<details class="filter-values">
-              <summary>{{ s.label }} ({{ s.vals|length }})</summary>
+              <summary>{{ stage_names.get(s.stage, s.label) }} ({{ s.vals|length }})</summary>
               <div class="detail" style="max-width:none;">{{ s.vals|join(', ') }}</div>
-            </details>{% else %}{{ s.label }}{% if s.stage != 'all' %} <span class="secondary" style="font-size:13px;">(no filter — all pages)</span>{% endif %}{% endif %}
+            </details>{% else %}{{ stage_names.get(s.stage, s.label) }}{% endif %}
           </td>
           <td class="num val"><span class="spinner"></span></td>
+          <td class="num rejected"></td>
           <td class="num timing"></td>
         </tr>
         {% endfor %}
+        <tr data-stage="incl" hidden><td>Included by AI</td><td class="num val"></td><td class="num rejected"></td><td class="num timing"></td></tr>
+        <tr data-stage="excl" hidden><td>Shortlist</td><td class="num val"></td><td class="num rejected"></td><td class="num timing"></td></tr>
       </tbody>
       </table>
     </div>
@@ -210,14 +218,18 @@
     }
 
     // Funnel: fill one row at a time, timing each.
+    const PREV_STAGE = { org: "all", doctype: "org", keyword: "doctype" };
     async function runFunnel() {
       for (const stage of STAGES) {
         const row = document.querySelector(`#funnel tr[data-stage="${stage}"]`);
         try {
           const { j, ms } = await timedFetch(`/api/categories/${CID}/funnel?stage=${stage}`);
           row.querySelector(".val").textContent = fmtInt(j.count);
-          // 'All pages' is a cached copy of the corpus total — no query, so no time.
-          row.querySelector(".timing").textContent = stage === "all" ? "" : fmtSecs(ms);
+          // 'All pages' is the corpus total — nothing rejected, no query time.
+          row.querySelector(".timing").textContent = stage === "all" ? "—" : fmtSecs(ms);
+          const prev = sankeyCounts[PREV_STAGE[stage]];
+          row.querySelector(".rejected").textContent =
+            stage === "all" || prev == null ? "—" : fmtInt(Math.max(0, prev - j.count));
           sankeyCounts[stage] = j.count;
           drawSankey();
         } catch (e) {
@@ -487,7 +499,20 @@
         inclKept: incl.kept || 0, inclDropped: incl.dropped || 0,
         exclKept: excl ? (excl.kept || 0) : null, exclDropped: excl ? (excl.dropped || 0) : null,
       } : null;
+      // Progressive AI rows in the funnel table (kept / dropped / run elapsed).
+      fillFunnelAiRow("incl", incl);
+      fillFunnelAiRow("excl", excl);
       drawSankey();
+    }
+
+    function fillFunnelAiRow(stage, run) {
+      const row = document.querySelector(`#funnel tr[data-stage="${stage}"]`);
+      if (!row) return;
+      if (!run) { row.hidden = true; return; }
+      row.hidden = false;
+      row.querySelector(".val").textContent = fmtInt(run.kept || 0);
+      row.querySelector(".rejected").textContent = fmtInt(run.dropped || 0);
+      row.querySelector(".timing").textContent = fmtElapsed(run.started_at, run.finished_at);
     }
 
 
