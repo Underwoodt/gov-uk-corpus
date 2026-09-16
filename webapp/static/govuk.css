@@ -163,3 +163,9 @@ td.num.timing, th.num { font-variant-numeric:tabular-nums; }
   user-select:all; background:rgba(255,255,255,.72); padding:1px 6px; border-radius:4px; }
 .page-id:empty { display:none; }
 @media (max-width:600px) { .page-id { background:none; } }
+
+/* Compact daily-AI-spend indicator shown on the top phase line (base.html). */
+.budget-inline { display:inline-flex; align-items:center; gap:6px; font-size:14px; }
+.budget-inline .meta { font-size:14px; color:var(--muted); }
+.budget-track { width:80px; height:8px; background:#e8e8e8; border-radius:5px; overflow:hidden; display:inline-block; vertical-align:middle; }
+.budget-fill { display:block; height:100%; transition:width .3s; }

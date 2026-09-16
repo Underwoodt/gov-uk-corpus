@@ -4,8 +4,6 @@
 {% block content %}
 
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
-  {% include "_budget_bar.html" %}
-
   <h1 style="margin:20px 0 5px;">{{ category.display_name }}</h1>
   <p class="secondary" style="margin:0 0 20px;"><span class="mono">{{ category.slug or '' }}</span></p>
 
