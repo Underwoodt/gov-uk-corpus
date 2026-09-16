@@ -5,16 +5,16 @@
 
   {% if flash %}<div class="success">{{ flash }}</div>{% endif %}
 
-  <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;">
-    <h1 style="margin:0;">Categories</h1>
-    <a class="btn" href="{{ url_for('new_category_page') }}">Create a new category</a>
-  </div>
-  <p class="lede" style="margin:14px 0 30px;">A category is a saved set of rules for finding gov.uk pages
+  <h1>Categories</h1>
+  <p class="lede" style="margin:0 0 30px;">A category is a saved set of rules for finding gov.uk pages
     about one topic. Choose a category to run it or change it, or create a new one.</p>
 
-  <div style="margin-bottom:30px;">
-    <label class="secondary" for="cat-filter" style="display:block;margin-bottom:5px;">Search categories</label>
-    <input id="cat-filter" type="text" class="narrow" oninput="filterCats(this.value)">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:30px;">
+    <div>
+      <label class="secondary" for="cat-filter" style="display:block;margin-bottom:5px;">Search categories</label>
+      <input id="cat-filter" type="text" class="narrow" oninput="filterCats(this.value)">
+    </div>
+    <a class="btn" href="{{ url_for('new_category_page') }}">Create a new category</a>
   </div>
 
   <p class="secondary" id="count-line" style="margin:0 0 10px;">{{ categories|length }} categor{{ 'y' if categories|length == 1 else 'ies' }}</p>
