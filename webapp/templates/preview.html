@@ -16,6 +16,13 @@
     .bd-fill { height:100%; background:var(--blue,#1d70b8); border-radius:999px; }
     .bd-val { text-align:right; font-weight:700; font-size:13px; white-space:nowrap;
       padding:2px 0; font-variant-numeric:tabular-nums; }
+    /* Selection funnel: Sankey and table side by side, stacking when narrow. */
+    .funnel-layout { display:flex; gap:28px; align-items:flex-start; flex-wrap:wrap; margin:0 0 22px; }
+    .funnel-layout .funnel-sankey { flex:1 1 460px; min-width:0; overflow-x:auto; }
+    .funnel-layout #funnel { flex:1 1 300px; margin:0; }
+    /* Tighter rows + wrapping headings, scoped to the funnel table only. */
+    #funnel th, #funnel td { padding:6px 12px; }
+    #funnel th { white-space:normal; }
   </style>
 
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
@@ -40,18 +47,12 @@
     </div>
     <p class="hint" style="margin-top:6px;">How each filter narrows the corpus. Each row is timed as it runs.
       Counts are cached until the definition or corpus changes — use Refresh to force a recompute.</p>
-    <p style="margin:0 0 16px;font-size:14px;">
-      <a href="{{ url_for('download_audit', cid=category.id) }}">Download Audit File (Debugging only)</a></p>
+    <div class="funnel-layout">
+      <div class="funnel-sankey">
+        <svg id="sankey" style="width:100%;min-width:460px;height:300px;"></svg>
+      </div>
 
-    <p class="hint" style="margin:0 0 8px;">How pages flow through the pipeline — organisation → document type →
-      shortlist, then (once the category has been evaluated) the LLM inclusion and exclusion passes, with the
-      dropped counts branching off. Bar heights use a <strong>compressed scale</strong> so small stages stay visible
-      next to the corpus-sized ones, so widths are indicative, not to scale.</p>
-    <div style="overflow-x:auto;margin:0 0 22px;">
-      <svg id="sankey" style="width:100%;min-width:720px;height:300px;"></svg>
-    </div>
-
-    <table id="funnel">
+      <table id="funnel">
       <thead><tr><th>Selection criterion</th><th class="num">Rows returned</th><th class="num">Time</th></tr></thead>
       <tbody>
         {% for s in stages %}
@@ -71,7 +72,8 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+      </table>
+    </div>
 
     <div class="tabs" role="tablist" style="margin-bottom:22px;">
       <a href="#" class="subtab current" data-tab="exact" role="tab">Keyword Matching</a>
@@ -185,6 +187,9 @@
     </section>
 
   </div>
+
+  <p class="secondary" style="margin:22px 0 0;font-size:14px;">
+    <a href="{{ url_for('download_audit', cid=category.id) }}">Download Audit File (Debugging only)</a></p>
 
   <script>
     const CID = {{ category.id }};
