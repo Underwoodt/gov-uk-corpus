@@ -32,12 +32,7 @@
   </div>
 
   <div class="tabpanel">
-    <div class="tabs" role="tablist" style="margin-bottom:22px;">
-      <a href="#" class="subtab current" data-tab="exact" role="tab">Keyword Matching</a>
-      <a href="#" class="subtab" data-tab="semantic" role="tab">Semantic Match</a>
-    </div>
-
-    <section id="tab-exact" class="subpanel" role="tabpanel">
+    <!-- Selection funnel: shown above the sub-tabs, so it's visible for both modes. -->
     <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;">
       <h2 style="margin:0;">Selection funnel</h2>
       <button type="button" class="btn secondary-btn" id="refresh-funnel"
@@ -78,6 +73,12 @@
       </tbody>
     </table>
 
+    <div class="tabs" role="tablist" style="margin-bottom:22px;">
+      <a href="#" class="subtab current" data-tab="exact" role="tab">Keyword Matching</a>
+      <a href="#" class="subtab" data-tab="semantic" role="tab">Semantic Match</a>
+    </div>
+
+    <section id="tab-exact" class="subpanel" role="tabpanel">
     <div class="breakdowns">
       <div id="org-breakdown" hidden>
         <div style="display:flex;justify-content:space-between;align-items:baseline;">
