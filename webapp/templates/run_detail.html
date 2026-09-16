@@ -31,15 +31,16 @@
     {% if run.status %}· {{ run.status }}{% endif %}
   </p>
 
-  {% if not run.finished_at %}
+  {% if continue_reason %}
   <p style="margin:12px 0 0;">
-    <button class="btn" id="complete-run" type="button">Complete this run</button>
+    <button class="btn" id="complete-run" type="button">Continue LLM evaluation</button>
     <span id="complete-status" class="secondary" style="margin-left:10px;"></span>
   </p>
-  <p class="hint" style="margin:6px 0 0;">Makes this the active run and evaluates the remaining pages on the
-    server (in the background) — you can close this page and come back.</p>
+  <p class="hint" style="margin:6px 0 0;">{{ continue_reason }}
+    Continues the unfinished phase on the server (in the background) so that input = kept + dropped —
+    you can close this page and come back.</p>
   {% else %}
-  <p class="secondary" style="margin:12px 0 0;">✅ This run has finished.</p>
+  <p class="secondary" style="margin:12px 0 0;">✅ Evaluation complete — every phase reconciles (input = kept + dropped).</p>
   {% endif %}
 
   <h2 style="margin-top:26px;">Next steps</h2>
@@ -156,7 +157,11 @@
         completeBtn.disabled = true;
         cs.innerHTML = '<span class="spinner"></span> Starting…';
         try {
-          await fetch(`/api/categories/${CID}/runs/${RUN_ID}/activate`, { method: "POST" });
+          // Point the category's active run at the phase that still needs work
+          // (resume it, or start the pending exclusion), then run it in the background.
+          const cont = await (await fetch(`/api/categories/${CID}/runs/${RUN_ID}/continue`, { method: "POST" })).json();
+          if (cont.error) { cs.textContent = "Error: " + cont.error; completeBtn.disabled = false; return; }
+          if (cont.done) { cs.textContent = "Nothing to continue — already complete."; return; }
           const j = await (await fetch(`/api/categories/${CID}/evaluate-bg/start`, { method: "POST" })).json();
           if (j.error) { cs.textContent = "Error: " + j.error; completeBtn.disabled = false; return; }
           const poll = setInterval(async () => {

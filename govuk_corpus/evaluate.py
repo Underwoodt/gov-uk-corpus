@@ -329,6 +329,36 @@ def unparsed_results(conn, run_ids: Sequence[str]) -> List[dict]:
     return [dict(r) for r in rows]
 
 
+def continuable_reason(chain: List[dict], shortlist_total: Optional[int] = None) -> Optional[str]:
+    """If the evaluation still has work to do — a phase in progress, a phase that
+    stopped below its input (input ≠ kept + dropped because pages remain), or a
+    pending exclusion — return a short reason. Otherwise None (nothing to continue).
+
+    'input' is the shortlist total for inclusion, and the previous phase's keeps for
+    exclusion. Pure/testable; the web layer supplies shortlist_total.
+    """
+    by_id = {r["run_id"]: r for r in chain}
+    have_excl = any("exclusion" in (r.get("phase") or "").lower() for r in chain)
+
+    for r in chain:                                  # a phase still running
+        if not r.get("finished_at"):
+            return f"{r.get('phase') or 'A phase'} is still in progress."
+    for r in chain:                                  # a finished phase that stopped short
+        if "exclusion" in (r.get("phase") or "").lower():
+            src = by_id.get(r.get("source_run_id"))
+            target = src.get("kept") if src else None
+        else:
+            target = shortlist_total
+        pages = r.get("pages") or 0
+        if target is not None and pages < target:
+            return (f"{r.get('phase')} evaluated {pages:,} of {target:,} — "
+                    f"{target - pages:,} still to do (input ≠ kept + dropped).")
+    incl = next((r for r in chain if "inclusion" in (r.get("phase") or "").lower()), None)
+    if incl and incl.get("finished_at") and (incl.get("kept") or 0) > 0 and not have_excl:
+        return f"Phase 2 (Exclusion) hasn't run over the {incl['kept']:,} kept pages."
+    return None
+
+
 def run_commentary(chain: List[dict], shortlist_total: Optional[int] = None,
                    opened_run_id: Optional[str] = None) -> Dict[str, list]:
     """Plain-English notes about a run's phase chain (oldest-first), grouped into:

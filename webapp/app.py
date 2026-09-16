@@ -1102,13 +1102,14 @@ def run_detail_page(request: Request, cid: int, run_id: str):
     except Exception:
         shortlist_total = None
     commentary = evaluate.run_commentary(chain, shortlist_total, opened_run_id=run_id)
+    continue_reason = evaluate.continuable_reason(chain, shortlist_total)
     unparsed = evaluate.unparsed_results(conn, [r["run_id"] for r in chain])
     phase_by_id = {r["run_id"]: r.get("phase") for r in chain}
     for u in unparsed:
         u["phase"] = phase_by_id.get(u["run_id"])
     resp = templates.TemplateResponse("run_detail.html", ctx(
         conn, request, category=category, run=run, chain=chain, totals=totals,
-        commentary=commentary, unparsed=unparsed))
+        commentary=commentary, unparsed=unparsed, continue_reason=continue_reason))
     conn.close()
     return resp
 
@@ -1126,6 +1127,59 @@ async def api_activate_run(request: Request, cid: int, run_id: str):
             return JSONResponse({"error": "not found"}, status_code=404)
         settings.set_setting(conn, f"active_run_{cid}", run_id)
         return JSONResponse({"ok": True, "active": run_id})
+    finally:
+        conn.close()
+
+
+@app.post("/api/categories/{cid}/runs/{run_id}/continue")
+async def api_continue_run(request: Request, cid: int, run_id: str):
+    """Make the phase that still needs work the active run so a background run
+    finishes the LLM evaluation: resume an in-progress / short phase, or start the
+    pending Phase-2 exclusion over the inclusion run's keeps. Returns the run that
+    is now active, or {done: true} if there is nothing left to do."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    conn = connect()
+    try:
+        category = cat.get_category(conn, cid)
+        run = evaluate.get_run(conn, run_id)
+        if not category or not run or str(run["category_id"]) != str(cid):
+            return JSONResponse({"error": "not found"}, status_code=404)
+        chain = evaluate.run_chain(conn, run_id)
+        try:
+            shortlist_total = cached_count(conn, **_effective_filters(conn, category))
+        except Exception:
+            shortlist_total = None
+        by_id = {r["run_id"]: r for r in chain}
+
+        def target_of(r):
+            if "exclusion" in (r.get("phase") or "").lower():
+                src = by_id.get(r.get("source_run_id"))
+                return src.get("kept") if src else None
+            return shortlist_total
+
+        # 1) an unfinished phase, or a finished phase that stopped below its input.
+        for r in chain:
+            if not r.get("finished_at"):
+                settings.set_setting(conn, f"active_run_{cid}", r["run_id"])
+                return JSONResponse({"active": r["run_id"], "action": "resume"})
+        for r in chain:
+            tgt = target_of(r)
+            if tgt is not None and (r.get("pages") or 0) < tgt:
+                settings.set_setting(conn, f"active_run_{cid}", r["run_id"])
+                return JSONResponse({"active": r["run_id"], "action": "resume"})
+
+        # 2) inclusion finished with keeps but no exclusion yet → start Phase 2.
+        have_excl = any("exclusion" in (r.get("phase") or "").lower() for r in chain)
+        incl = next((r for r in chain if "inclusion" in (r.get("phase") or "").lower()), None)
+        if incl and incl.get("finished_at") and (incl.get("kept") or 0) > 0 and not have_excl:
+            excfg = _ai_config_for_phase(conn, evaluate.PHASE_EXCLUSION)
+            new_id = evaluate.create_run(conn, cid, excfg["model"], excfg["provider"],
+                                         phase=evaluate.PHASE_EXCLUSION, source_run_id=incl["run_id"])
+            settings.set_setting(conn, f"active_run_{cid}", new_id)
+            return JSONResponse({"active": new_id, "action": "start_exclusion"})
+
+        return JSONResponse({"done": True})
     finally:
         conn.close()
 
