@@ -81,9 +81,9 @@
     </div>
 
     <div class="tabs" role="tablist" style="margin-bottom:22px;">
-      <a href="#" class="subtab current" data-tab="exact" role="tab">Keyword Matching <span class="tab-id">{{ page_ref }}a</span></a>
-      <a href="#" class="subtab" data-tab="semantic" role="tab">Semantic Match <span class="tab-id">{{ page_ref }}b</span></a>
-      <a href="#" class="subtab" data-tab="results" role="tab">Funnel Results <span class="tab-id">{{ page_ref }}c</span></a>
+      <a href="#" class="subtab current" data-tab="exact" data-tabid="{{ page_ref }}a" role="tab">Keyword Matching</a>
+      <a href="#" class="subtab" data-tab="semantic" data-tabid="{{ page_ref }}b" role="tab">Semantic Match</a>
+      <a href="#" class="subtab" data-tab="results" data-tabid="{{ page_ref }}c" role="tab">Funnel Results</a>
     </div>
 
     <section id="tab-exact" class="subpanel" role="tabpanel">
@@ -191,6 +191,7 @@
       <p id="rr-empty" class="secondary" hidden>No runs yet — evaluate a category first on the Semantic Match tab.</p>
     </section>
 
+    <span class="pane-id" id="pane-id"></span>
   </div>
 
   <p class="secondary" style="margin:22px 0 0;font-size:14px;">
@@ -704,6 +705,8 @@
         document.getElementById("tab-exact").hidden = tab !== "exact";
         document.getElementById("tab-semantic").hidden = tab !== "semantic";
         document.getElementById("tab-results").hidden = tab !== "results";
+        const active = [...btns].find(b => b.dataset.tab === tab);
+        document.getElementById("pane-id").textContent = active ? active.dataset.tabid : "";
         if (tab === "exact") drawSankey();   // redraw at the now-visible width
         if (tab === "results") {
           const v = document.getElementById("rr-run-select").value;

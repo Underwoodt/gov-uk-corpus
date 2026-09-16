@@ -16,11 +16,13 @@ Project conventions that must be followed for every change. This file is the hom
   ID is a `{% block page_id %}` set right after the `extends` line.
 - **Sub-tabs carry an identifier too**, so a specific tab can be named in a bug report:
   the page's ID plus a letter (`a`, `b`, `c`, …) — e.g. the Preview page (`guc-0003`)
-  sub-tabs are `guc-0003a` / `guc-0003b` / `guc-0003c`. It renders inside the tab label
-  as a `<span class="tab-id">` in light grey (like the page ID). Set the page ID once as
-  `{% set page_ref = "guc-NNNN" %}` at the top and reuse it for both the `page_id` block
-  and the tab tags. When you add or remove a sub-tab, keep the letters contiguous and
-  update the tab list in [PAGE_INDEX.md](PAGE_INDEX.md).
+  sub-tabs are `guc-0003a` / `guc-0003b` / `guc-0003c`. Each sub-tab carries its id as a
+  `data-tabid` attribute; the **active** sub-tab's id shows in light grey in the
+  **bottom-left corner of the tab pane** via a single `<span class="pane-id">`, updated
+  by the sub-tab `show()` handler (not inside the tab label). Set the page ID once as
+  `{% set page_ref = "guc-NNNN" %}` and reuse it for the `page_id` block and the
+  `data-tabid`s. When you add or remove a sub-tab, keep the letters contiguous and update
+  the tab list in [PAGE_INDEX.md](PAGE_INDEX.md).
 
 ## Tables / lists
 

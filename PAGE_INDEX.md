@@ -58,9 +58,10 @@ we can pin the report to an exact page.
 
 ## Sub-tab IDs
 
-Sub-tabs within a page carry the page's ID plus a letter, shown in light grey inside
-the tab label (`<span class="tab-id">`). Keep the letters contiguous and update this
-list when sub-tabs change.
+Sub-tabs within a page carry the page's ID plus a letter (as a `data-tabid`); the active
+sub-tab's id shows in light grey in the bottom-left corner of the tab pane
+(`<span class="pane-id">`). Keep the letters contiguous and update this list when
+sub-tabs change.
 
 | ID | Sub-tab | Page |
 |----|---------|------|
