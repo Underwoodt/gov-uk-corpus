@@ -647,8 +647,9 @@ def preview_category_page(request: Request, cid: int):
 
 
 @app.get("/categories/{cid}/shortlist", response_class=HTMLResponse)
-def shortlist_page(request: Request, cid: int):
+def shortlist_page(request: Request, cid: int, stage: str = "keyword"):
     """Standalone Audit Shortlist tab — browse/extract pages at any funnel stage.
+    `stage` pre-selects the stage dropdown (e.g. linked from the funnel table).
     Data loads from /api/categories/{cid}/audit-shortlist."""
     if not authed(request):
         return login_redirect(request)
@@ -657,8 +658,10 @@ def shortlist_page(request: Request, cid: int):
     if not category:
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
     category["display_name"] = cat.prettify(category.get("slug")) or (category.get("description") or "Untitled")
+    if stage not in _AUDIT_STAGE_KEYS:
+        stage = "keyword"
     return templates.TemplateResponse("audit_shortlist.html", ctx(
-        conn, request, category=category,
+        conn, request, category=category, stage=stage,
         audit_stages=_AUDIT_STAGES, audit_sections=_DOWNLOAD_SECTIONS))
 
 
