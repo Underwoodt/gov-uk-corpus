@@ -1,21 +1,33 @@
 """Readability + GDS plain-English analysis of body text (stdlib only).
 
-- reading_age(text): UK reading age = Flesch-Kincaid Grade Level + 5.
-- gds_issue_count(text): count of GOV.UK style-guide red flags — discouraged
-  words/phrases ("words to avoid") plus over-long sentences. Lower is better,
-  0 is clean.
+Two things per page:
 
-Deterministic and dependency-free, so it is unit-testable and safe to run over
-the whole corpus.
+- ``reading_age(text)`` — UK reading age = Flesch-Kincaid Grade Level + 5.
+- ``scan(text)`` — a class-based plain-English audit. Each *class* of problem
+  (words to avoid, nominalisations, vague language, …) is counted, the counts are
+  turned into a severity-weighted **impact** (``weight × log2(1+count)`` so a few
+  serious issues outweigh many trivial ones), and the impact is normalised by page
+  length into a **1–5 star** quality rating (5 = healthy, 1 = poor).
+
+Checks are declared once in ``CHECKS`` (name, weight, reason, matcher), so widening
+the audit is a one-line addition. Deterministic and dependency-free, so it is
+unit-testable and safe to run over the whole corpus. See ``docs/gds-audit.md``.
 """
 from __future__ import annotations
 
+import math
 import re
-from typing import Optional
+from typing import Dict, List, Optional
 
 _WORD = re.compile(r"[A-Za-z]+")
 _SENT_SPLIT = re.compile(r"[.!?]+")
-_LONG_SENTENCE_WORDS = 25   # GDS: keep sentences short
+LONG_SENTENCE_WORDS = 25          # GDS: keep sentences short
+MIN_WORDS_FOR_RATING = 40         # too little text to rate fairly -> stars = None
+
+# Star bands: weighted impact per 1,000 words (density) -> stars. Ascending; the
+# first band the density falls under wins, else 1 star. INITIAL values — calibrate
+# from the corpus distribution printed by `build_readability` after a full re-scan.
+STAR_BANDS = [(10.0, 5), (20.0, 4), (35.0, 3), (55.0, 2)]
 
 
 def _count_syllables(word: str) -> int:
@@ -51,65 +63,155 @@ def reading_age(text: str) -> Optional[float]:
     return round(max(5.0, grade + 5.0), 1)
 
 
-# GOV.UK style guide "words to avoid" (a practical subset) + phrases.
-_AVOID_WORDS = {
+# ---- check term lists ----------------------------------------------------
+# GOV.UK style guide "words to avoid" (a practical subset).
+_WORDS_TO_AVOID = [
     "advancing", "collaborate", "combating", "commit", "countering", "deploy",
     "dialogue", "disincentivise", "empower", "facilitate", "foster", "impactful",
     "initiate", "leverage", "liaise", "overarching", "pledge", "robust",
     "streamline", "strengthening", "tackling", "transform", "utilise", "utilize",
     "utilising", "utilizing", "endeavour", "commence", "purchase", "additional",
     "regarding", "aforementioned", "henceforth", "hereby", "notwithstanding",
-}
-_AVOID_PHRASES = [
+]
+_PHRASES_TO_AVOID = [
     "in order to", "going forward", "at this moment in time", "please note",
     "with regard to", "in respect of", "prior to", "in the event that",
     "a number of", "ring fenced", "ring-fenced", "best practice", "deep dive",
 ]
+# Nominalisations — noun-forms of verbs; use the verb instead.
+_NOMINALISATIONS = [
+    "implementation", "implementations", "completion", "completions", "provision",
+    "provisions", "application", "applications", "utilisation", "utilisations",
+    "consideration", "considerations", "requirement", "requirements", "assessment",
+    "assessments", "notification", "notifications", "commencement", "commencements",
+]
+_VAGUE = [
+    "some", "many", "often", "regularly", "normally", "usually", "generally",
+    "approximately", "soon", "quickly", "various", "several", "etc",
+]
+_UNNECESSARY = [
+    "very", "really", "actually", "basically", "currently", "in fact",
+    "it is important to note that", "it should be noted that",
+]
+_THERE = ["there is", "there are"]
+_GOV = ["we", "us", "our"]
+_APPLICANT = ["applicant", "applicants"]
+_NEGATIVE = ["you must not", "you should not", "you shouldn't"]
+# Impersonal "it is <required/…> that" — the constructions that should be "you must".
+_IT_IS_RE = re.compile(
+    r"\bit is (?:required|necessary|essential|mandatory|important|expected|"
+    r"recommended|advisable|possible|prohibited|forbidden)\b", re.I)
 
 
-def _gds_scan(text: str):
-    """Single scan -> (issue_count, findings_text). Findings is a readable summary
-    of what was flagged, so the count and the text always agree."""
-    if not text:
-        return 0, ""
-    low = text.lower()
-    word_hits = {}
-    for w in _AVOID_WORDS:
-        n = len(re.findall(r"\b" + re.escape(w) + r"\b", low))
+def _alt(terms: List[str]) -> "re.Pattern":
+    """Case-insensitive, word-boundary alternation (longest term first)."""
+    parts = sorted((re.escape(t) for t in terms), key=len, reverse=True)
+    return re.compile(r"\b(?:" + "|".join(parts) + r")\b", re.I)
+
+
+class Check:
+    def __init__(self, key, name, weight, reason, *, terms=None, regex=None, long_sentence=False):
+        self.key, self.name, self.weight, self.reason = key, name, weight, reason
+        self.regex = regex if regex is not None else (_alt(terms) if terms else None)
+        self.long_sentence = long_sentence
+
+    def count(self, text: str, sentences: List[str]) -> int:
+        if self.long_sentence:
+            return sum(1 for s in sentences if len(_WORD.findall(s)) > LONG_SENTENCE_WORDS)
+        return len(self.regex.findall(text)) if self.regex else 0
+
+
+CHECKS: List[Check] = [
+    Check("words_to_avoid", "Words to avoid", 2,
+          "GOV.UK ‘words to avoid’ — jargon and management-speak; use plain words.",
+          terms=_WORDS_TO_AVOID),
+    Check("phrases_to_avoid", "Phrases to avoid", 1,
+          "Wordy officialese — cut or simplify.", terms=_PHRASES_TO_AVOID),
+    Check("long_sentences", "Over-long sentences", 3,
+          f"Sentences over {LONG_SENTENCE_WORDS} words are hard to follow — keep them short.",
+          long_sentence=True),
+    Check("nominalisation", "Nominalisations", 3,
+          "Nouns made from verbs (‘implementation’) make writing abstract — use the verb.",
+          terms=_NOMINALISATIONS),
+    Check("vague_language", "Vague language", 2,
+          "Vague quantifiers (‘some’, ‘often’) reduce precision — be specific.",
+          terms=_VAGUE),
+    Check("unnecessary_words", "Unnecessary words", 1,
+          "Filler words and phrases that add no meaning.", terms=_UNNECESSARY),
+    Check("there_is_are", "There is / there are", 1,
+          "‘There is/are’ is usually padding — rewrite directly.", terms=_THERE),
+    Check("impersonal_it_is", "Impersonal ‘It is’", 2,
+          "Impersonal ‘it is required that…’ hides who acts — use ‘you must’.",
+          regex=_IT_IS_RE),
+    Check("gov_focused", "Government-focused (we/us/our)", 2,
+          "‘We/us/our’ writes for the department — write for the user (‘you’).",
+          terms=_GOV),
+    Check("applicant", "Applicant vs you", 3,
+          "‘The applicant’ is third-person — address the reader as ‘you’.",
+          terms=_APPLICANT),
+    Check("negative_phrasing", "Negative phrasing", 2,
+          "Negative instructions (‘you must not’) are harder to follow — phrase positively.",
+          terms=_NEGATIVE),
+]
+
+# key -> {name, weight, reason} for callers that render the classes (the dashboard).
+CHECK_META: Dict[str, dict] = {
+    c.key: {"name": c.name, "weight": c.weight, "reason": c.reason} for c in CHECKS}
+
+
+def _impact(counts: Dict[str, int]) -> float:
+    """Severity-weighted impact: weight × log2(1+count), summed over classes."""
+    return round(sum(CHECK_META[k]["weight"] * math.log2(1 + n)
+                     for k, n in counts.items() if n), 2)
+
+
+def stars_for(impact: float, words: int) -> Optional[int]:
+    """1–5 quality rating (5 healthy → 1 poor) from length-normalised impact.
+    None when the page is too short to rate fairly."""
+    if words < MIN_WORDS_FOR_RATING:
+        return None
+    density = impact / (words / 1000.0) if words else 0.0
+    for threshold, star in STAR_BANDS:
+        if density <= threshold:
+            return star
+    return 1
+
+
+def scan(text: str) -> dict:
+    """Full plain-English audit of one page.
+
+    Returns {"words", "counts": {class_key: count}, "impact", "stars"}. Only
+    non-zero classes appear in ``counts``. ``stars`` is None for too-short text.
+    """
+    text = text or ""
+    words = len(_WORD.findall(text))
+    sentences = _SENT_SPLIT.split(text) if text else []
+    counts = {}
+    for c in CHECKS:
+        n = c.count(text, sentences)
         if n:
-            word_hits[w] = n
-    phrase_hits = {}
-    for p in _AVOID_PHRASES:
-        n = low.count(p)
-        if n:
-            phrase_hits[p] = n
-    long_sentences = sum(1 for s in _SENT_SPLIT.split(text)
-                         if len(_WORD.findall(s)) > _LONG_SENTENCE_WORDS)
-
-    count = sum(word_hits.values()) + sum(phrase_hits.values()) + long_sentences
-    parts = []
-    if word_hits:
-        parts.append("Words to avoid: "
-                     + ", ".join(f"{w} ({n})" for w, n in sorted(word_hits.items())))
-    if phrase_hits:
-        parts.append("Phrases to avoid: "
-                     + ", ".join(f"{p} ({n})" for p, n in sorted(phrase_hits.items())))
-    if long_sentences:
-        parts.append(f"Over-long sentences (>{_LONG_SENTENCE_WORDS} words): {long_sentences}")
-    return count, "; ".join(parts)
+            counts[c.key] = n
+    impact = _impact(counts)
+    return {"words": words, "counts": counts, "impact": impact,
+            "stars": stars_for(impact, words)}
 
 
+# ---- backwards-compatible helpers ---------------------------------------
 def gds_issue_count(text: str) -> int:
-    """Count GDS plain-English red flags. 0 = clean; higher = more issues."""
-    return _gds_scan(text)[0]
+    """Total raw red flags across all classes (0 = clean)."""
+    return sum(scan(text)["counts"].values())
 
 
 def gds_findings(text: str) -> str:
-    """Readable summary of the GDS red flags found ('' when clean)."""
-    return _gds_scan(text)[1]
+    """Readable class-level summary ('' when clean), e.g.
+    'Words to avoid: 3; Vague language: 2'."""
+    counts = scan(text)["counts"]
+    if not counts:
+        return ""
+    return "; ".join(f"{CHECK_META[k]['name']}: {n}"
+                     for k, n in sorted(counts.items(), key=lambda kv: -kv[1]))
 
 
 def analyse(text: str):
-    """Return (reading_age, gds_issue_count, gds_findings) for a body of text."""
-    count, findings = _gds_scan(text)
-    return reading_age(text), count, findings
+    """(reading_age, scan-dict) for one page — used by the corpus backfill."""
+    return reading_age(text), scan(text)

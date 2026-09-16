@@ -36,8 +36,10 @@ CREATE TABLE IF NOT EXISTS content (
     content_hash       TEXT,
     search_text        TEXT,                 -- HTML-stripped body for keyword search
     reading_age        REAL,                 -- estimated reading age (years) of search_text
-    gds_english_score  REAL,                 -- GDS plain-English compliance score for search_text
-    gds_findings       TEXT,                 -- readable summary of the GDS issues found
+    gds_english_score  REAL,                 -- GDS plain-English weighted impact (higher = worse)
+    gds_findings       TEXT,                 -- readable class-level summary of the GDS issues
+    gds_checks         TEXT,                 -- JSON {"words":N,"counts":{class:count}} — source of truth
+    gds_stars          INTEGER,              -- 1–5 plain-English quality rating (5 healthy → 1 poor)
     source             TEXT,                 -- sitemap | attachment | redirect | seed | other
     document_type      TEXT,
     parent_document_type TEXT,     -- for html_publication: parent publication's type (from JSON)

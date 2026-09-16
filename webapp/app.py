@@ -34,7 +34,7 @@ from govuk_corpus import ai_models, audit
 from govuk_corpus import categories as cat
 from govuk_corpus import category_counts
 from govuk_corpus import (audit_stats, category_interview, evaluate, orgs,
-                          peak_schedule, pricing, roles, settings, shortlist)
+                          peak_schedule, pricing, readability, roles, settings, shortlist)
 from govuk_corpus.backend import db
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -662,9 +662,12 @@ def shortlist_page(request: Request, cid: int, stage: str = "keyword", tab: str 
     if stage not in _AUDIT_STAGE_KEYS:
         stage = "keyword"
     stages = [(s, _FUNNEL_STAGES[s][0]) for s in ("all", "org", "doctype", "keyword")]  # dashboard levels
+    gds_check_meta = [{"name": c.name, "weight": c.weight, "reason": c.reason}
+                      for c in readability.CHECKS]
     return templates.TemplateResponse("audit_shortlist.html", ctx(
         conn, request, category=category, stage=stage,
         initial_tab=("dashboard" if tab == "dashboard" else "shortlist"), stages=stages,
+        gds_check_meta=gds_check_meta,
         audit_stages=_AUDIT_STAGES, audit_sections=_DOWNLOAD_SECTIONS))
 
 

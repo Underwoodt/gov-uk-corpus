@@ -231,8 +231,10 @@ CREATE INDEX IF NOT EXISTS idx_content_search_tsv ON content USING GIN (search_t
 
 -- Readability / plain-English analysis of the body text (populated by a later job).
 ALTER TABLE content ADD COLUMN IF NOT EXISTS reading_age real;          -- estimated reading age (years)
-ALTER TABLE content ADD COLUMN IF NOT EXISTS gds_english_score real;    -- GDS plain-English compliance score
-ALTER TABLE content ADD COLUMN IF NOT EXISTS gds_findings text;         -- readable summary of the GDS issues
+ALTER TABLE content ADD COLUMN IF NOT EXISTS gds_english_score real;    -- GDS plain-English weighted impact (higher = worse)
+ALTER TABLE content ADD COLUMN IF NOT EXISTS gds_findings text;         -- readable class-level summary of the GDS issues
+ALTER TABLE content ADD COLUMN IF NOT EXISTS gds_checks text;           -- JSON {"words":N,"counts":{class:count}} — source of truth
+ALTER TABLE content ADD COLUMN IF NOT EXISTS gds_stars smallint;        -- 1–5 plain-English quality rating (5 healthy)
 ALTER TABLE content ADD COLUMN IF NOT EXISTS parent_document_type text; -- backfilled from links.parent[].document_type
 CREATE INDEX IF NOT EXISTS idx_content_parent_document_type ON content(parent_document_type);
 

@@ -224,6 +224,18 @@ multiple categories concurrently.
 Set the **daily AI budget** and guard on Settings. Spend is tracked in the `ai_usage`
 ledger; models are managed in the **AI model catalogue** (add / test / delete).
 
+### Plain-English (GDS) audit re-scan
+The Audit Results → Dashboard quality stars come from `content.gds_checks` / `gds_stars`,
+populated by the readability backfill. After the checks or weights change, re-scan the
+corpus (prints a star histogram to calibrate the star bands — see [docs/gds-audit.md](docs/gds-audit.md)):
+
+```bash
+set -a; . /home/ubuntu/gov-uk-corpus.env; set +a
+.venv/bin/python -m govuk_corpus.build_readability --rescan
+```
+
+Without `--rescan` it only scans rows not yet scored. It's resumable (`--after <url>`).
+
 ### Nightly corpus cycle & category counts
 The daily batch cycle is `python -m govuk_corpus.run_all` (Stage 0→3, then a
 **tidy-up** phase). Its tidy-up recomputes each category's stored "pages kept" figure
