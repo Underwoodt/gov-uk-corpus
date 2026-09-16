@@ -48,10 +48,12 @@
     <p style="margin:0 0 16px;font-size:14px;">
       <a href="{{ url_for('download_audit', cid=category.id) }}">Download Audit File (Debugging only)</a></p>
 
-    <p class="hint" style="margin:0 0 8px;">How pages flow through the three filters — organisation, document type,
-      then keyword. The dark bars are the pages that pass each stage; the red wedges are those dropped.</p>
+    <p class="hint" style="margin:0 0 8px;">How pages flow through the pipeline — organisation → document type →
+      shortlist, then (once the category has been evaluated) the LLM inclusion and exclusion passes, with the
+      dropped counts branching off. Bar heights use a <strong>log scale</strong> so small stages stay visible next
+      to the corpus-sized ones, so widths are indicative, not to scale.</p>
     <div style="overflow-x:auto;margin:0 0 22px;">
-      <svg id="sankey" style="width:100%;min-width:560px;height:250px;"></svg>
+      <svg id="sankey" style="width:100%;min-width:720px;height:300px;"></svg>
     </div>
 
     <table id="funnel">
@@ -274,42 +276,90 @@
       renderKeywordRows();
     });
 
-    // Sankey of the three filter stages (built from the funnel counts).
+    // Log-scaled pipeline Sankey: deterministic funnel (organisation → document
+    // type → shortlist) plus the LLM inclusion/exclusion passes once a run exists.
+    // A log scale keeps single-digit stages visible beside corpus-sized ones; at
+    // each split the parent band is divided in proportion to the log-sized children
+    // (so log(a+b) ≠ log(a)+log(b) doesn't leave gaps). Widths are indicative.
+    let sankeyLLM = null;   // {inclKept, inclDropped, exclKept, exclDropped} or null
     const sankeyCounts = {};
     function drawSankey() {
       const svg = document.getElementById("sankey");
-      if (["org", "doctype", "keyword"].some(k => sankeyCounts[k] == null)) return;
-      // Start at the organisation stage — "All pages" (the whole corpus) would dwarf the rest.
-      const stages = [
-        { name: "After organisation", n: sankeyCounts.org },
-        { name: "After document type", n: sankeyCounts.doctype },
-        { name: "After keyword (kept)", n: sankeyCounts.keyword },
+      if (!svg || ["org", "doctype", "keyword"].some(k => sankeyCounts[k] == null)) return;
+      const BLUE = "#1d70b8", PURPLE = "#4c2c92", GREEN = "#00703c", RED = "#d4351c", ORANGE = "#f47738";
+      const nodes = [
+        { key:"org",       col:0, band:"main", name:"Matching organisation",  val:sankeyCounts.org,     color:BLUE },
+        { key:"doctype",   col:1, band:"main", name:"Matching document type", val:sankeyCounts.doctype, color:PURPLE },
+        { key:"shortlist", col:2, band:"main", name:"Input Shortlist",        val:sankeyCounts.keyword, color:BLUE },
       ];
-      const W = svg.clientWidth || 700, top = 34, nw = 12, usable = 150;
-      const total = Math.max(1, stages[0].n);
-      const scale = usable / total;
-      const pad = 40, colGap = (W - pad * 2 - nw) / (stages.length - 1);
-      const x = i => pad + i * colGap;
-      const h = i => Math.max(1, stages[i].n * scale);
-      let s = "";
-      for (let i = 0; i < stages.length - 1; i++) {
-        const px = x(i) + nw, cx = x(i + 1), hc = h(i + 1), mx = (px + cx) / 2;
-        s += `<path d="M${px},${top} C${mx},${top} ${mx},${top} ${cx},${top} `
-           + `L${cx},${top + hc} C${mx},${top + hc} ${mx},${top + hc} ${px},${top + hc} Z" `
-           + `fill="#1d70b8" fill-opacity="0.4"/>`;
-        const hp = h(i), dropped = stages[i].n - stages[i + 1].n;
-        if (hp > hc + 0.5) {
-          s += `<path d="M${px},${top + hc} L${px},${top + hp} L${px + 20},${top + hp + 18} Z" `
-             + `fill="#d4351c" fill-opacity="0.55"/>`;
-          s += `<text x="${px + 24}" y="${top + hp + 16}" font-size="12" fill="#d4351c">−${dropped.toLocaleString()}</text>`;
+      const links = [ { s:"org", t:"doctype" }, { s:"doctype", t:"shortlist" } ];
+      if (sankeyLLM) {
+        nodes.push({ key:"drop1", col:3, band:"up",   name:"Dropped", val:sankeyLLM.inclDropped, color:RED });
+        nodes.push({ key:"incl",  col:3, band:"main", name:"Filtered by LLM Inclusion Rules", val:sankeyLLM.inclKept, color:PURPLE });
+        links.push({ s:"shortlist", t:"drop1", top:true }, { s:"shortlist", t:"incl" });
+        if (sankeyLLM.exclKept != null) {
+          nodes.push({ key:"drop2", col:4, band:"up",   name:"Dropped", val:sankeyLLM.exclDropped, color:ORANGE });
+          nodes.push({ key:"excl",  col:4, band:"main", name:"Filtered by LLM Exclusion Rules", val:sankeyLLM.exclKept, color:GREEN });
+          links.push({ s:"incl", t:"drop2", top:true }, { s:"incl", t:"excl" });
         }
       }
-      for (let i = 0; i < stages.length; i++) {
-        s += `<rect x="${x(i)}" y="${top}" width="${nw}" height="${h(i)}" fill="#0b0c0c"/>`;
-        s += `<text x="${x(i) + nw / 2}" y="${top - 16}" font-size="12" font-weight="700" text-anchor="middle">${stages[i].name}</text>`;
-        s += `<text x="${x(i) + nw / 2}" y="${top - 2}" font-size="12" text-anchor="middle">${stages[i].n.toLocaleString()}</text>`;
+      const byKey = {}; nodes.forEach(n => byKey[n.key] = n);
+      const maxCol = Math.max(...nodes.map(n => n.col));
+      const W = svg.clientWidth || 900, nw = 13;
+      const maxVal = Math.max(...nodes.map(n => n.val || 1));
+      const K = 150 / Math.log(Math.max(2, maxVal)), MIN_H = 14;
+      const hOf = v => Math.max(MIN_H, K * Math.log(Math.max(1, v || 1)));
+      const midY = 190, upY = 74, padL = 150, padR = 168;
+      const colGap = (W - padL - padR - nw) / Math.max(1, maxCol);
+      nodes.forEach(n => {
+        n.h = hOf(n.val); n.x = padL + n.col * colGap;
+        n.cy = n.band === "up" ? upY : midY; n.yTop = n.cy - n.h / 2; n.yBot = n.cy + n.h / 2;
+      });
+      const lastMain = nodes.filter(n => n.band === "main").slice(-1)[0];
+      // Partition each source node's right edge among its outgoing links (dropped on top).
+      const outgoing = {};
+      links.forEach(l => (outgoing[l.s] = outgoing[l.s] || []).push(l));
+      Object.keys(outgoing).forEach(sk => {
+        const s = byKey[sk], outs = outgoing[sk];
+        outs.sort((a, b) => (b.top ? 1 : 0) - (a.top ? 1 : 0));
+        const totalH = outs.reduce((a, l) => a + byKey[l.t].h, 0);
+        let y = s.yTop;
+        outs.forEach(l => { const seg = s.h * (byKey[l.t].h / totalH); l.sy0 = y; l.sy1 = y + seg; y += seg; });
+      });
+      const escT = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+      let out = "";
+      links.forEach(l => {
+        const s = byKey[l.s], t = byKey[l.t], x0 = s.x + nw, x1 = t.x, mx = (x0 + x1) / 2;
+        const sy0 = l.sy0 != null ? l.sy0 : s.yTop, sy1 = l.sy1 != null ? l.sy1 : s.yBot;
+        out += `<path d="M${x0},${sy0} C${mx},${sy0} ${mx},${t.yTop} ${x1},${t.yTop} `
+             + `L${x1},${t.yBot} C${mx},${t.yBot} ${mx},${sy1} ${x0},${sy1} Z" `
+             + `fill="${s.color}" fill-opacity="0.32"/>`;
+      });
+      nodes.forEach(n => { out += `<rect x="${n.x}" y="${n.yTop}" width="${nw}" height="${n.h}" rx="1.5" fill="${n.color}"/>`; });
+      function wrap(name, max) {
+        const words = name.split(" "), lines = []; let cur = "";
+        words.forEach(w => {
+          if ((cur + " " + w).trim().length > max) { if (cur) lines.push(cur); cur = w; }
+          else cur = (cur + " " + w).trim();
+        });
+        if (cur) lines.push(cur);
+        return lines;
       }
-      svg.innerHTML = s;
+      function label(n, pos) {
+        const lines = wrap(n.name, 18).map(t => ({ t, b:false }));
+        lines.push({ t: (n.val || 0).toLocaleString(), b:true });
+        const lh = 14; let x, anchor, startY;
+        if (pos === "left")  { x = n.x - 8;      anchor = "end";    startY = n.cy - ((lines.length-1)/2)*lh + 4; }
+        if (pos === "right") { x = n.x + nw + 8; anchor = "start";  startY = n.cy - ((lines.length-1)/2)*lh + 4; }
+        if (pos === "above") { x = n.x + nw/2;   anchor = "middle"; startY = n.yTop - 8 - (lines.length-1)*lh; }
+        return lines.map((ln, i) => {
+          const fill = ln.b ? "#0b0c0c" : "#505a5f", fw = ln.b ? 700 : 400;
+          return `<text x="${x}" y="${startY + i*lh}" font-size="12" text-anchor="${anchor}" `
+               + `fill="${fill}" font-weight="${fw}">${escT(ln.t)}</text>`;
+        }).join("");
+      }
+      nodes.forEach(n => { out += label(n, n.band === "up" ? "above" : (n === lastMain ? "right" : "left")); });
+      svg.innerHTML = out;
     }
     window.addEventListener("resize", drawSankey);
 
@@ -363,6 +413,15 @@
         inp.addEventListener("keydown", e => { if (e.key === "Enter") inp.blur(); });
         inp.addEventListener("blur", () => renameRun(inp));
       });
+
+      // Feed the latest inclusion (and its exclusion) run into the pipeline Sankey.
+      const incl = j.runs.find(r => /inclusion/i.test(r.phase || ""));
+      const excl = incl && j.runs.find(r => /exclusion/i.test(r.phase || "") && r.source_run_id === incl.run_id);
+      sankeyLLM = incl ? {
+        inclKept: incl.kept || 0, inclDropped: incl.dropped || 0,
+        exclKept: excl ? (excl.kept || 0) : null, exclDropped: excl ? (excl.dropped || 0) : null,
+      } : null;
+      drawSankey();
     }
 
     async function renameRun(inp) {
