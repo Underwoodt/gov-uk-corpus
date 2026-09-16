@@ -1424,14 +1424,17 @@ async def save_settings(request: Request):
                                        prices=_price_form(form, f"m_{rid}_"))
             except ValueError:
                 pass
-    try:
-        settings.set_setting(conn, "ai_daily_budget", str(float(form.get("ai_daily_budget") or DEFAULT_DAILY_BUDGET)))
-    except ValueError:
-        pass
-    try:
-        settings.set_setting(conn, "ai_max_docs_per_run", str(int(float(form.get("ai_max_docs_per_run") or DEFAULT_MAX_DOCS))))
-    except ValueError:
-        pass
+    # Guarded so saving another Settings tab (which doesn't post these) can't reset them.
+    if "ai_daily_budget" in form:
+        try:
+            settings.set_setting(conn, "ai_daily_budget", str(float(form.get("ai_daily_budget") or DEFAULT_DAILY_BUDGET)))
+        except ValueError:
+            pass
+    if "ai_max_docs_per_run" in form:
+        try:
+            settings.set_setting(conn, "ai_max_docs_per_run", str(int(float(form.get("ai_max_docs_per_run") or DEFAULT_MAX_DOCS))))
+        except ValueError:
+            pass
     conn.close()
     return RedirectResponse(url=str(request.url_for("settings_page")) + "?saved=1", status_code=303)
 
