@@ -414,15 +414,12 @@
           `<td class="num">${fmtInt(r.in_tokens)}</td>` +
           `<td class="num">${fmtInt(r.out_tokens)}</td>` +
           `<td class="num">$${(r.cost||0).toFixed(6)}</td>` +
-          `<td><a href="#" data-run="${r.run_id}">View</a>` +
-          ` · <a href="#" class="del-run" data-run="${r.run_id}" data-pages="${r.pages||0}" ` +
+          `<td><a href="#" class="del-run" data-run="${r.run_id}" data-pages="${r.pages||0}" ` +
           `style="color:#d4351c;">Delete</a></td>`;
         tbody.appendChild(tr);
       }
       table.hidden = j.runs.length === 0;
       document.getElementById("runs-empty").hidden = j.runs.length !== 0;
-      table.querySelectorAll("a[data-run]:not(.del-run)").forEach(a =>
-        a.addEventListener("click", e => { e.preventDefault(); loadRunResults(a.dataset.run, ""); }));
       table.querySelectorAll("a.del-run").forEach(a =>
         a.addEventListener("click", e => { e.preventDefault(); deleteRun(a.dataset.run, a.dataset.pages); }));
 
