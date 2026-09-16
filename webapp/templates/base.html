@@ -22,6 +22,17 @@
       <span class="tag">Alpha</span>
       {% if role is defined and role %}<span class="tag" title="Active system role (set in Settings)">{{ role }}</span>{% endif %}
       <span class="meta">{{ corpus_meta }}</span>
+      {% if budget_bar %}
+      {% set b = budget_bar %}
+      {% set pct = b.pct if b.pct is not none else 0 %}
+      {% set fill = pct if pct < 100 else 100 %}
+      {% set color = '#00703c' if pct < 50 else ('#f47738' if pct < 80 else '#d4351c') %}
+      <span class="budget-inline" title="Daily AI spend">
+        <span class="meta">Daily AI spend</span>
+        <strong style="color:{{ color if b.budget and b.budget > 0 }};">${{ '%.4f'|format(b.spent) }}</strong>{% if b.budget and b.budget > 0 %}<span class="meta">of ${{ '%.2f'|format(b.budget) }} · {{ '%.0f'|format(pct) }}%</span>
+        <span class="budget-track" title="{{ '%.0f'|format(pct) }}% of today's ${{ '%.2f'|format(b.budget) }} budget"><span class="budget-fill" style="width:{{ fill }}%;background:{{ color }};"></span></span>{% else %}<span class="meta">· no budget set</span>{% endif %}
+      </span>
+      {% endif %}
     </div>
     {% block content %}{% endblock %}
   </div>
