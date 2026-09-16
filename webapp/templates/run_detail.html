@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}{{ run.name or 'Run' }} — run details{% endblock %}
+{% block content %}
+
+  <a class="back" href="{{ url_for('preview_category_page', cid=category.id) }}">‹ Back to preview</a>
+
+  <h1 style="margin:18px 0 4px;">Run details</h1>
+  <p class="secondary" style="margin:0 0 18px;">{{ category.display_name }}
+    (<span class="mono">{{ category.slug or '' }}</span>) · run <span class="mono">{{ run.run_id }}</span></p>
+
+  <div class="field" style="max-width:520px;">
+    <label class="q" for="run-name">Run name</label>
+    <div class="controls" style="margin:0;align-items:center;">
+      <input id="run-name" type="text" value="{{ run.name or '' }}" style="min-width:280px;">
+      <button class="btn secondary-btn" id="save-name" type="button">Save name</button>
+      <span id="name-status" class="secondary"></span>
+    </div>
+  </div>
+
+  <p class="secondary" style="margin:14px 0 6px;">
+    Started {{ (run.started_at or '')[:19]|replace('T',' ') or '—' }}
+    {% if run.finished_at %}· Finished {{ run.finished_at[:19]|replace('T',' ') }}{% endif %}
+    {% if run.status %}· {{ run.status }}{% endif %}
+  </p>
+
+  <h2 style="margin-top:26px;">LLM phases</h2>
+  <p class="hint">Each phase of this evaluation (inclusion → exclusion), the model used, and its tokens and cost.
+    Phases share one lineage; the row for the run you opened is highlighted.</p>
+
+  <div class="table-wrap">
+    <table style="font-size:14px;">
+      <thead><tr>
+        <th>Phase</th><th>Supplier</th><th>Model</th>
+        <th class="num">Pages</th><th class="num">Keep</th><th class="num">Drop</th>
+        <th class="num">Tokens in</th><th class="num">Tokens out</th>
+        <th class="num">Cache hit</th><th class="num">Cache miss</th>
+        <th class="num">Cost (USD)</th><th class="num">Avg (s)</th>
+      </tr></thead>
+      <tbody>
+        {% for r in chain %}
+        <tr {% if r.run_id == run.run_id %}style="background:var(--surface-3);font-weight:600;"{% endif %}>
+          <td>{{ r.phase or '—' }}</td>
+          <td>{{ r.provider or '—' }}</td>
+          <td class="mono">{{ r.actual_model or r.model or '—' }}</td>
+          <td class="num">{{ '{:,}'.format(r.pages or 0) }}</td>
+          <td class="num">{{ '{:,}'.format(r.kept or 0) }}</td>
+          <td class="num">{{ '{:,}'.format(r.dropped or 0) }}</td>
+          <td class="num">{{ '{:,}'.format(r.in_tokens or 0) }}</td>
+          <td class="num">{{ '{:,}'.format(r.out_tokens or 0) }}</td>
+          <td class="num">{{ '{:,}'.format(r.hit_tokens or 0) }}</td>
+          <td class="num">{{ '{:,}'.format(r.miss_tokens or 0) }}</td>
+          <td class="num">${{ '%.6f'|format(r.cost or 0) }}</td>
+          <td class="num">{{ '%.1f'|format((r.total_ms or 0) / r.pages / 1000) if r.pages else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      {% if chain|length > 1 %}
+      <tfoot><tr style="font-weight:700;border-top:2px solid var(--border-mid);">
+        <td colspan="3">Total ({{ chain|length }} phases)</td>
+        <td class="num">{{ '{:,}'.format(totals.pages) }}</td>
+        <td class="num"></td><td class="num"></td>
+        <td class="num">{{ '{:,}'.format(totals.in_tokens) }}</td>
+        <td class="num">{{ '{:,}'.format(totals.out_tokens) }}</td>
+        <td class="num">{{ '{:,}'.format(totals.hit_tokens) }}</td>
+        <td class="num">{{ '{:,}'.format(totals.miss_tokens) }}</td>
+        <td class="num">${{ '%.6f'|format(totals.cost) }}</td>
+        <td class="num"></td>
+      </tr></tfoot>
+      {% endif %}
+    </table>
+  </div>
+
+  <script>
+    const CID = {{ category.id }}, RUN_ID = {{ run.run_id|tojson }};
+    const nameInput = document.getElementById("run-name");
+    const status = document.getElementById("name-status");
+    async function saveName() {
+      const name = nameInput.value.trim();
+      if (!name) { status.textContent = "Name can't be empty."; return; }
+      status.innerHTML = '<span class="spinner"></span>';
+      try {
+        const res = await fetch(`/api/categories/${CID}/runs/${RUN_ID}/rename`,
+          { method: "POST", body: new URLSearchParams({ name }) });
+        const j = await res.json();
+        status.textContent = res.ok && j.ok ? "Saved." : ("Error: " + (j.error || res.status));
+      } catch (e) { status.textContent = "Could not save."; }
+    }
+    document.getElementById("save-name").addEventListener("click", saveName);
+    nameInput.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); saveName(); } });
+  </script>
+{% endblock %}

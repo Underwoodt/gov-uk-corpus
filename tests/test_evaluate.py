@@ -107,6 +107,16 @@ class TestRuns(unittest.TestCase):
         evaluate.rename_run(self.conn, r, "  Slurry baseline  ")
         self.assertEqual(evaluate.get_run(self.conn, r)["name"], "Slurry baseline")
 
+    def test_run_chain(self):
+        inc = evaluate.create_run(self.conn, 1, "m", "anthropic", phase=evaluate.PHASE_INCLUSION)
+        exc = evaluate.create_run(self.conn, 1, "m2", "deepseek",
+                                  phase=evaluate.PHASE_EXCLUSION, source_run_id=inc)
+        other = evaluate.create_run(self.conn, 1, "m3", "anthropic", phase=evaluate.PHASE_INCLUSION)
+        # The chain is the same from either end, oldest-first, and excludes the unrelated run.
+        self.assertEqual([r["run_id"] for r in evaluate.run_chain(self.conn, exc)], [inc, exc])
+        self.assertEqual([r["run_id"] for r in evaluate.run_chain(self.conn, inc)], [inc, exc])
+        self.assertNotIn(other, [r["run_id"] for r in evaluate.run_chain(self.conn, exc)])
+
     def test_explicit_name_overrides_default(self):
         r = evaluate.create_run(self.conn, 1, "m", "anthropic", name="Haiku run")
         self.assertEqual(evaluate.get_run(self.conn, r)["name"], "Haiku run")
