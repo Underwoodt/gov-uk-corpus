@@ -16,6 +16,21 @@
   </p>
 
   <form method="post" action="{{ url_for('save_settings') }}">
+    <h2 style="margin-bottom:10px;">System role</h2>
+    <p class="hint">Sets the active role for the whole app (global for now — later this will be per user).
+      Every feature is available to all roles unless a feature is restricted to <strong>Administrator</strong>
+      or <strong>Tester</strong>; a restricted feature is usable by that role and any higher one
+      (Administrator ⊇ Tester ⊇ User).</p>
+    <div class="field">
+      <label class="q" for="active_role">Active role</label>
+      <select id="active_role" name="active_role"
+        style="font-size:16px;padding:6px;border:2px solid var(--black);min-width:220px;">
+        {% for r in all_roles %}
+        <option value="{{ r }}" {{ 'selected' if current_role == r }}>{{ r }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
     <h2 style="margin-bottom:10px;">AI models</h2>
     <p class="hint">Edit any row and click <em>Save settings</em>. Select the active model (used for new runs and
       the assistant). All prices are USD per 1M tokens. The standard rate used for cost estimates is

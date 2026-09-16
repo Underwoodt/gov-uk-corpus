@@ -32,8 +32,8 @@ from starlette.concurrency import run_in_threadpool
 
 from govuk_corpus import ai_models, audit
 from govuk_corpus import categories as cat
-from govuk_corpus import (audit_stats, category_interview, evaluate, link_gaps, orgs,
-                          peak_schedule, pricing, settings, shortlist)
+from govuk_corpus import (audit_stats, category_interview, evaluate, orgs,
+                          peak_schedule, pricing, roles, settings, shortlist)
 from govuk_corpus.backend import db
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -153,8 +153,12 @@ def ctx(conn, request: Request, **extra) -> dict:
     spent = _daily_spend(conn)
     budget = _budget(conn)
     pct = round(spent / budget * 100, 1) if budget > 0 else None
+    role = roles.get_role(conn)
     base = {"request": request, "corpus_meta": corpus_meta(conn), "active_nav": "categories",
-            "budget_bar": {"spent": round(spent, 4), "budget": budget, "pct": pct}}
+            "budget_bar": {"spent": round(spent, 4), "budget": budget, "pct": pct},
+            # Global system role + a gate helper for templates:
+            #   {% if can_use('Administrator') %}…{% endif %}
+            "role": role, "can_use": lambda required=None: roles.allows(role, required)}
     base.update(extra)
     return base
 
@@ -732,26 +736,6 @@ def api_audit_stats(request: Request, cid: int, stage: str = "keyword"):
     return JSONResponse(out)
 
 
-@app.get("/api/categories/{cid}/link-gaps")
-def api_link_gaps(request: Request, cid: int):
-    """gov.uk links in this shortlist's page bodies that point to pages NOT in the corpus."""
-    if not authed(request):
-        return JSONResponse({"error": "auth"}, status_code=401)
-    conn = connect()
-    category = cat.get_category(conn, cid)
-    if not category:
-        conn.close()
-        return JSONResponse({"error": "not found"}, status_code=404)
-    filters = _effective_filters(conn, category)
-    try:
-        out = link_gaps.find_missing_links(conn, **filters)
-    except Exception as e:
-        conn.close()
-        return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=500)
-    conn.close()
-    return JSONResponse(out)
-
-
 @app.get("/api/categories/{cid}/org-breakdown")
 def api_org_breakdown(request: Request, cid: int):
     """Pages contributed by EACH organisation, within the document-type + keyword filters
@@ -1144,27 +1128,6 @@ def results_table_page(request: Request, cid: int):
     return resp
 
 
-@app.get("/categories/{cid}/missing-links", response_class=HTMLResponse)
-def missing_links_page(request: Request, cid: int):
-    if not authed(request):
-        return login_redirect(request)
-    conn = connect()
-    category = cat.get_category(conn, cid)
-    if not category:
-        conn.close()
-        return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
-    category["display_name"] = cat.prettify(category.get("slug")) or (category.get("description") or "Untitled")
-    filters = _effective_filters(conn, category)
-    try:
-        sql = link_gaps.sql_text(**filters)
-    except Exception as e:
-        sql = f"-- Could not build SQL preview: {type(e).__name__}: {e}"
-    resp = templates.TemplateResponse("missing_links.html", ctx(
-        conn, request, category=category, sql=sql))
-    conn.close()
-    return resp
-
-
 @app.get("/api/categories/{cid}/results-table")
 def api_results_table(request: Request, cid: int, limit: int = 50, offset: int = 0, q: str = ""):
     if not authed(request):
@@ -1387,6 +1350,7 @@ def settings_page(request: Request, saved: int = 0):
         for ph in (evaluate.PHASE_INCLUSION, evaluate.PHASE_EXCLUSION, evaluate.PHASE_ADJUDICATION)]
     resp = templates.TemplateResponse("settings.html", ctx(
         conn, request, active_nav="settings", models=models,
+        all_roles=roles.ROLES, current_role=roles.get_role(conn),
         providers=list(PROVIDERS.keys()), phase_models=phase_models,
         provider_keys={k: _provider_key(k) is not None for k in PROVIDERS},
         daily_budget=_budget(conn), max_docs=_max_docs(conn),
@@ -1414,6 +1378,8 @@ async def save_settings(request: Request):
         return login_redirect(request)
     form = await request.form()
     conn = connect()
+    if "active_role" in form:
+        roles.set_role(conn, form.get("active_role"))
     active = form.get("active_model_id")
     if active:
         settings.set_setting(conn, "active_model_id", active)
