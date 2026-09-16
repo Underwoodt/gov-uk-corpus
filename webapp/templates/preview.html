@@ -21,9 +21,13 @@
     .funnel-layout { display:flex; gap:28px; align-items:flex-start; flex-wrap:wrap; margin:0 0 22px; }
     .funnel-layout .funnel-sankey { flex:1 1 460px; min-width:0; overflow-x:auto; }
     .funnel-layout #funnel { flex:1 1 300px; margin:0; }
-    /* Tighter rows + wrapping headings, scoped to the funnel table only. */
-    #funnel th, #funnel td { padding:6px 12px; }
+    /* Compact funnel table: smaller text and single-line rows so labels fit,
+       with headings still allowed to wrap. Scoped to the funnel table only. */
+    #funnel { font-size:13px; }
+    #funnel th, #funnel td { padding:6px 10px; }
     #funnel th { white-space:normal; }
+    #funnel td { white-space:nowrap; }
+    #funnel td .detail { white-space:normal; }  /* expanded filter values still wrap */
   </style>
 
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
@@ -54,8 +58,9 @@
       <thead><tr><th>Selection criterion</th><th class="num">Rows returned</th><th class="num">Time</th></tr></thead>
       <tbody>
         {% for s in stages %}
+        {% set astage = {'org':'dept','doctype':'doctype','keyword':'keyword'}.get(s.stage) %}
         <tr data-stage="{{ s.stage }}">
-          <td>{{ s.label }}
+          <td>{% if astage %}<a href="{{ url_for('shortlist_page', cid=category.id) }}?stage={{ astage }}">{{ s.label }}</a>{% else %}{{ s.label }}{% endif %}
             {% if s.vals %}
             <details class="filter-values">
               <summary>{{ s.vals|length }} value{{ '' if s.vals|length == 1 else 's' }}</summary>
@@ -339,7 +344,7 @@
       const tf = v => Math.pow(Math.max(1, v || 1), P);
       const K = MAX_H / tf(maxVal);
       const hOf = v => Math.max(MIN_H, K * tf(v));
-      const midY = 190, upY = 74, padL = 150, padR = 168;
+      const midY = 190, upY = 74, padL = 112, padR = 124;
       const colGap = (W - padL - padR - nw) / Math.max(1, maxCol);
       nodes.forEach(n => {
         n.h = hOf(n.val); n.x = padL + n.col * colGap;
@@ -376,15 +381,15 @@
         return lines;
       }
       function label(n, pos) {
-        const lines = wrap(n.name, 18).map(t => ({ t, b:false }));
+        const lines = wrap(n.name, 11).map(t => ({ t, b:false }));
         lines.push({ t: (n.val || 0).toLocaleString(), b:true });
-        const lh = 14; let x, anchor, startY;
+        const lh = 13; let x, anchor, startY;
         if (pos === "left")  { x = n.x - 8;      anchor = "end";    startY = n.cy - ((lines.length-1)/2)*lh + 4; }
         if (pos === "right") { x = n.x + nw + 8; anchor = "start";  startY = n.cy - ((lines.length-1)/2)*lh + 4; }
         if (pos === "above") { x = n.x + nw/2;   anchor = "middle"; startY = n.yTop - 8 - (lines.length-1)*lh; }
         return lines.map((ln, i) => {
           const fill = ln.b ? "#0b0c0c" : "#505a5f", fw = ln.b ? 700 : 400;
-          return `<text x="${x}" y="${startY + i*lh}" font-size="12" text-anchor="${anchor}" `
+          return `<text x="${x}" y="${startY + i*lh}" font-size="11" text-anchor="${anchor}" `
                + `fill="${fill}" font-weight="${fw}">${escT(ln.t)}</text>`;
         }).join("");
       }
