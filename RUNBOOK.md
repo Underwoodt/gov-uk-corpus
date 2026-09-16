@@ -20,7 +20,7 @@ The data layer defaults to SQLite whenever `DB_BACKEND` / `DB_HOST` are unset
 ### A1. Clone and create a virtualenv
 
 ```bash
-git clone https://github.com/Underwoodt/gov-uk-corpus.git
+git clone https://github.com/AI-Accelerator-Defra/gov-uk-corpus.git
 cd gov-uk-corpus
 
 python3 -m venv .venv            # Python 3.9+ (3.11+ recommended)
@@ -117,7 +117,7 @@ in a separate `auth` schema — see [schema_auth.sql](govuk_corpus/schema_auth.s
 
 ```bash
 cd /home/ubuntu
-git clone https://github.com/Underwoodt/gov-uk-corpus.git
+git clone https://github.com/AI-Accelerator-Defra/gov-uk-corpus.git
 cd gov-uk-corpus
 python3 -m venv .venv
 source .venv/bin/activate

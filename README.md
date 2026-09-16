@@ -7,7 +7,7 @@ narrows the corpus with a deterministic **selection funnel**, then optionally ru
 **LLM inclusion/exclusion passes** to produce a reviewable, exportable shortlist.
 
 - **Live pilot:** `http://18.171.159.148:8600`
-- **Repo:** `Underwoodt/gov-uk-corpus`
+- **Repo:** `AI-Accelerator-Defra/gov-uk-corpus`
 - **Full schema reference:** [database.md](database.md)
 
 ---
