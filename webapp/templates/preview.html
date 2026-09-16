@@ -36,7 +36,7 @@
   <div class="tabs">
     <a href="{{ url_for('edit_category_page', cid=category.id) }}">Definition</a>
     <span class="current">Preview and run</span>
-    <a href="{{ url_for('shortlist_page', cid=category.id) }}">Audit Shortlist</a>
+    <a href="{{ url_for('shortlist_page', cid=category.id) }}">Audit Results</a>
     <a href="{{ url_for('performance_page', cid=category.id) }}">Run performance</a>
   </div>
 
@@ -162,7 +162,7 @@
     <p id="runs-empty" class="secondary" hidden>No runs yet. Click <em>Evaluate</em> to start one.</p>
 
     <p style="margin-top:30px;border-top:1px solid var(--mid-grey);padding-top:16px;">
-      <a href="{{ url_for('audit_dashboard_page', cid=category.id) }}">Audit dashboard →</a>
+      <a href="{{ url_for('shortlist_page', cid=category.id) }}?tab=dashboard">Audit dashboard →</a>
       <span class="secondary" style="font-size:14px;"> — freshness, page size, reading age and GDS issues at each funnel level</span></p>
     </section>
 

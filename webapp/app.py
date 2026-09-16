@@ -647,10 +647,11 @@ def preview_category_page(request: Request, cid: int):
 
 
 @app.get("/categories/{cid}/shortlist", response_class=HTMLResponse)
-def shortlist_page(request: Request, cid: int, stage: str = "keyword"):
-    """Standalone Audit Shortlist tab — browse/extract pages at any funnel stage.
-    `stage` pre-selects the stage dropdown (e.g. linked from the funnel table).
-    Data loads from /api/categories/{cid}/audit-shortlist."""
+def shortlist_page(request: Request, cid: int, stage: str = "keyword", tab: str = "shortlist"):
+    """Audit Results page — Shortlist and Dashboard sub-tabs. `stage` pre-selects
+    the shortlist stage dropdown; `tab` picks the initial sub-tab (shortlist |
+    dashboard). Data loads from /api/categories/{cid}/audit-shortlist and
+    /api/categories/{cid}/audit-stats."""
     if not authed(request):
         return login_redirect(request)
     conn = connect()
@@ -660,8 +661,10 @@ def shortlist_page(request: Request, cid: int, stage: str = "keyword"):
     category["display_name"] = cat.prettify(category.get("slug")) or (category.get("description") or "Untitled")
     if stage not in _AUDIT_STAGE_KEYS:
         stage = "keyword"
+    stages = [(s, _FUNNEL_STAGES[s][0]) for s in ("all", "org", "doctype", "keyword")]  # dashboard levels
     return templates.TemplateResponse("audit_shortlist.html", ctx(
         conn, request, category=category, stage=stage,
+        initial_tab=("dashboard" if tab == "dashboard" else "shortlist"), stages=stages,
         audit_stages=_AUDIT_STAGES, audit_sections=_DOWNLOAD_SECTIONS))
 
 
@@ -714,23 +717,6 @@ def api_funnel_refresh(request: Request, cid: int):
         _COUNT_CACHE.clear()   # in-memory TTL counts (funnel + org/keyword breakdowns)
     _META_CACHE.clear()        # cached corpus total ("All pages")
     return JSONResponse({"ok": True})
-
-
-@app.get("/categories/{cid}/audit-dashboard", response_class=HTMLResponse)
-def audit_dashboard_page(request: Request, cid: int):
-    if not authed(request):
-        return login_redirect(request)
-    conn = connect()
-    category = cat.get_category(conn, cid)
-    if not category:
-        conn.close()
-        return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
-    category["display_name"] = cat.prettify(category.get("slug")) or (category.get("description") or "Untitled")
-    stages = [(s, _FUNNEL_STAGES[s][0]) for s in ("all", "org", "doctype", "keyword")]
-    resp = templates.TemplateResponse("audit_dashboard.html", ctx(
-        conn, request, category=category, stages=stages))
-    conn.close()
-    return resp
 
 
 @app.get("/api/categories/{cid}/audit-stats")
