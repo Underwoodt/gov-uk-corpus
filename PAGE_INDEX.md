@@ -45,12 +45,11 @@ we can pin the report to an exact page.
 | guc-0001 | Categories (home) | `list.html` | `GET /` | Active |
 | guc-0002 | Category definition (create / edit) | `form.html` | `GET /categories/new`, `GET/POST /categories/{id}/edit`, `POST /categories/new` | Active |
 | guc-0003 | Preview and run | `preview.html` | `GET /categories/{id}` | Active |
-| guc-0004 | Audit Shortlist | `audit_shortlist.html` | `GET /categories/{id}/shortlist` | Active |
+| guc-0004 | Audit Results (Shortlist + Dashboard) | `audit_shortlist.html` | `GET /categories/{id}/shortlist` | Active |
 | guc-0005 | Run performance | `performance.html` | `GET /categories/{id}/performance` | Active |
 | guc-0006 | Run detail | `run_detail.html` | `GET /categories/{id}/runs/{run_id}` | Active |
 | guc-0007 | Shortlist results table | `results_table.html` | `GET /categories/{id}/results` | Active |
 | guc-0008 | Download shortlist | `download.html` | `GET /categories/{id}/download` | Active |
-| guc-0009 | Audit dashboard | `audit_dashboard.html` | `GET /categories/{id}/audit-dashboard` | Active |
 | guc-0010 | Settings | `settings.html` | `GET /settings` | Active |
 | guc-0011 | Peak-hours schedule | `peak_schedule.html` | `GET /settings/peak/{provider}` | Active |
 | guc-0012 | AI Assistant | `assistant.html` | `GET /assistant` | Active |
@@ -68,8 +67,14 @@ list when sub-tabs change.
 | guc-0003a | Keyword Matching | Preview and run (`guc-0003`) |
 | guc-0003b | Semantic Match | Preview and run (`guc-0003`) |
 | guc-0003c | Funnel Results | Preview and run (`guc-0003`) |
+| guc-0004a | Shortlist | Audit Results (`guc-0004`) |
+| guc-0004b | Dashboard | Audit Results (`guc-0004`) |
 
 ## Retired IDs
 
-_None yet._ When a page is removed, move its row here (keep the ID, set Status
-**Retired**, note the date) and never reassign the number.
+| ID | Page | Retired | Note |
+|----|------|---------|------|
+| guc-0009 | Audit dashboard | 2026-09-16 | Merged into the Audit Results page as the Dashboard sub-tab (`guc-0004b`). |
+
+Never reassign a retired ID. When a page is removed, move its row here (keep the ID,
+set the date and a note).
