@@ -316,14 +316,29 @@ def run_chain(conn, run_id: str) -> List[dict]:
     return chain
 
 
-def run_commentary(chain: List[dict], shortlist_total: Optional[int] = None) -> Dict[str, list]:
+def unparsed_results(conn, run_ids: Sequence[str]) -> List[dict]:
+    """The pages whose model reply could not be parsed (keep IS NULL) across the given
+    runs — i.e. the items counted as 'unparseable'. Returns [{run_id, url, reason}]."""
+    ids = list(run_ids)
+    if not ids:
+        return []
+    ph = ",".join([_P] * len(ids))
+    rows = conn.execute(
+        f"SELECT run_id, url, reason FROM evaluation_results "
+        f"WHERE keep IS NULL AND run_id IN ({ph}) ORDER BY url", tuple(ids)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def run_commentary(chain: List[dict], shortlist_total: Optional[int] = None,
+                   opened_run_id: Optional[str] = None) -> Dict[str, list]:
     """Plain-English notes about a run's phase chain (oldest-first), grouped into:
-      phases   — what has run (and what's pending),
-      errors   — unparseable replies / unfinished phases,
-      reconcile — whether each phase's input equals kept + dropped (+ unparseable).
+      phases    — what has run (and what's pending),
+      errors    — unparseable replies / unfinished phases,
+      reconcile — whether each phase's input equals kept + dropped (+ unparseable),
+      next_steps — what to do next (complete the run, run exclusion, unparseable, …).
 
     Pure/deterministic so it's unit-testable; the web layer supplies shortlist_total
-    (the inclusion phase's input) and renders the result.
+    (the inclusion phase's input), which run was opened, and renders the result.
     """
     by_id = {r["run_id"]: r for r in chain}
     phases: list = []
@@ -396,7 +411,39 @@ def run_commentary(chain: List[dict], shortlist_total: Optional[int] = None) -> 
                 phases.append({"kind": "info",
                                "text": "Phase 2 – Exclusion: starts automatically once inclusion finishes "
                                        "(if any pages are kept)."})
-    return {"phases": phases, "errors": errors, "reconcile": reconcile}
+
+    # ---- what to do next -------------------------------------------------
+    next_steps: list = []
+    opened = by_id.get(opened_run_id)
+    total_unpar = sum((r.get("unparseable") or 0) for r in chain)
+    incl = next((r for r in chain if "inclusion" in (r.get("phase") or "").lower()), None)
+
+    if opened is not None and not opened.get("finished_at"):
+        p = opened.get("pages") or 0
+        if "exclusion" in (opened.get("phase") or "").lower():
+            src = by_id.get(opened.get("source_run_id"))
+            tgt = src.get("kept") if src else None
+        else:
+            tgt = shortlist_total
+        rem = (tgt - p) if (tgt is not None and tgt > p) else None
+        next_steps.append({"kind": "info",
+                           "text": "Complete this run"
+                                   + (f" — {rem:,} of {tgt:,} pages still to evaluate" if rem else "")
+                                   + ". Use “Complete this run” above to finish it in the background."})
+    if incl and incl.get("finished_at") and (incl.get("kept") or 0) > 0 and not have_excl:
+        next_steps.append({"kind": "info",
+                           "text": f"Run Phase 2 (Exclusion) over the {incl['kept']:,} kept pages — open the "
+                                   "category’s Preview → Semantic Match and Evaluate (it also auto-starts when "
+                                   "inclusion completes)."})
+    if total_unpar > 0:
+        next_steps.append({"kind": "warn",
+                           "text": f"{total_unpar:,} page(s) could not be parsed and were left unscored — see "
+                                   "“Not parsed” below. They aren’t retried automatically; re-evaluate them by "
+                                   "re-running (e.g. a fresh run, or a different model) to score them."})
+    if not next_steps:
+        next_steps.append({"kind": "ok", "text": "Nothing to do — this evaluation looks complete."})
+
+    return {"phases": phases, "errors": errors, "reconcile": reconcile, "next_steps": next_steps}
 
 
 def compare(conn, base_run: str, other_run: str) -> Dict[str, int]:

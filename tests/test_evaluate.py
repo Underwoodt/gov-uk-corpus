@@ -117,6 +117,14 @@ class TestRuns(unittest.TestCase):
         self.assertEqual([r["run_id"] for r in evaluate.run_chain(self.conn, inc)], [inc, exc])
         self.assertNotIn(other, [r["run_id"] for r in evaluate.run_chain(self.conn, exc)])
 
+    def test_unparsed_results(self):
+        run = evaluate.create_run(self.conn, 1, "m", "anthropic")
+        evaluate.save_page(self.conn, run, 1, "https://www.gov.uk/p0", {"keep": 1, "score": .9, "reason": "ok"}, 10)
+        evaluate.save_page(self.conn, run, 1, "https://www.gov.uk/p1", None, 10)   # unparseable -> keep NULL
+        up = evaluate.unparsed_results(self.conn, [run])
+        self.assertEqual([u["url"] for u in up], ["https://www.gov.uk/p1"])
+        self.assertEqual(up[0]["reason"], "unparseable model reply")
+
     def test_explicit_name_overrides_default(self):
         r = evaluate.create_run(self.conn, 1, "m", "anthropic", name="Haiku run")
         self.assertEqual(evaluate.get_run(self.conn, r)["name"], "Haiku run")
@@ -353,6 +361,22 @@ class TestRunCommentary(unittest.TestCase):
         self.assertEqual(exc_rec["kind"], "warn")       # input 60 (kept) vs 45+5 evaluated so far
         self.assertIn("not evaluated yet", exc_rec["text"])
         self.assertTrue(any("has not finished" in n["text"] for n in c["errors"]))
+
+    def test_next_steps_complete_unfinished_opened_run(self):
+        inc = self._run(run_id="i", pages=300, kept=0, dropped=0, finished_at=None)  # in progress
+        c = evaluate.run_commentary([inc], shortlist_total=571, opened_run_id="i")
+        self.assertTrue(any(n["text"].startswith("Complete this run") for n in c["next_steps"]))
+        self.assertTrue(any("271 of 571" in n["text"] for n in c["next_steps"]))     # remaining
+
+    def test_next_steps_run_exclusion_when_pending(self):
+        inc = self._run(run_id="i", pages=571, kept=155, dropped=415, finished_at="t")  # done, has keeps
+        c = evaluate.run_commentary([inc], shortlist_total=571, opened_run_id="i")
+        self.assertTrue(any("Phase 2 (Exclusion)" in n["text"] for n in c["next_steps"]))
+
+    def test_next_steps_flags_unparseable(self):
+        inc = self._run(run_id="i", pages=571, kept=155, dropped=415, unparseable=1, finished_at="t")
+        c = evaluate.run_commentary([inc], shortlist_total=571, opened_run_id="i")
+        self.assertTrue(any("could not be parsed" in n["text"] for n in c["next_steps"]))
 
 
 if __name__ == "__main__":
