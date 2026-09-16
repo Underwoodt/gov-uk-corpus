@@ -224,6 +224,19 @@ multiple categories concurrently.
 Set the **daily AI budget** and guard on Settings. Spend is tracked in the `ai_usage`
 ledger; models are managed in the **AI model catalogue** (add / test / delete).
 
+### Nightly corpus cycle & category counts
+The daily batch cycle is `python -m govuk_corpus.run_all` (Stage 0→3, then a
+**tidy-up** phase). Its tidy-up recomputes each category's stored "pages kept" figure
+into `category_page_counts`, so the **Categories** list reads a number instead of
+running a live corpus count per row on every load. The figure is also refreshed
+whenever a category is created or edited. To rebuild the counts on demand (e.g. after
+a manual corpus load):
+
+```bash
+set -a; . /home/ubuntu/gov-uk-corpus.env; set +a
+.venv/bin/python -m govuk_corpus.category_counts
+```
+
 ---
 
 ## Troubleshooting

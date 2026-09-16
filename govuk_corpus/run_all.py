@@ -16,6 +16,7 @@ import argparse
 import os
 from typing import Optional
 
+from . import category_counts
 from .backend import db
 from .stage_align import align_urls
 from .stage_attachments import run_stage3
@@ -56,6 +57,15 @@ def run_cycle(conn, scope: str = "whole-govuk", *, sitemap_dir: Optional[str] = 
     c3 = run_stage3(conn, r3)
     db.finish_run(conn, r3, c3)
     _print("Stage 3 attachments", r3, c3)
+
+    run_tidy_up(conn)
+
+
+def run_tidy_up(conn) -> None:
+    """Post-cycle housekeeping. Runs after the corpus is up to date so derived,
+    cached figures reflect the fresh data. Home for future tidy-up tasks."""
+    summary = category_counts.refresh_all(conn)
+    print(f"\n[tidy-up] category counts: {summary['updated']}/{summary['categories']} refreshed")
 
 
 def main() -> None:

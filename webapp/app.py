@@ -32,6 +32,7 @@ from starlette.concurrency import run_in_threadpool
 
 from govuk_corpus import ai_models, audit
 from govuk_corpus import categories as cat
+from govuk_corpus import category_counts
 from govuk_corpus import (audit_stats, category_interview, evaluate, orgs,
                           peak_schedule, pricing, roles, settings, shortlist)
 from govuk_corpus.backend import db
@@ -394,19 +395,17 @@ def list_categories_page(request: Request, flash: str = ""):
         return login_redirect(request)
     conn = connect()
     rows = cat.list_categories(conn)
+    # Read the precomputed input-shortlist size per category (refreshed by the
+    # nightly cycle's tidy-up and on every create/edit) in one query, instead of
+    # running a live corpus COUNT per row on this hot page.
+    counts = category_counts.get_counts(conn)
     for r in rows:
         r["display_name"] = r.get("slug") and cat.prettify(r["slug"]) or (r.get("description") or "Untitled")
         r["updated"] = (r.get("updated_at") or r.get("created_at") or "")[:10] or "—"
-        try:
-            r["pages_kept"] = "{:,}".format(cached_count(
-                conn,
-                organisations=cat.parse_list(r.get("dept_slugs")),
-                document_types=cat.parse_list(r.get("document_type_slugs")),
-                keywords=[]))
-        except Exception:
-            r["pages_kept"] = "—"
-    conn.close()
-    return templates.TemplateResponse("list.html", ctx(connect(), request, categories=rows, flash=flash))
+        hit = counts.get(int(r["id"]))
+        r["pages_kept"] = "{:,}".format(hit["pages_kept"]) if hit and hit["pages_kept"] is not None else "—"
+        r["pages_kept_at"] = (hit["computed_at"] or "")[:10] if hit else ""
+    return templates.TemplateResponse("list.html", ctx(conn, request, categories=rows, flash=flash))
 
 
 # ---- create -------------------------------------------------------------
@@ -472,6 +471,7 @@ async def create_category(request: Request):
     if errors:
         return templates.TemplateResponse("form.html", _form_ctx(conn, request, None, data, errors))
     cid = cat.create_category(conn, data)
+    category_counts.refresh_one(conn, cid)  # keep the list's stored count fresh
     conn.close()
     return RedirectResponse(url=str(request.url_for("edit_category_page", cid=cid)), status_code=303)
 
@@ -504,6 +504,7 @@ async def update_category(request: Request, cid: int):
         merged = {**category, **data}
         return templates.TemplateResponse("form.html", _form_ctx(conn, request, category, merged, errors))
     cat.update_category(conn, cid, data)
+    category_counts.refresh_one(conn, cid)  # keep the list's stored count fresh
     conn.close()
     return RedirectResponse(url=str(request.url_for("edit_category_page", cid=cid)), status_code=303)
 

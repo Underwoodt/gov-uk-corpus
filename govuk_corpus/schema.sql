@@ -232,3 +232,13 @@ CREATE TABLE IF NOT EXISTS categories (
     extra_law_urls                TEXT,
     only_use_extra_law_urls       INTEGER DEFAULT 0
 );
+
+-- Precomputed "input shortlist" size per category (organisations + document
+-- types, no keywords). Refreshed as the tidy-up phase of the nightly corpus
+-- cycle (run_all) and on every category create/edit, so the Categories list
+-- reads a stored number instead of running a live corpus COUNT per row.
+CREATE TABLE IF NOT EXISTS category_page_counts (
+    category_id  INTEGER PRIMARY KEY,
+    pages_kept   INTEGER,
+    computed_at  TEXT
+);
