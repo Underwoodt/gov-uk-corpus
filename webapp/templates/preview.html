@@ -372,26 +372,18 @@
              + `fill="${s.color}" fill-opacity="0.32"/>`;
       });
       nodes.forEach(n => { out += `<rect x="${n.x}" y="${n.yTop}" width="${nw}" height="${n.h}" rx="1.5" fill="${n.color}"/>`; });
-      function wrap(name, max) {
-        const words = name.split(" "), lines = []; let cur = "";
-        words.forEach(w => {
-          if ((cur + " " + w).trim().length > max) { if (cur) lines.push(cur); cur = w; }
-          else cur = (cur + " " + w).trim();
-        });
-        if (cur) lines.push(cur);
-        return lines;
-      }
       function label(n, pos) {
-        const lines = wrap(n.name, 11).map(t => ({ t, b:false }));
+        // Wrap every label on spaces (one word per line) and render all text bold.
+        const lines = n.name.split(" ").map(t => ({ t, b:false }));
         lines.push({ t: (n.val || 0).toLocaleString(), b:true });
         const lh = 13; let x, anchor, startY;
         if (pos === "left")  { x = n.x - 8;      anchor = "end";    startY = n.cy - ((lines.length-1)/2)*lh + 4; }
         if (pos === "right") { x = n.x + nw + 8; anchor = "start";  startY = n.cy - ((lines.length-1)/2)*lh + 4; }
         if (pos === "above") { x = n.x + nw/2;   anchor = "middle"; startY = n.yTop - 8 - (lines.length-1)*lh; }
         return lines.map((ln, i) => {
-          const fill = ln.b ? "#0b0c0c" : "#505a5f", fw = ln.b ? 700 : 400;
+          const fill = ln.b ? "#0b0c0c" : "#505a5f";
           return `<text x="${x}" y="${startY + i*lh}" font-size="11" text-anchor="${anchor}" `
-               + `fill="${fill}" font-weight="${fw}">${escT(ln.t)}</text>`;
+               + `fill="${fill}" font-weight="700">${escT(ln.t)}</text>`;
         }).join("");
       }
       nodes.forEach(n => { out += label(n, n.band === "up" ? "above" : (n === lastMain ? "right" : "left")); });
