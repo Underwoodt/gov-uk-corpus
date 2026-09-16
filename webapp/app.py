@@ -1101,10 +1101,14 @@ def run_detail_page(request: Request, cid: int, run_id: str):
         shortlist_total = cached_count(conn, **_effective_filters(conn, category))
     except Exception:
         shortlist_total = None
-    commentary = evaluate.run_commentary(chain, shortlist_total)
+    commentary = evaluate.run_commentary(chain, shortlist_total, opened_run_id=run_id)
+    unparsed = evaluate.unparsed_results(conn, [r["run_id"] for r in chain])
+    phase_by_id = {r["run_id"]: r.get("phase") for r in chain}
+    for u in unparsed:
+        u["phase"] = phase_by_id.get(u["run_id"])
     resp = templates.TemplateResponse("run_detail.html", ctx(
         conn, request, category=category, run=run, chain=chain, totals=totals,
-        commentary=commentary))
+        commentary=commentary, unparsed=unparsed))
     conn.close()
     return resp
 

@@ -1,6 +1,14 @@
 {% extends "base.html" %}
 {% block title %}{{ run.name or 'Run' }} — run details{% endblock %}
 {% block content %}
+  {% macro notelist(items) %}
+  <ul style="list-style:none;padding:0;margin:0 0 18px;max-width:840px;">
+    {% for n in items %}
+    <li style="padding:9px 13px;margin:0 0 6px;font-size:15px;border-radius:0 5px 5px 0;background:var(--surface-2);
+      border-left:4px solid {{ {'ok':'var(--green)','warn':'var(--red,#d4351c)','info':'var(--border-mid)'}[n.kind] }};">{{ n.text }}</li>
+    {% endfor %}
+  </ul>
+  {% endmacro %}
 
   <a class="back" href="{{ url_for('preview_category_page', cid=category.id) }}">‹ Back to preview</a>
 
@@ -22,6 +30,20 @@
     {% if run.finished_at %}· Finished {{ run.finished_at[:19]|replace('T',' ') }}{% endif %}
     {% if run.status %}· {{ run.status }}{% endif %}
   </p>
+
+  {% if not run.finished_at %}
+  <p style="margin:12px 0 0;">
+    <button class="btn" id="complete-run" type="button">Complete this run</button>
+    <span id="complete-status" class="secondary" style="margin-left:10px;"></span>
+  </p>
+  <p class="hint" style="margin:6px 0 0;">Makes this the active run and evaluates the remaining pages on the
+    server (in the background) — you can close this page and come back.</p>
+  {% else %}
+  <p class="secondary" style="margin:12px 0 0;">✅ This run has finished.</p>
+  {% endif %}
+
+  <h2 style="margin-top:26px;">Next steps</h2>
+  {{ notelist(commentary.next_steps) }}
 
   <h2 style="margin-top:26px;">LLM phases</h2>
   <p class="hint">Each phase of this evaluation (inclusion → exclusion), the model used, and its tokens and cost.
@@ -70,15 +92,6 @@
     </table>
   </div>
 
-  {% macro notelist(items) %}
-  <ul style="list-style:none;padding:0;margin:0 0 18px;max-width:840px;">
-    {% for n in items %}
-    <li style="padding:9px 13px;margin:0 0 6px;font-size:15px;border-radius:0 5px 5px 0;background:var(--surface-2);
-      border-left:4px solid {{ {'ok':'var(--green)','warn':'var(--red,#d4351c)','info':'var(--border-mid)'}[n.kind] }};">{{ n.text }}</li>
-    {% endfor %}
-  </ul>
-  {% endmacro %}
-
   <h2 style="margin-top:30px;">Run commentary</h2>
   <p class="hint">An automatic read of this run's phases — what has run, any errors, and whether each phase's
     output reconciles with its input (input = kept + dropped, allowing for unparseable replies).</p>
@@ -93,6 +106,29 @@
   <h3 style="margin:16px 0 6px;">Input vs output</h3>
   {% if commentary.reconcile %}{{ notelist(commentary.reconcile) }}
   {% else %}<p class="secondary" style="margin:0 0 18px;">Shortlist total unavailable, so input/output couldn't be reconciled.</p>{% endif %}
+
+  <h2 style="margin-top:30px;">Not parsed</h2>
+  {% if unparsed %}
+  <p class="hint">The {{ unparsed|length }} page{{ '' if unparsed|length == 1 else 's' }} below returned a model
+    reply that couldn't be parsed, so {{ 'it was' if unparsed|length == 1 else 'they were' }} left unscored
+    (neither kept nor dropped).</p>
+  <div class="table-wrap">
+    <table style="font-size:14px;">
+      <thead><tr><th>Phase</th><th>Page</th><th>Reason</th></tr></thead>
+      <tbody>
+        {% for u in unparsed %}
+        <tr>
+          <td>{{ u.phase or '—' }}</td>
+          <td><a href="{{ u.url }}">{{ u.url }}</a></td>
+          <td class="secondary">{{ u.reason or 'unparseable model reply' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="secondary" style="margin:0 0 18px;">None — every evaluated page was scored (kept or dropped).</p>
+  {% endif %}
 
   <script>
     const CID = {{ category.id }}, RUN_ID = {{ run.run_id|tojson }};
@@ -111,5 +147,34 @@
     }
     document.getElementById("save-name").addEventListener("click", saveName);
     nameInput.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); saveName(); } });
+
+    // Complete this run: make it the active run, then finish it in the background.
+    const completeBtn = document.getElementById("complete-run");
+    if (completeBtn) {
+      const cs = document.getElementById("complete-status");
+      completeBtn.addEventListener("click", async () => {
+        completeBtn.disabled = true;
+        cs.innerHTML = '<span class="spinner"></span> Starting…';
+        try {
+          await fetch(`/api/categories/${CID}/runs/${RUN_ID}/activate`, { method: "POST" });
+          const j = await (await fetch(`/api/categories/${CID}/evaluate-bg/start`, { method: "POST" })).json();
+          if (j.error) { cs.textContent = "Error: " + j.error; completeBtn.disabled = false; return; }
+          const poll = setInterval(async () => {
+            let s;
+            try { s = await (await fetch(`/api/categories/${CID}/evaluate-bg/status`)).json(); }
+            catch (e) { return; }
+            const done = (s.done || 0).toLocaleString();
+            if (s.running) {
+              cs.innerHTML = `<span class="spinner"></span> Running in the background — evaluated ${done}`
+                + (s.phase ? ` (${s.phase})` : "");
+            } else {
+              clearInterval(poll);
+              cs.textContent = s.error ? ("Error: " + s.error) : "Finished — refreshing…";
+              setTimeout(() => location.reload(), 900);
+            }
+          }, 3000);
+        } catch (e) { cs.textContent = "Could not start."; completeBtn.disabled = false; }
+      });
+    }
   </script>
 {% endblock %}
