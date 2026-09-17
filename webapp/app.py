@@ -1251,6 +1251,11 @@ _bg_lock = threading.Lock()
 
 def _background_eval_loop(cid: int, stop_event: threading.Event, status: dict) -> None:
     try:
+        conn = connect()
+        try:
+            cap = _max_docs(conn)          # pages-per-run limit (Settings), e.g. 600
+        finally:
+            conn.close()
         while not stop_event.is_set():
             res = _run_evaluation(cid, BG_EVAL_CHUNK)
             if res.get("error"):
@@ -1269,6 +1274,13 @@ def _background_eval_loop(cid: int, stop_event: threading.Event, status: dict) -
             # No auto-advance and nothing left (or nothing progressed) -> finished.
             if not res.get("advanced") and (res.get("evaluated_this_run", 0) == 0
                                             or res.get("remaining") == 0):
+                break
+            # Per-run page cap: evaluate up to `cap` NEW pages this execution, then
+            # stop cleanly so we actually run the full 600 (not nothing) and the user
+            # re-executes to continue where it left off, rather than doing the whole
+            # shortlist in one unbounded run.
+            if cap and status["done"] >= cap:
+                status["stopped"] = "cap"
                 break
     except Exception as e:                      # never let the thread die silently
         status["error"] = f"{type(e).__name__}: {e}"
