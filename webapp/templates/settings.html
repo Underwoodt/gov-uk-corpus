@@ -24,6 +24,7 @@
   <!-- Tab 1: Available Models -->
   <section class="stabpanel" data-tab="models">
     <form method="post" action="{{ url_for('save_settings') }}">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
       <h2 style="margin-bottom:10px;">AI models</h2>
       <p class="hint">Edit any row and click <em>Save settings</em>. Select the active model (used for new runs and
         the assistant). All prices are USD per 1M tokens. The standard rate used for cost estimates is
@@ -80,6 +81,7 @@
 
     <h2 style="margin-top:40px;">Add a model</h2>
     <form method="post" action="{{ url_for('add_model_route') }}">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
       <div class="controls" style="align-items:flex-end;flex-wrap:wrap;">
         <label>Supplier<br>
           <select name="provider" style="font-size:16px;padding:5px;border:2px solid var(--black);">
@@ -124,6 +126,7 @@
   <!-- Tab 2: Inference Phase & Models -->
   <section class="stabpanel" data-tab="phases" hidden>
     <form method="post" action="{{ url_for('save_settings') }}">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
       <h2 style="margin-bottom:10px;">Model per phase</h2>
       <p class="hint">Each evaluation phase runs on its own model (the current pipeline uses a cheap,
         recall-first model for Inclusion and a stronger model for Exclusion). Pick a model per phase;
@@ -165,6 +168,7 @@
   <!-- Tab 3: Execution Guardrails -->
   <section class="stabpanel" data-tab="guardrails" hidden>
     <form method="post" action="{{ url_for('save_settings') }}">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
       <h2 style="margin-bottom:10px;">Execution guardrails</h2>
       <p class="secondary" style="margin:0 0 6px;">Spent today (all AI calls):
         <strong>${{ '%.4f'|format(spent_today) }}</strong> of ${{ '%.2f'|format(daily_budget) }} budget.</p>
@@ -187,6 +191,7 @@
   <!-- Tab 4: User role -->
   <section class="stabpanel" data-tab="role" hidden>
     <form method="post" action="{{ url_for('save_settings') }}">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
       <h2 style="margin-bottom:10px;">User role</h2>
       <p class="hint">Sets the active role for the whole app (global for now — later this will be per user).
         Every feature is available to all roles unless a feature is restricted to <strong>Administrator</strong>
