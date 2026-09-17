@@ -14,7 +14,7 @@ import os
 import re
 import secrets
 from datetime import datetime, timezone
-from typing import Optional
+from typing import List, Optional
 
 from .backend import db
 
@@ -196,6 +196,42 @@ def get_user(conn, user_id: str, *, with_hash: bool = False) -> Optional[dict]:
     cols = _PUBLIC_COLS + (", password_hash" if with_hash else "")
     row = conn.execute(f"SELECT {cols} FROM auth.users WHERE id = %s", (user_id,)).fetchone()
     return dict(row) if row else None
+
+
+def list_users(conn) -> List[dict]:
+    """All accounts (public columns, no hashes), newest first — for the admin user list."""
+    _require_pg()
+    rows = conn.execute(f"SELECT {_PUBLIC_COLS} FROM auth.users ORDER BY created_at DESC").fetchall()
+    return [dict(r) for r in rows]
+
+
+def update_user(conn, user_id: str, *, first_name: Optional[str] = None,
+                last_name: Optional[str] = None, role: Optional[str] = None,
+                account_status: Optional[str] = None) -> Optional[dict]:
+    """Update a user's profile fields. Fields are explicit arguments (never taken wholesale
+    from request data) to prevent mass-assignment; role/status are validated. Returns the
+    updated public row."""
+    _require_pg()
+    sets, params = [], []
+    if first_name is not None:
+        sets.append("first_name = %s"); params.append(first_name.strip())
+    if last_name is not None:
+        sets.append("last_name = %s"); params.append(last_name.strip())
+    if role is not None:
+        if role not in ROLES:
+            raise ValueError("invalid role")
+        sets.append("role = %s"); params.append(role)
+    if account_status is not None:
+        if account_status not in STATUSES:
+            raise ValueError("invalid account status")
+        sets.append("account_status = %s"); params.append(account_status)
+    if not sets:
+        return get_user(conn, user_id)
+    sets.append("updated_at = %s"); params.append(datetime.now(timezone.utc).isoformat())
+    params.append(user_id)
+    conn.execute(f"UPDATE auth.users SET {', '.join(sets)} WHERE id = %s", tuple(params))
+    conn.commit()
+    return get_user(conn, user_id)
 
 
 # ---- login: lockout, audit, authentication --------------------------------
