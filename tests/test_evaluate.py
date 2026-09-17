@@ -327,6 +327,45 @@ class TestRunEvaluationMocked(unittest.TestCase):
         self.assertEqual(result["stopped"], "budget")
         self.assertLessEqual(result["evaluated_this_run"], 2)
 
+    def test_transient_error_skips_page_and_continues(self):
+        # One transient AI error should skip that page (record it unscored) and carry on,
+        # not abort the whole chunk.
+        app, cid = self._app(n=4)
+        calls = {"n": 0}
+        ok = {"reply": '{"keep": true, "score": 0.8, "reason": "r"}', "actual_model": "m",
+              "input_tokens": 10, "output_tokens": 5, "cost_usd": 0.0}
+        def flaky(cfg, system, prompt):
+            calls["n"] += 1
+            return {"error": "TimeoutError: slow"} if calls["n"] == 2 else dict(ok)
+        app._ai_reply = flaky
+        result = app._run_evaluation(cid, 4)
+        self.assertNotIn("error", result)                 # not aborted
+        self.assertEqual(result["evaluated_this_run"], 4) # all 4 progressed
+        self.assertEqual(result["skipped"], 1)            # one recorded as skipped
+        conn = app.connect()
+        run = evaluate.get_run(conn, result["run_id"])
+        self.assertEqual(run["pages"], 4)
+        self.assertEqual(run["kept"], 3)                  # 3 kept, 1 unscored (skipped)
+        self.assertEqual(run["unparseable"], 1)
+        conn.close()
+
+    def test_consecutive_errors_stop_the_run(self):
+        # A provider that errors on every page should stop after MAX_CONSEC_EVAL_ERRORS,
+        # not mark every page unscored.
+        app, cid = self._app(n=12)   # more pages than the consecutive-error threshold
+        app._ai_reply = lambda cfg, system, prompt: {"error": "APIError: 503"}
+        result = app._run_evaluation(cid, 50)
+        self.assertEqual(result["stopped"], "errors")
+        self.assertIn("error", result)
+        self.assertEqual(result["evaluated_this_run"], app.MAX_CONSEC_EVAL_ERRORS - 1)  # only skips before the bail
+
+    def test_fatal_error_aborts_immediately(self):
+        app, cid = self._app(n=4)
+        app._ai_reply = lambda cfg, system, prompt: {"fatal": True, "error": "No API key set for X."}
+        result = app._run_evaluation(cid, 4)
+        self.assertTrue(result.get("fatal"))
+        self.assertEqual(result["evaluated_this_run"], 0)   # nothing recorded
+
 
 class TestRunCommentary(unittest.TestCase):
     def _run(self, **kw):
