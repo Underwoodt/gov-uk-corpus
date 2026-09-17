@@ -234,6 +234,23 @@ def update_user(conn, user_id: str, *, first_name: Optional[str] = None,
     return get_user(conn, user_id)
 
 
+def change_password(conn, user_id: str, old_password: str, new_password: str) -> None:
+    """Change a user's own password: verify the current password, validate the new one,
+    then store the new Argon2id hash. Raises ValueError with a user-facing message if the
+    current password is wrong or the new password fails policy."""
+    _require_pg()
+    user = get_user(conn, user_id, with_hash=True)
+    if user is None:
+        raise ValueError("Account not found.")
+    if not verify_password(user["password_hash"], old_password):
+        raise ValueError("Your current password is incorrect.")
+    validate_password(new_password)
+    pw = hash_password(new_password)
+    conn.execute("UPDATE auth.users SET password_hash=%s, updated_at=now() WHERE id=%s",
+                 (pw, user_id))
+    conn.commit()
+
+
 # ---- login: lockout, audit, authentication --------------------------------
 
 MAX_FAILED_LOGINS = 5           # lock the account after this many consecutive failures

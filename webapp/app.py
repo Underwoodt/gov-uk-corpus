@@ -2145,10 +2145,11 @@ async def api_assistant(request: Request):
 
 
 @app.get("/profile", response_class=HTMLResponse)
-def profile_page(request: Request):
-    """Per-viewer UI display level (Simple / Advanced / Expert / Admin). The choice is
-    stored client-side (localStorage) and applied as a data-ui-level attribute; no login
-    accounts needed. Higher levels reveal more detail; Admin shows everything."""
+def profile_page(request: Request, details_ok: int = 0, pw_ok: int = 0,
+                 details_error: str = "", pw_error: str = ""):
+    """The user's profile: their details + password (accounts mode) and the per-viewer
+    UI display level. The display level is stored client-side (localStorage) and applied as
+    a data-ui-level attribute; it needs no account. Higher levels reveal more detail."""
     if not authed(request):
         return login_redirect(request)
     conn = connect()
@@ -2162,9 +2163,63 @@ def profile_page(request: Request):
         ("admin", "Admin",
          "See everything."),
     ]
-    resp = templates.TemplateResponse("profile.html", ctx(conn, request, levels=levels))
+    resp = templates.TemplateResponse("profile.html", ctx(
+        conn, request, levels=levels, accounts_mode=(AUTH_MODE == "accounts"),
+        me=current_user(request), details_ok=details_ok, pw_ok=pw_ok,
+        details_error=details_error, pw_error=pw_error))
     conn.close()
     return resp
+
+
+@app.post("/profile/details")
+async def update_profile_details(request: Request):
+    """Update the signed-in user's own first/last name (accounts mode). Email is the login
+    identity and is not editable here."""
+    if not authed(request):
+        return login_redirect(request)
+    profile_url = str(request.url_for("profile_page"))
+    u = current_user(request)
+    if not u:
+        return RedirectResponse(url=profile_url, status_code=303)
+    form = await request.form()
+    first = (form.get("first_name") or "").strip()
+    last = (form.get("last_name") or "").strip()
+    conn = connect()
+    try:
+        if not first or not last:
+            return RedirectResponse(url=profile_url + "?details_error=First+and+last+name+are+required.#details",
+                                    status_code=303)
+        accounts.update_user(conn, u["id"], first_name=first, last_name=last)
+    finally:
+        conn.close()
+    return RedirectResponse(url=profile_url + "?details_ok=1#details", status_code=303)
+
+
+@app.post("/profile/password")
+async def change_own_password(request: Request):
+    """Change the signed-in user's own password: requires the current password (accounts mode)."""
+    if not authed(request):
+        return login_redirect(request)
+    profile_url = str(request.url_for("profile_page"))
+    u = current_user(request)
+    if not u:
+        return RedirectResponse(url=profile_url, status_code=303)
+    form = await request.form()
+    old = form.get("current_password") or ""
+    new = form.get("new_password") or ""
+    confirm = form.get("confirm_password") or ""
+    conn = connect()
+    try:
+        if new != confirm:
+            msg = "The new passwords do not match."
+            return RedirectResponse(url=profile_url + f"?pw_error={quote(msg)}#password", status_code=303)
+        try:
+            accounts.change_password(conn, u["id"], old, new)
+        except ValueError as exc:
+            return RedirectResponse(url=profile_url + f"?pw_error={quote(str(exc))}#password", status_code=303)
+    finally:
+        conn.close()
+    return RedirectResponse(url=profile_url + "?pw_ok=1#password", status_code=303)
 
 
 def _require_admin(request: Request):

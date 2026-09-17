@@ -56,7 +56,7 @@ we can pin the report to an exact page.
 | guc-0013 | Category assistant (guided create) | `category_assistant.html` | `GET /categories/new/assistant` | Active |
 | guc-0014 | Sign in | inline in `webapp/app.py` | `GET /login` | Active |
 | guc-0015 | Create an account (register) | inline in `webapp/app.py` | `GET/POST /register` (accounts mode) | Active |
-| guc-0016 | Profile (UI display level) | `profile.html` | `GET /profile` | Active |
+| guc-0016 | Profile (details, password, UI display level) | `profile.html` | `GET /profile`, `POST /profile/details`, `POST /profile/password` | Active |
 | guc-0017 | Edit user (admin) | `user_edit.html` | `GET/POST /admin/users/{id}/edit` (accounts mode) | Active |
 
 ## Sub-tab IDs
