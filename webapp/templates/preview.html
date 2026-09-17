@@ -138,8 +138,6 @@
 
     <div id="tab2-active" class="subpanel2" role="tabpanel">
       <div class="controls">
-        <button type="button" class="btn secondary-btn" id="new-run"
-          title="You will need to execute this once setup.">Create New Run</button>
         <button type="button" class="btn secondary-btn" id="run-bg"
           title="Will only update new items in the query in the background.">Execute Active Run</button>
         <button type="button" class="btn secondary-btn" id="stop-bg" hidden style="color:#d4351c;"
@@ -164,6 +162,11 @@
     </div>
 
     <div id="tab2-history" class="subpanel2" role="tabpanel" hidden>
+      <p style="margin:0 0 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <button type="button" class="btn secondary-btn" id="new-run"
+          title="You will need to execute this once setup.">Create New Run</button>
+        <span id="new-run-status" class="secondary"></span>
+      </p>
       <p class="hint" style="margin-top:0;">Every run for this category. Select a run's radio to make it the
         <strong>active</strong> run (what <em>Execute Active Run</em> adds to); open a run's name for its per-page details.</p>
       <table id="runs-table" hidden>
@@ -576,7 +579,7 @@
       try {
         await fetch(`/api/categories/${CID}/runs`, { method: "POST" });
         await loadRuns();
-        document.getElementById("eval-status").textContent = "New run created — Execute Active Run to evaluate it.";
+        document.getElementById("new-run-status").textContent = "New run created — switch to Active Run to execute it.";
       } finally { newRunBtn.disabled = false; }
     }
     newRunBtn.addEventListener("click", newRun);

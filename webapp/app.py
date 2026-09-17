@@ -20,6 +20,7 @@ import io
 import json
 import logging
 import os
+import re
 import threading
 import secrets
 import time
@@ -1544,6 +1545,14 @@ def _dl_stamp() -> str:
     return time.strftime("%y-%m-%d-%H-%M", time.gmtime())
 
 
+def _safe_filename(name: str, default: str) -> str:
+    """A safe download base filename from user input: drop any extension they typed,
+    keep letters/digits/space/dot/dash/underscore, spaces -> dashes, cap the length."""
+    base = re.sub(r"\.(csv|xlsx|json)$", "", (name or "").strip(), flags=re.I)
+    base = re.sub(r"[^A-Za-z0-9._ -]", "", base).strip().replace(" ", "-")
+    return base[:120] or default
+
+
 @app.get("/categories/{cid}/runs/{run_id}/download")
 def download_run(request: Request, cid: int, run_id: str):
     if not authed(request):
@@ -1781,17 +1790,20 @@ def download_page(request: Request, cid: int, stage: str = "keyword",
             total = shortlist.count(conn, **_merge_extra(sq, ""))
         except Exception:
             total = None
+    # Columns come from the Audit shortlist selection (passed as ?fields=…); fall back
+    # to the default set if the page is opened directly with none.
+    preselect = [f for f in fields if f in shortlist.EXPORT_FIELDS] or list(_AUDIT_DEFAULT_FIELDS)
     resp = templates.TemplateResponse("download.html", ctx(
-        conn, request, category=category, total=total, sections=_DOWNLOAD_SECTIONS,
+        conn, request, category=category, total=total,
         stage=stage, stage_label=dict(_AUDIT_STAGES).get(stage, stage),
-        preselect=[f for f in fields if f in shortlist.EXPORT_FIELDS]))
+        preselect=preselect, default_filename=f"gov-uk-audit-shortlist-{_dl_stamp()}"))
     conn.close()
     return resp
 
 
 @app.get("/categories/{cid}/export")
 def export_category(request: Request, cid: int, format: str = "csv", stage: str = "keyword",
-                    fields: List[str] = Query(default=[])):
+                    filename: str = "", fields: List[str] = Query(default=[])):
     """Build the chosen-format, chosen-field export for an audit stage. Sync route ->
     runs in a threadpool so a large export doesn't block the event loop."""
     if not authed(request):
@@ -1810,7 +1822,7 @@ def export_category(request: Request, cid: int, format: str = "csv", stage: str 
     keys, rows = shortlist.export_rows(conn, fields, **_merge_extra(sq, ""))
     conn.close()
     labels = [shortlist.EXPORT_FIELDS[k][1] for k in keys]
-    name = f"gov-uk-audit-shortlist-{_dl_stamp()}"
+    name = _safe_filename(filename, f"gov-uk-audit-shortlist-{_dl_stamp()}")
 
     if format == "json":
         payload = [{k: r.get(k) for k in keys} for r in rows]
