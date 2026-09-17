@@ -175,14 +175,17 @@ def ctx(conn, request: Request, **extra) -> dict:
     spent = _daily_spend(conn)
     budget = _budget(conn)
     pct = round(spent / budget * 100, 1) if budget > 0 else None
-    role = roles.get_role(conn)
+    user = current_user(request)
+    # In accounts mode the effective role is the logged-in user's own role; in
+    # shared mode it's the single global role set on Settings.
+    role = user["role"] if (AUTH_MODE == "accounts" and user) else roles.get_role(conn)
     base = {"request": request, "corpus_meta": corpus_meta(conn), "active_nav": "categories",
             "budget_bar": {"spent": round(spent, 4), "budget": budget, "pct": pct},
-            # Global system role + a gate helper for templates:
+            # Effective role + a gate helper for templates:
             #   {% if can_use('Administrator') %}…{% endif %}
             "role": role, "can_use": lambda required=None: roles.allows(role, required),
             # Accounts mode: the logged-in user (None in shared-password mode).
-            "auth_mode": AUTH_MODE, "user": current_user(request)}
+            "auth_mode": AUTH_MODE, "user": user}
     base.update(extra)
     return base
 

@@ -28,7 +28,21 @@ DEFAULT_ROLE = ADMINISTRATOR
 SETTING_KEY = "active_role"
 
 # Higher rank can use everything a lower rank can, plus features restricted to it.
-_RANK = {USER: 0, TESTER: 1, ADMINISTRATOR: 2}
+# Understands BOTH vocabularies: the global system roles (Administrator/User/Tester)
+# and the per-user account roles (Admin/Team Manager/User/Tester). "Admin" == the
+# Administrator system role. "Team Manager" gates team features (added later), not
+# system features, so for feature-gating it ranks as a plain User.
+_RANK = {
+    "user": 0, "team manager": 0,
+    "tester": 1,
+    "administrator": 2, "admin": 2,
+}
+
+
+def rank_of(role: Optional[str]) -> int:
+    """Feature-gating rank for any role name (case-insensitive). Unknown -> 0, i.e.
+    least privilege — RBAC checks fail CLOSED, never escalate on an unexpected value."""
+    return _RANK.get((role or "").strip().lower(), 0)
 
 
 def normalise_role(value: Optional[str]) -> str:
@@ -53,7 +67,9 @@ def allows(current_role: Optional[str], required_role: Optional[str]) -> bool:
     """Can `current_role` use a feature that requires `required_role`?
 
     `required_role` of None/"" means the feature is unrestricted (open to everyone).
+    Works for both the global system roles and per-user account roles, and fails
+    closed on any unrecognised current role.
     """
     if not required_role:
         return True
-    return _RANK.get(normalise_role(current_role), 0) >= _RANK.get(normalise_role(required_role), 99)
+    return rank_of(current_role) >= rank_of(required_role)

@@ -37,6 +37,22 @@ class TestAllows(unittest.TestCase):
         self.assertFalse(roles.allows(roles.USER, roles.TESTER))
         self.assertFalse(roles.allows(roles.USER, roles.ADMINISTRATOR))
 
+    def test_account_role_vocabulary(self):
+        # Per-user account roles (Admin / Team Manager / User / Tester) map correctly.
+        self.assertTrue(roles.allows("Admin", "Administrator"))      # Admin == Administrator
+        self.assertTrue(roles.allows("Admin", "Tester"))
+        self.assertFalse(roles.allows("Team Manager", "Administrator"))
+        self.assertFalse(roles.allows("Team Manager", "Tester"))     # team role, not a system role
+        self.assertTrue(roles.allows("Team Manager", None))          # unrestricted feature
+        self.assertTrue(roles.allows("Tester", "Tester"))
+
+    def test_unknown_role_fails_closed(self):
+        # An unexpected role never escalates: it ranks as least privilege.
+        self.assertEqual(roles.rank_of("not-a-role"), 0)
+        self.assertEqual(roles.rank_of(None), 0)
+        self.assertFalse(roles.allows("not-a-role", "Administrator"))
+        self.assertFalse(roles.allows(None, "Tester"))
+
 
 class TestPersistence(unittest.TestCase):
     def setUp(self):
