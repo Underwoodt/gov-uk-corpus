@@ -16,8 +16,9 @@ import os
 import re
 from typing import List, Optional, Sequence
 
-# Point this at your real policy (name and/or URL). Override with the GUARDRAIL_AUP env var.
-AUP_REFERENCE = os.getenv("GUARDRAIL_AUP", "the organisation's Acceptable Use Policy")
+# Generic by default ("company policy") since different outfits use this. Override with
+# the GUARDRAIL_AUP env var to name/link a specific policy.
+AUP_REFERENCE = os.getenv("GUARDRAIL_AUP", "company policy")
 
 _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
 # Conservative UK-style phone numbers: +44 / 0 then 9–10 more digits (spaces/dashes ok).
@@ -29,7 +30,7 @@ _PHONE_RE = re.compile(r"(?<!\w)(?:\+?44\s?\d|0\d)(?:[\s\-]?\d){8,10}(?!\w)")
 _DEFAULT_BLOCKED = ("fuck", "shit", "cunt")
 
 _PERSONAL_REASON = "category definitions must not contain personal contact details"
-_LANGUAGE_REASON = "it contains language the acceptable use policy does not allow"
+_LANGUAGE_REASON = "it contains language company policy does not allow"
 
 
 def _extra_blocked() -> List[str]:
