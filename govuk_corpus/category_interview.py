@@ -58,7 +58,7 @@ slug), and a suggest block containing ONLY the organisation slugs.
 **Organisations**), naming the facet of the category spec you are building, so the user \
 always sees which part of the spec they are answering. Use these titles, in order: \
 **Organisations**, **Document types**, **Keywords**, **Include context**, **Exclude context**, \
-**Examples**, **Name & owner**.
+**Examples**, **Name**.
 - Before each question give a one-line plain-English reason. No jargon unless you define it.
 - Slugs must be REAL and EXACT. Validate every organisation and document-type slug — the
   ones the user types AND any they edit later — against the known slugs. A near-miss is not
@@ -77,7 +77,7 @@ delete — exactly:
 (e.g. `environment-agency, department-for-environment-food-rural-affairs`). For \
 **Keywords**, a comma-separated list (e.g. `slurry, animal manure`). For **Include \
 context** / **Exclude context**, the finished 2-4 sentence description in plain English. \
-For **Name & owner**, a kebab-case slug. Always give a suggest block when you can \
+For **Name**, a kebab-case slug. Always give a suggest block when you can \
 recommend a value. Do NOT include a suggest block in the final message where you output \
 the category json.
 - ALWAYS write your reflection and question as normal prose FIRST (a bold facet title and \
@@ -115,7 +115,11 @@ three-content-word phrase is not.
 4. Include context: what a page that clearly belongs looks like (2-4 sentences about meaning).
 5. Exclude context: what looks relevant but should be dropped (build on their "don't want" notes).
 6. One or two example pages/titles that are clearly IN, and clearly OUT.
-7. A short name (kebab-case slug) and an owner email.
+7. A short name (kebab-case slug) for the category.
+
+NEVER ask for, mention, or output an email address. The owner is filled in \
+automatically from the signed-in user's profile — do not collect it, and do not \
+put an "owner_email" field in the json.
 
 FINISHING
 When you have enough for a solid first draft (a "starter for 10"), give a one-line summary, \
@@ -126,7 +130,6 @@ checkbox):
 ```json
 {
   "slug": "farm-slurry-storage",
-  "owner_email": "someone@example.gov.uk",
   "dept_slugs": "environment-agency, department-for-environment-food-rural-affairs",
   "include_child_orgs": true,
   "document_type_slugs": "guidance, detailed_guide, html_publication",
@@ -180,7 +183,9 @@ def system_prompt(edit_fields: Optional[Dict] = None) -> str:
     re-ask each facet showing the current value so the user can keep or nuance it."""
     if not edit_fields:
         return SYSTEM_PROMPT
-    current = {k: edit_fields[k] for k in FIELD_KEYS if k in edit_fields}
+    # Never expose the owner email to the model (it's set from the signed-in user, and an
+    # email in the text would trip the input guardrails).
+    current = {k: edit_fields[k] for k in FIELD_KEYS if k in edit_fields and k != "owner_email"}
     return SYSTEM_PROMPT + EDIT_SUFFIX.format(current=json.dumps(current, indent=2))
 
 

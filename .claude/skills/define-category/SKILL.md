@@ -151,10 +151,11 @@ welfare generally." If they can't think of any, that's fine — leave it light a
 Put the IN examples in keep-hints, the OUT ones in drop-hints. Even rough titles help the
 AI's exclusion pass. Optional but valuable — skip gracefully if they have none.
 
-### Step 7 — Name and owner *(Housekeeping)*
-> "Last bit — a short name for this, and an email so we know whose it is."
-Suggest a kebab-case slug from the topic (e.g. `farm-slurry-storage`) and confirm the owner
-email.
+### Step 7 — Name *(Housekeeping)*
+> "Last bit — a short name for this."
+Suggest a kebab-case slug from the topic (e.g. `farm-slurry-storage`). **Do not ask for an
+email** — the owner is filled in automatically from the signed-in user's profile, and an
+email typed into the chat trips the input guardrails.
 
 ## Pitfalls to actively catch
 
