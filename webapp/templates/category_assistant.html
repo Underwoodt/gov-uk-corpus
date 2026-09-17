@@ -11,8 +11,8 @@
     #composer { max-width:720px; margin-top:8px; }
     .composer-box { position:relative; }
     .composer-box textarea { width:100%; box-sizing:border-box; padding:12px 56px 12px 14px;
-      border:2px solid var(--black); border-radius:12px; font:inherit; resize:none;
-      min-height:120px; max-height:340px; overflow-y:auto; line-height:1.45; }
+      border:2px solid var(--black); border-radius:12px; font:inherit; resize:vertical;
+      min-height:160px; max-height:640px; overflow-y:auto; line-height:1.45; }
     .composer-box textarea:disabled { background:var(--surface-2); }
     /* Send / Stop buttons inside the box (bottom-right), Claude-style. */
     .inbox-btn { position:absolute; right:14px; bottom:14px; width:38px; height:38px; border:0;
@@ -88,7 +88,10 @@
     }
     let currentAbort = null;   // AbortController for the in-flight request
     // Grow the answer box with its content (up to the CSS max-height).
-    function autoResize() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 340) + "px"; }
+    function autoResize() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 640) + "px"; }
+    // The main document types we expect people to search for — offered (to edit down) when
+    // the assistant can't understand an answer.
+    const MAIN_DOC_TYPES = {{ main_doc_types | tojson }};
     input.addEventListener("input", autoResize);
     const messages = [];   // {role, content}  (parallel to the .msg nodes in #chat)
     let draftFields = null;
@@ -191,15 +194,25 @@
         let bubble;
         if (prose) {
           bubble = addMsg("assistant", j.reply);
-        } else {
-          // No readable prose: show an honest note, not a promise of a suggestion that isn't there.
+        } else if (prefill) {
+          // No prose, but a genuine suggestion is going into the box below.
           const d = document.createElement("div");
           d.className = "msg bot";
-          d.innerHTML = prefill
-            ? "<em>Here's my suggestion — review or edit it in the box below, then send.</em>"
-            : "<em>Sorry, that didn't come through clearly. Please rephrase your last answer, or use ‹ Back a step.</em>";
+          d.innerHTML = "<em>Here's my suggestion — review or edit it in the box below, then send.</em>";
           chat.appendChild(d); d.scrollIntoView({block:"end"});
           bubble = d;
+        } else {
+          // The assistant couldn't understand the answer. Rather than apologise and stall,
+          // offer the full list of document types we expect people to search for, pre-filled
+          // in the box for the user to edit down to what they want (or replace).
+          const d = document.createElement("div");
+          d.className = "msg bot";
+          d.innerHTML = "<em>I didn't quite catch that. Here's the full list of document types we usually "
+            + "search — edit it down to the ones you want (or replace it), then send.</em>";
+          chat.appendChild(d); d.scrollIntoView({block:"end"});
+          bubble = d;
+          input.value = MAIN_DOC_TYPES.join(", ");
+          autoResize();
         }
         attachRaw(bubble, j.reply);   // Advanced+ can reveal the untouched model reply
         if (prefill) { input.value = j.suggestion; autoResize(); }

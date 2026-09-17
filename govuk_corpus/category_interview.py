@@ -96,8 +96,12 @@ Step 0 is the user's opening brain-dump — read it first, then confirm/clarify 
 below, leading with your recommendation drawn from it:
 1. Organisations/departments — map plain names to slugs; recommend whether to include their \
 agencies/child bodies.
-2. Document types (guidance, detailed_guide, news_story, publication, html_publication, \
-form, statistics, consultation, policy_paper, regulation...).
+2. Document types. The main types people search for (recommend from these first): \
+html_publication, hmrc_manual_section, guidance, detailed_guide, form, guide, \
+manual_section, cma_case, statutory_guidance, organisation, authored_article, hmrc_manual, \
+transaction, service_manual_guide, farming_grant, manual, countryside_stewardship_grant. \
+Other valid slugs exist (news_story, publication, statistics, consultation, policy_paper...) \
+but prefer a main type when it fits.
 3. Keywords: the words a relevant page would contain, plus synonyms (apply the traps above).
 4. Include context: what a page that clearly belongs looks like (2-4 sentences about meaning).
 5. Exclude context: what looks relevant but should be dropped (build on their "don't want" notes).
@@ -193,12 +197,23 @@ def parse_suggestion(reply: Optional[str]) -> Optional[str]:
     return value or None
 
 
-# The gov.uk document-type slugs the funnel understands, for recommending real slugs when
-# a user names doc types loosely ("news", "forms", "guides").
-DOCUMENT_TYPES = (
-    "guidance", "detailed_guide", "news_story", "press_release", "publication",
-    "html_publication", "form", "statistics", "consultation", "policy_paper", "regulation",
-    "correspondence", "notice", "transparency", "speech", "case_study", "map",
+# The main document types we expect people to search for, in priority order. These are
+# recommended first, and are the fallback list offered (for the user to edit down) whenever
+# the assistant can't understand an answer.
+MAIN_DOCUMENT_TYPES = (
+    "html_publication", "hmrc_manual_section", "guidance", "detailed_guide", "form",
+    "guide", "manual_section", "cma_case", "statutory_guidance", "organisation",
+    "authored_article", "hmrc_manual", "transaction", "service_manual_guide",
+    "farming_grant", "manual", "countryside_stewardship_grant",
+)
+
+# The full gov.uk document-type slug vocabulary the funnel understands, for recommending
+# real slugs when a user names doc types loosely ("news", "forms", "guides"). Includes the
+# main types above plus other common slugs.
+DOCUMENT_TYPES = MAIN_DOCUMENT_TYPES + (
+    "news_story", "press_release", "publication", "statistics", "consultation",
+    "policy_paper", "regulation", "correspondence", "notice", "transparency", "speech",
+    "case_study", "map",
 )
 _DT_SYNONYMS = {
     "news": "news_story", "press": "press_release", "forms": "form", "stats": "statistics",

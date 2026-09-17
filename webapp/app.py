@@ -742,7 +742,8 @@ def category_assistant_page(request: Request):
                    "name": cat.prettify(c.get("slug")) or (c.get("description") or "Untitled")}
                   for c in cats]
     resp = templates.TemplateResponse("category_assistant.html", ctx(
-        conn, request, greeting=category_interview.GREETING, categories=categories))
+        conn, request, greeting=category_interview.GREETING, categories=categories,
+        main_doc_types=list(category_interview.MAIN_DOCUMENT_TYPES)))
     conn.close()
     return resp
 
