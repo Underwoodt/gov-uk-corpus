@@ -86,7 +86,7 @@ Read it carefully. From here on, every step below LEADS with a concrete recommen
 drawn from this dump ("Based on that, I'd suggest… — keep, or change?") rather than an open
 question. If it's clearly two topics, gently suggest two categories.
 
-### Step 2 — Who publishes it? *(Organisations)*
+### Step 1 — Who publishes it? *(Organisations)*
 > "Which government departments or agencies are responsible for this? Even a rough guess
 > — I can map the names to the right ones."
 - Turn plain names into slugs (e.g. "Environment Agency" → `environment-agency`). If they
