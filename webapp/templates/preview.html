@@ -82,7 +82,7 @@
 
     <div class="tabs" role="tablist" style="margin-bottom:22px;">
       <a href="#" class="subtab current" data-tab="exact" data-tabid="{{ page_ref }}a" role="tab">Keyword Matching</a>
-      <a href="#" class="subtab" data-tab="semantic" data-tabid="{{ page_ref }}b" role="tab">Semantic Match</a>
+      <a href="#" class="subtab" data-tab="semantic" data-tabid="{{ page_ref }}b" role="tab">AI Pipeline</a>
       <a href="#" class="subtab" data-tab="results" data-tabid="{{ page_ref }}c" role="tab">Funnel Results</a>
     </div>
 
@@ -124,44 +124,56 @@
     </section>
 
     <section id="tab-semantic" class="subpanel" role="tabpanel" hidden>
-    <h2 style="margin-top:10px;">AI evaluation (inclusion → exclusion)</h2>
+    <h2 style="margin-top:10px;">AI evaluation pipeline (inclusion → exclusion)</h2>
     <p class="hint" style="margin-top:-20px;">Ask the AI to judge each shortlisted page against this category's
       <em>Include</em> / <em>Exclude</em> context — keep or drop, with a score and reason. Each <strong>run</strong>
       uses one fixed model (set in Settings), so you can start a new run after switching model and compare results
       and cost. Runs in capped batches; uses API credit.</p>
-    <div class="controls">
-      <label>Evaluate next
-        <input id="eval-n" type="number" value="10" min="1" max="{{ eval_max_docs }}" style="width:80px;padding:4px;border:2px solid var(--black);">
-        pages</label>
-      <span class="secondary">(max {{ eval_max_docs }}/run — Settings)</span>
-      <button type="button" class="btn secondary-btn" id="run-eval">Evaluate (active run)</button>
-      <button type="button" class="btn secondary-btn" id="new-run">Start new run</button>
-      <button type="button" class="btn secondary-btn" id="run-bg" title="Runs the whole shortlist on the server — you can close this page">Run to completion (background)</button>
-      <button type="button" class="btn secondary-btn" id="stop-bg" hidden style="color:#d4351c;">Stop background run</button>
-      <span id="eval-status" class="secondary"></span>
+
+    {# Nested tabs: the active run's controls vs the history of all runs. #}
+    <div class="tabs" role="tablist" style="margin-bottom:20px;">
+      <a href="#" class="subtab2 current" data-subtab2="active" data-tabid="{{ page_ref }}b1" role="tab">Active Run</a>
+      <a href="#" class="subtab2" data-subtab2="history" data-tabid="{{ page_ref }}b2" role="tab">Run History</a>
     </div>
-    <p id="bg-note" class="hint" style="margin:0 0 10px;" hidden>Running on the server — it keeps going even if you
-      leave this page. Come back any time to see progress.</p>
-    <p id="active-run-line" class="secondary" style="margin:0 0 10px;"></p>
-    <div id="eval-progress-wrap" hidden style="max-width:640px;margin:0 0 15px;">
-      <div style="height:18px;border:1px solid var(--grey-border);background:var(--white);">
-        <div id="eval-progress-bar" style="height:100%;width:0%;background:var(--blue);transition:width .2s;"></div>
+
+    <div id="tab2-active" class="subpanel2" role="tabpanel">
+      <div class="controls">
+        <label>Evaluate next
+          <input id="eval-n" type="number" value="10" min="1" max="{{ eval_max_docs }}" style="width:80px;padding:4px;border:2px solid var(--black);">
+          pages</label>
+        <span class="secondary">(max {{ eval_max_docs }}/run — Settings)</span>
+        <button type="button" class="btn secondary-btn" id="run-eval">Evaluate (active run)</button>
+        <button type="button" class="btn secondary-btn" id="new-run">Start new run</button>
+        <button type="button" class="btn secondary-btn" id="run-bg" title="Runs the whole shortlist on the server — you can close this page">Run to completion (background)</button>
+        <button type="button" class="btn secondary-btn" id="stop-bg" hidden style="color:#d4351c;">Stop background run</button>
+        <span id="eval-status" class="secondary"></span>
       </div>
-      <p id="eval-averages" class="secondary timing" style="margin:6px 0 0;"></p>
+      <p id="bg-note" class="hint" style="margin:0 0 10px;" hidden>Running on the server — it keeps going even if you
+        leave this page. Come back any time to see progress.</p>
+      <p id="active-run-line" class="secondary" style="margin:0 0 10px;"></p>
+      <div id="eval-progress-wrap" hidden style="max-width:640px;margin:0 0 15px;">
+        <div style="height:18px;border:1px solid var(--grey-border);background:var(--white);">
+          <div id="eval-progress-bar" style="height:100%;width:0%;background:var(--blue);transition:width .2s;"></div>
+        </div>
+        <p id="eval-averages" class="secondary timing" style="margin:6px 0 0;"></p>
+      </div>
     </div>
 
-    <h3 style="margin:20px 0 6px;">Runs</h3>
-    <table id="runs-table" hidden>
-      <thead><tr><th title="The run that Evaluate / background runs add to">Active</th>
-        <th>Name</th><th>Started</th><th>Elapsed</th>
-        <th class="num">Pages</th><th class="num">Keep</th><th class="num">Drop</th>
-        <th class="num">Tokens in</th><th class="num">Tokens out</th><th class="num">Cost</th>
-        <th></th></tr></thead>
-      <tbody></tbody>
-    </table>
-    <p id="runs-empty" class="secondary" hidden>No runs yet. Click <em>Evaluate</em> to start one.</p>
+    <div id="tab2-history" class="subpanel2" role="tabpanel" hidden>
+      <p class="hint" style="margin-top:0;">Every run for this category. Select a run's radio to make it the
+        <strong>active</strong> run (what <em>Evaluate</em> adds to); open a run's name for its per-page details.</p>
+      <table id="runs-table" hidden>
+        <thead><tr><th title="The run that Evaluate / background runs add to">Active</th>
+          <th>Name</th><th>Started</th><th>Elapsed</th>
+          <th class="num">Pages</th><th class="num">Keep</th><th class="num">Drop</th>
+          <th class="num">Tokens in</th><th class="num">Tokens out</th><th class="num">Cost</th>
+          <th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p id="runs-empty" class="secondary" hidden>No runs yet. Start one on the <em>Active Run</em> tab.</p>
+    </div>
 
-    <p style="margin-top:30px;border-top:1px solid var(--mid-grey);padding-top:16px;">
+    <p style="margin-top:24px;border-top:1px solid var(--mid-grey);padding-top:16px;">
       <a href="{{ url_for('shortlist_page', cid=category.id) }}?tab=dashboard">Audit dashboard →</a>
       <span class="secondary" style="font-size:14px;"> — freshness, page size, reading age and GDS issues at each funnel level</span></p>
     </section>
@@ -697,7 +709,26 @@
       try { const s = await (await fetch(`/api/categories/${CID}/evaluate-bg/status`)).json(); if (s.running) beginBgPolling(); }
       catch (e) {}
     })();
-    // Sub-tabs: Exact Match (deterministic funnel) vs Semantic Match (AI).
+    // Nested tabs inside AI Pipeline: Active Run (controls) vs Run History (runs list).
+    const nestedBtns = document.querySelectorAll(".subtab2");
+    let currentNested = "active";
+    try { currentNested = localStorage.getItem("preview-subtab2-" + CID) || "active"; } catch (e) {}
+    if (!["active", "history"].includes(currentNested)) currentNested = "active";
+    function showNested(which) {
+      currentNested = which;
+      nestedBtns.forEach(b => b.classList.toggle("current", b.dataset.subtab2 === which));
+      document.getElementById("tab2-active").hidden = which !== "active";
+      document.getElementById("tab2-history").hidden = which !== "history";
+      // Only own the pane-id when the AI Pipeline panel is the visible top-level tab.
+      const active = [...nestedBtns].find(b => b.dataset.subtab2 === which);
+      if (active && !document.getElementById("tab-semantic").hidden)
+        document.getElementById("pane-id").textContent = active.dataset.tabid;
+      try { localStorage.setItem("preview-subtab2-" + CID, which); } catch (e) {}
+    }
+    nestedBtns.forEach(b => b.addEventListener("click", e => { e.preventDefault(); showNested(b.dataset.subtab2); }));
+    showNested(currentNested);   // sync the nested panels to the stored choice
+
+    // Sub-tabs: Keyword Matching (deterministic funnel), AI Pipeline (runs), Funnel Results.
     (function () {
       const btns = document.querySelectorAll(".subtab");
       function show(tab) {
@@ -707,6 +738,7 @@
         document.getElementById("tab-results").hidden = tab !== "results";
         const active = [...btns].find(b => b.dataset.tab === tab);
         document.getElementById("pane-id").textContent = active ? active.dataset.tabid : "";
+        if (tab === "semantic") showNested(currentNested);   // pane-id → active nested tab
         if (tab === "exact") drawSankey();   // redraw at the now-visible width
         if (tab === "results") {
           const v = document.getElementById("rr-run-select").value;

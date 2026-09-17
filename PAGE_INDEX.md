@@ -62,12 +62,15 @@ we can pin the report to an exact page.
 Sub-tabs within a page carry the page's ID plus a letter (as a `data-tabid`); the active
 sub-tab's id shows in light grey in the bottom-left corner of the tab pane
 (`<span class="pane-id">`). Keep the letters contiguous and update this list when
-sub-tabs change.
+sub-tabs change. A sub-tab that itself contains nested tabs appends a digit to its
+letter (e.g. `guc-0003b1`); the nested pane's id is what shows in the corner.
 
 | ID | Sub-tab | Page |
 |----|---------|------|
 | guc-0003a | Keyword Matching | Preview and run (`guc-0003`) |
-| guc-0003b | Semantic Match | Preview and run (`guc-0003`) |
+| guc-0003b | AI Pipeline | Preview and run (`guc-0003`) |
+| guc-0003b1 | AI Pipeline › Active Run | Preview and run (`guc-0003`) |
+| guc-0003b2 | AI Pipeline › Run History | Preview and run (`guc-0003`) |
 | guc-0003c | Funnel Results | Preview and run (`guc-0003`) |
 | guc-0004a | Shortlist | Audit Results (`guc-0004`) |
 | guc-0004b | Dashboard | Audit Results (`guc-0004`) |
