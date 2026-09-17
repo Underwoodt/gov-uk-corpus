@@ -156,6 +156,24 @@
         </div>
         <p id="eval-averages" class="secondary timing" style="margin:6px 0 0;"></p>
       </div>
+
+      {# Summary of the active run's AI pipeline (phase chain), with its status. #}
+      <div id="active-summary" hidden style="margin-top:22px;">
+        <h3 style="margin:0 0 10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:19px;">
+          <span id="as-name"></span><span id="as-status" class="pill"></span>
+        </h3>
+        <div class="table-wrap">
+          <table style="font-size:14px;">
+            <thead><tr>
+              <th>Phase</th><th>Supplier</th><th>Model</th>
+              <th class="num">Pages</th><th class="num">Keep</th><th class="num">Drop</th>
+              <th class="num">Tokens in</th><th class="num">Tokens out</th><th class="num">Cost</th>
+            </tr></thead>
+            <tbody id="as-rows"></tbody>
+          </table>
+        </div>
+      </div>
+
       <p style="margin-top:24px;border-top:1px solid var(--mid-grey);padding-top:16px;">
         <a href="{{ url_for('shortlist_page', cid=category.id) }}?tab=dashboard">Audit dashboard →</a>
         <span class="secondary" style="font-size:14px;"> — freshness, page size, reading age and GDS issues at each funnel level</span></p>
@@ -518,6 +536,33 @@
       fillFunnelAiRow("incl", incl);
       fillFunnelAiRow("excl", excl);
       drawSankey();
+      loadActiveSummary();
+    }
+
+    // Active Run summary: the active run's phase chain + status (complete /
+    // incomplete / in progress), refreshed whenever the runs list is reloaded.
+    function statusPill(status) {
+      const m = { complete:   { t: "Complete",    bg: "#cce2d8", c: "#005a30" },
+                  incomplete: { t: "Incomplete",  bg: "#fdf3d8", c: "#7a5b00" },
+                  in_progress:{ t: "In Progress", bg: "#d2e2f1", c: "#0b3d6b" } };
+      return m[status] || m.incomplete;
+    }
+    async function loadActiveSummary() {
+      const box = document.getElementById("active-summary");
+      let j;
+      try { j = await (await fetch(`/api/categories/${CID}/active-run`)).json(); }
+      catch (e) { return; }
+      if (!j || !j.run) { box.hidden = true; return; }
+      box.hidden = false;
+      document.getElementById("as-name").textContent = j.run.name || j.run.run_id;
+      const p = statusPill(j.status), el = document.getElementById("as-status");
+      el.textContent = p.t; el.style.background = p.bg; el.style.color = p.c;
+      document.getElementById("as-rows").innerHTML = (j.chain || []).map(r =>
+        `<tr><td>${esc(r.phase || "—")}</td><td>${esc(r.provider || "—")}</td>`
+        + `<td class="mono">${esc(r.model || "—")}</td>`
+        + `<td class="num">${fmtInt(r.pages)}</td><td class="num">${fmtInt(r.kept)}</td>`
+        + `<td class="num">${fmtInt(r.dropped)}</td><td class="num">${fmtInt(r.in_tokens)}</td>`
+        + `<td class="num">${fmtInt(r.out_tokens)}</td><td class="num">$${(r.cost || 0).toFixed(6)}</td></tr>`).join("");
     }
 
     function fillFunnelAiRow(stage, run) {
