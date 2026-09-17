@@ -26,7 +26,7 @@
   <div class="wrap body">
     <div class="phase">
       <span class="tag">Alpha</span>
-      {% if role is defined and role %}<span class="tag" title="Active system role (set in Settings)">{{ role }}</span>{% endif %}
+      {% if role is defined and role %}<span class="tag" title="{{ 'Your role' if user else 'Active system role (set in Settings)' }}">{{ role }}</span>{% endif %}
       <span class="meta">{{ corpus_meta }}</span>
       {% if budget_bar %}
       {% set b = budget_bar %}
