@@ -49,6 +49,18 @@ class TestValidation(unittest.TestCase):
     def test_parse_list(self):
         self.assertEqual(cat.parse_list("a, b\n c ,,"), ["a", "b", "c"])
 
+    def test_slug_accepts_hyphens_and_underscores(self):
+        self.assertEqual(cat.validate(_valid_data(slug="farm-slurry-storage")), [])   # kebab-case ok
+        self.assertEqual(cat.validate(_valid_data(slug="animal_liquid_waste")), [])   # snake_case still ok
+
+    def test_slug_rejects_spaces_and_uppercase(self):
+        errs = cat.validate(_valid_data(slug="Farm Slurry"))
+        self.assertTrue(any("hyphens and underscores" in e for e in errs))
+
+    def test_prettify_handles_hyphens_and_underscores(self):
+        self.assertEqual(cat.prettify("farm-slurry-storage"), "Farm Slurry Storage")
+        self.assertEqual(cat.prettify("animal_liquid_waste"), "Animal Liquid Waste")
+
 
 class TestCrud(unittest.TestCase):
     def setUp(self):
