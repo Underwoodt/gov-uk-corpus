@@ -157,6 +157,9 @@
         </div>
         <p id="eval-averages" class="secondary timing" style="margin:6px 0 0;"></p>
       </div>
+      <p style="margin-top:24px;border-top:1px solid var(--mid-grey);padding-top:16px;">
+        <a href="{{ url_for('shortlist_page', cid=category.id) }}?tab=dashboard">Audit dashboard →</a>
+        <span class="secondary" style="font-size:14px;"> — freshness, page size, reading age and GDS issues at each funnel level</span></p>
     </div>
 
     <div id="tab2-history" class="subpanel2" role="tabpanel" hidden>
@@ -172,10 +175,6 @@
       </table>
       <p id="runs-empty" class="secondary" hidden>No runs yet. Start one on the <em>Active Run</em> tab.</p>
     </div>
-
-    <p style="margin-top:24px;border-top:1px solid var(--mid-grey);padding-top:16px;">
-      <a href="{{ url_for('shortlist_page', cid=category.id) }}?tab=dashboard">Audit dashboard →</a>
-      <span class="secondary" style="font-size:14px;"> — freshness, page size, reading age and GDS issues at each funnel level</span></p>
     </section>
 
     <section id="tab-results" class="subpanel" role="tabpanel" hidden>
