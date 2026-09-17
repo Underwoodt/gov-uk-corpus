@@ -34,6 +34,8 @@ a:focus, button:focus, input:focus, textarea:focus, select:focus, summary:focus 
 
 /* ---- layout ---- */
 .masthead { background:var(--black); border-bottom:3px solid var(--blue); padding:14px 0; }
+.masthead .wrap { display:flex; align-items:center; gap:14px; }
+.masthead .brand-logo { height:36px; width:auto; display:block; flex:none; }
 .masthead .brand { color:var(--white); font-size:22px; font-weight:700; letter-spacing:-.01em; line-height:1.2; }
 .navbar { background:var(--white); border-bottom:1px solid var(--border);
   box-shadow:var(--shadow-sm); position:sticky; top:0; z-index:5; }

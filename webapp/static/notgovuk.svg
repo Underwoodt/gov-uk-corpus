@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 225" role="img"
+     aria-label="NOT.GOV.UK — Defra supplier, operated with GOV.UK API-supplied data">
+  <style>
+    .wm  { font-family:"Arial Black","Helvetica Neue",Arial,sans-serif; font-weight:900; }
+    .tag { font-family:Arial,"Helvetica Neue",sans-serif; font-weight:700; letter-spacing:1px; }
+  </style>
+  <!-- Wordmark: light grey with the two dots in cyan. textLength pins the width so
+       the whole lockup fits the viewBox (an <img>-rendered SVG clips to the viewBox). -->
+  <text x="8" y="150" class="wm" font-size="185" fill="#e7e9e9"
+        textLength="1024" lengthAdjust="spacingAndGlyphs">NOT<tspan fill="#10e0e6">.</tspan>GOV<tspan fill="#10e0e6">.</tspan>UK</text>
+  <!-- Tagline stretched to the same width, sitting under the wordmark. -->
+  <text x="8" y="206" class="tag" font-size="40" fill="#c4c8c8"
+        textLength="1024" lengthAdjust="spacingAndGlyphs">Defra Supplier Operated with GOV.UK API supplied data</text>
+</svg>
