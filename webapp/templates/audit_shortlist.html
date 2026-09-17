@@ -17,6 +17,16 @@
     #issues-table { font-size:13px; }
     #issues-table th, #issues-table td { padding:6px 10px; }
     #issues-table th { white-space:normal; }
+    /* Roll-down disclosure: a clickable bar with a chevron that rotates when open. */
+    summary.rolldown { display:inline-flex; align-items:center; gap:10px; cursor:pointer;
+      list-style:none; font-weight:700; font-size:15px; color:var(--blue);
+      padding:9px 14px; border:1px solid var(--border-mid); border-radius:var(--radius-sm);
+      background:var(--surface-2); width:max-content; max-width:100%; margin:0; }
+    summary.rolldown::-webkit-details-marker { display:none; }
+    summary.rolldown::before { content:"›"; font-size:18px; line-height:1; color:var(--muted);
+      transition:transform .15s ease; transform:rotate(0deg); }
+    details[open] > summary.rolldown::before { transform:rotate(90deg); }
+    summary.rolldown:hover { background:var(--surface-3); border-color:var(--muted); }
   </style>
 
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
@@ -50,7 +60,7 @@
         <button class="btn secondary-btn" id="audit-download" type="button">Download…</button>
       </div>
       <details style="margin:6px 0 14px;max-width:760px;">
-        <summary style="cursor:pointer;font-weight:700;">Select Columns for Display or download</summary>
+        <summary class="rolldown">Select Columns for Display or download</summary>
         <div style="display:flex;flex-wrap:wrap;gap:8px 28px;margin-top:10px;">
           {% for section, section_fields in audit_sections %}
           <div>
