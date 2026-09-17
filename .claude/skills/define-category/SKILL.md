@@ -94,8 +94,7 @@ Offer the common gov.uk types and let them pick:
 `correspondence`, `notice`, `transparency`, `speech`.
 - If they only want stable reference material, steer toward `guidance` / `detailed_guide`
   and away from `news_story` / `press_release`.
-- **Tip:** if they want the substance of publications, mention that a `publication` often
-  has its content in an attached `html_publication` page — include both if unsure.
+- **Tip:** Focus on a reduced set if possible. If it's too broad you'll get less signal and more noise
 - Leaving this blank means *all* types — fine, but say so.
 
 ### Step 4 — Search terms *(Keywords)* — the highest-leverage step
