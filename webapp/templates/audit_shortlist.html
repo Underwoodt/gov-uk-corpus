@@ -9,6 +9,14 @@
       border-radius:20px; padding:6px 16px; font-size:15px; font-weight:700; cursor:pointer; }
     .stage-pill.current { background:var(--black,#0b0c0c); color:#fff; }
     .stat { border:1px solid var(--mid-grey); border-radius:5px; padding:8px 14px; min-width:130px; }
+    /* Dashboard: Freshness chart and the issues table side by side, stacking when narrow. */
+    .dash-layout { display:flex; gap:28px; align-items:flex-start; flex-wrap:wrap; margin:8px 0 0; }
+    .dash-layout .dash-fresh { flex:1 1 280px; min-width:0; }
+    .dash-layout .dash-issues { flex:2 1 420px; min-width:0; }
+    /* Compact issues table: tighter rows; headings still wrap (global th rule). */
+    #issues-table { font-size:13px; }
+    #issues-table th, #issues-table td { padding:6px 10px; }
+    #issues-table th { white-space:normal; }
   </style>
 
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
@@ -112,16 +120,21 @@
               <div id="avg-size" style="font-size:20px;font-weight:700;">—</div></div>
           </div>
 
-          <h3 style="margin:14px 0 6px;">Freshness</h3>
-          <table style="width:100%;max-width:560px;"><tbody id="freshness-rows"></tbody></table>
-
-          <h3 style="margin:18px 0 6px;">Top plain-English issues <span id="issues-note" class="secondary" style="font-weight:400;font-size:13px;"></span></h3>
-          <p class="hint" style="margin:0 0 6px;">By impact (severity × how often), so the classes pulling the rating down come first.</p>
-          <table style="max-width:760px;">
-            <thead><tr><th>Issue class</th><th class="num">Count</th><th class="num">Impact</th><th>Why it matters</th></tr></thead>
-            <tbody id="issue-rows"></tbody>
-          </table>
-          <p id="issues-empty" class="secondary" hidden>No plain-English issues recorded for these pages.</p>
+          <div class="dash-layout">
+            <div class="dash-fresh">
+              <h3 style="margin:0 0 6px;">Freshness</h3>
+              <table style="width:100%;"><tbody id="freshness-rows"></tbody></table>
+            </div>
+            <div class="dash-issues">
+              <h3 style="margin:0 0 6px;">Top plain-English issues <span id="issues-note" class="secondary" style="font-weight:400;font-size:13px;"></span></h3>
+              <p class="hint" style="margin:0 0 6px;">By impact (severity × how often), so the classes pulling the rating down come first.</p>
+              <table id="issues-table">
+                <thead><tr><th>Issue class</th><th class="num">Count</th><th class="num">Impact</th><th>Why it matters</th></tr></thead>
+                <tbody id="issue-rows"></tbody>
+              </table>
+              <p id="issues-empty" class="secondary" hidden>No plain-English issues recorded for these pages.</p>
+            </div>
+          </div>
         </div>
       </div>
     </section>
