@@ -704,10 +704,34 @@ def category_assistant_page(request: Request):
     if not authed(request):
         return login_redirect(request)
     conn = connect()
+    cats = cat.list_categories(conn)
+    categories = [{"id": c["id"],
+                   "name": cat.prettify(c.get("slug")) or (c.get("description") or "Untitled")}
+                  for c in cats]
     resp = templates.TemplateResponse("category_assistant.html", ctx(
-        conn, request, greeting=category_interview.GREETING))
+        conn, request, greeting=category_interview.GREETING, categories=categories))
     conn.close()
     return resp
+
+
+@app.get("/api/categories/{cid}/definition")
+def api_category_definition(request: Request, cid: int):
+    """The category's current field values, for the assistant to import and refine."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    conn = connect()
+    try:
+        c = cat.get_category(conn, cid)
+        if not c:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        name = cat.prettify(c.get("slug")) or (c.get("description") or "Untitled")
+        fields = {k: c.get(k) for k in category_interview.FIELD_KEYS
+                  if c.get(k) is not None and c.get(k) != ""}
+        if "include_child_orgs" in c:
+            fields["include_child_orgs"] = bool(c.get("include_child_orgs"))
+        return JSONResponse({"name": name, "fields": fields})
+    finally:
+        conn.close()
 
 
 @app.post("/api/categories/assistant")
@@ -718,6 +742,7 @@ async def api_category_assistant(request: Request):
     messages = body.get("messages") or []
     if not isinstance(messages, list) or not messages:
         return JSONResponse({"error": "no messages"}, status_code=400)
+    edit_fields = body.get("edit_fields") if isinstance(body.get("edit_fields"), dict) else None
     # Keep only role/content and cap history length to bound cost.
     clean = [{"role": m.get("role"), "content": str(m.get("content") or "")}
              for m in messages[-24:] if m.get("role") in ("user", "assistant")]
@@ -729,7 +754,8 @@ async def api_category_assistant(request: Request):
             return JSONResponse({"error": f"Daily AI budget of ${budget:.2f} reached "
                                  f"(${spent:.4f} spent today)."}, status_code=429)
         cfg = _ai_config(conn)
-        res = await run_in_threadpool(_ai_chat, cfg, category_interview.SYSTEM_PROMPT, clean)
+        res = await run_in_threadpool(_ai_chat, cfg,
+                                      category_interview.system_prompt(edit_fields), clean)
         if res.get("error"):
             return JSONResponse({"error": res["error"]}, status_code=502)
         _log_ai_usage(conn, res.get("cost_usd"), res.get("input_tokens"),
