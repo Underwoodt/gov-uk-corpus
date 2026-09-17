@@ -105,10 +105,10 @@ question. If it's clearly two topics, gently suggest two categories.
 > "For the topic you described, I'd suggest these page types: … — keep, add to, or change them?"
 **Lead with a recommended subset** drawn from the brain-dump — just the few types that fit what
 they're after, not the whole list. Prefer the main types we expect people to search for:
-`html_publication`, `hmrc_manual_section`, `guidance`, `detailed_guide`, `form`, `guide`,
-`manual_section`, `cma_case`, `statutory_guidance`, `organisation`, `authored_article`,
-`hmrc_manual`, `transaction`, `service_manual_guide`, `farming_grant`, `manual`,
-`countryside_stewardship_grant`.
+`countryside_stewardship_grant`, `detailed_guide`, `farming_grant`, `form`, `guidance`,
+`guide`, `hmrc_manual`, `manual`, `manual_section`, `service_manual_guide`,
+`statutory_guidance`. Other slugs (e.g. `html_publication`, `news_story`) are still valid if
+they fit.
 - If they only want stable reference material, steer toward `guidance` / `detailed_guide`.
 - **Validate each type — plurals don't exist.** `guidances`, `forms`, `manuals` are not
   slugs; the slugs are `guidance`, `form`, `manual`. If a word isn't an exact slug, offer the

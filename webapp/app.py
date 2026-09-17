@@ -172,10 +172,7 @@ def cached_count(conn, **filters) -> int:
     return n
 
 # Prefilled into the Page Types box on a new category (edit/clear as needed).
-DEFAULT_DOC_TYPES = "\n".join([
-    "guidance", "detailed_guide", "statutory_guidance", "document_collection",
-    "manual_section", "html_publication", "guide", "manual",
-])
+DEFAULT_DOC_TYPES = "\n".join(category_interview.MAIN_DOCUMENT_TYPES)
 
 
 # ---- helpers -------------------------------------------------------------

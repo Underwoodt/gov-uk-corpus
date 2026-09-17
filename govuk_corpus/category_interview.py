@@ -101,10 +101,9 @@ below, leading with your recommendation drawn from it:
 agencies/child bodies.
 2. Document types. LEAD with a recommended SUBSET drawn from the brain-dump — just the few \
 types that fit what they're after, not the whole list. Recommend from the main types people \
-search for: html_publication, hmrc_manual_section, guidance, detailed_guide, form, guide, \
-manual_section, cma_case, statutory_guidance, organisation, authored_article, hmrc_manual, \
-transaction, service_manual_guide, farming_grant, manual, countryside_stewardship_grant. \
-Other valid slugs exist (news_story, publication, statistics, consultation, policy_paper...) \
+search for: countryside_stewardship_grant, detailed_guide, farming_grant, form, guidance, \
+guide, hmrc_manual, manual, manual_section, service_manual_guide, statutory_guidance. Other \
+valid slugs exist (html_publication, news_story, publication, statistics, consultation...) \
 but prefer a main type when it fits. ONLY if the user gives a non-answer ("not sure", "you \
 decide", or nothing usable) should you present the FULL list of main types above and ask \
 them to select the ones they want.
@@ -211,23 +210,24 @@ def parse_suggestion(reply: Optional[str]) -> Optional[str]:
     return value or None
 
 
-# The main document types we expect people to search for, in priority order. These are
-# recommended first, and are the fallback list offered (for the user to edit down) whenever
-# the assistant can't understand an answer.
+# The main document types we expect people to search for — the default selection on the
+# category form and the set the assistant recommends from (and offers as the fallback list
+# when it can't understand an answer).
 MAIN_DOCUMENT_TYPES = (
-    "html_publication", "hmrc_manual_section", "guidance", "detailed_guide", "form",
-    "guide", "manual_section", "cma_case", "statutory_guidance", "organisation",
-    "authored_article", "hmrc_manual", "transaction", "service_manual_guide",
-    "farming_grant", "manual", "countryside_stewardship_grant",
+    "countryside_stewardship_grant", "detailed_guide", "farming_grant", "form", "guidance",
+    "guide", "hmrc_manual", "manual", "manual_section", "service_manual_guide",
+    "statutory_guidance",
 )
 
-# The full gov.uk document-type slug vocabulary the funnel understands, for recommending
-# real slugs when a user names doc types loosely ("news", "forms", "guides"). Includes the
-# main types above plus other common slugs.
+# The full gov.uk document-type slug vocabulary the funnel understands and will accept on
+# save (recommending real slugs when a user names doc types loosely, e.g. "news", "guides").
+# The main types above plus other valid slugs — including ones no longer recommended by
+# default but still perfectly valid to use.
 DOCUMENT_TYPES = MAIN_DOCUMENT_TYPES + (
-    "news_story", "press_release", "publication", "statistics", "consultation",
-    "policy_paper", "regulation", "correspondence", "notice", "transparency", "speech",
-    "case_study", "map",
+    "html_publication", "hmrc_manual_section", "cma_case", "organisation", "authored_article",
+    "transaction", "document_collection", "news_story", "press_release", "publication",
+    "statistics", "consultation", "policy_paper", "regulation", "correspondence", "notice",
+    "transparency", "speech", "case_study", "map",
 )
 _DT_SYNONYMS = {
     "news": "news_story", "press": "press_release", "forms": "form", "stats": "statistics",
