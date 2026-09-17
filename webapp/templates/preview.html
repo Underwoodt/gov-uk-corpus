@@ -563,6 +563,13 @@
         + `<td class="num">${fmtInt(r.pages)}</td><td class="num">${fmtInt(r.kept)}</td>`
         + `<td class="num">${fmtInt(r.dropped)}</td><td class="num">${fmtInt(r.in_tokens)}</td>`
         + `<td class="num">${fmtInt(r.out_tokens)}</td><td class="num">$${(r.cost || 0).toFixed(6)}</td></tr>`).join("");
+      // If this run's job is in flight, disable Execute (and adopt the run so this
+      // page polls it and re-enables when it finishes) — even if another tab/session
+      // started it. bgUiRunning(false) re-enables the button when the run stops.
+      if (j.status === "in_progress") {
+        runBgBtn.disabled = true;
+        if (!bgTimer) beginBgPolling();
+      }
     }
 
     function fillFunnelAiRow(stage, run) {
