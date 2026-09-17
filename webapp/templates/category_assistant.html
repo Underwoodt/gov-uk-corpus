@@ -3,27 +3,37 @@
 {% block title %}Category assistant{% endblock %}
 {% block content %}
   <style>
-    #chat { max-width:720px; }
-    .msg { padding:10px 14px; border-radius:10px; margin:0 0 10px; white-space:pre-wrap; line-height:1.45; }
-    .msg.user { background:var(--black,#0b0c0c); color:#fff; margin-left:60px; }
-    .msg.bot  { background:#f2f2f2; color:var(--black); margin-right:40px; }
-    .msg.bot code, .msg.bot pre { display:none; }   /* hide the raw JSON block from the chat */
-    #composer { max-width:720px; margin-top:8px; }
+    /* Chat palette (blue assistant / navy user, GDS-friendly). */
+    #chat { max-width:760px; --bot-bg:#eaf1fd; --bot-intro-bg:#e3edfc; --bot-ink:#1a2b42;
+      --user-bg:#14233a; --accent:#1d56d6; --accent-ink:#1d4ed8; }
+    .chat-row { display:flex; gap:12px; align-items:flex-start; margin:0 0 14px; }
+    .avatar { flex:0 0 40px; width:40px; height:40px; border-radius:50%;
+      display:flex; align-items:center; justify-content:center; margin-top:2px; }
+    .avatar.bot  { background:#d4e2fb; color:var(--accent-ink); }
+    .avatar.user { background:#0f2540; color:#fff; }
+    .msg { flex:1 1 auto; min-width:0; padding:12px 16px; border-radius:14px;
+      white-space:pre-wrap; line-height:1.5; font-size:15px; }
+    .msg.user { background:var(--user-bg); color:#fff; }
+    .msg.bot  { background:var(--bot-bg); color:var(--bot-ink); }
+    .msg.bot.intro { background:var(--bot-intro-bg); }
+    .msg.bot strong { color:var(--accent-ink); }      /* blue facet titles, e.g. **Organisations** */
+    .msg.bot code, .msg.bot pre { display:none; }      /* hide the raw JSON block from the chat */
+    #composer { max-width:760px; margin-top:8px; }
     .composer-box { position:relative; }
-    .composer-box textarea { width:100%; box-sizing:border-box; padding:12px 56px 12px 14px;
-      border:2px solid var(--black); border-radius:12px; font:inherit; resize:vertical;
-      min-height:160px; max-height:640px; overflow-y:auto; line-height:1.45; }
+    .composer-box textarea { width:100%; box-sizing:border-box; padding:14px 58px 14px 16px;
+      border:2px solid var(--accent); border-radius:16px; font:inherit; resize:vertical;
+      min-height:160px; max-height:640px; overflow-y:auto; line-height:1.5;
+      box-shadow:0 1px 4px rgba(29,86,214,.10); }
     .composer-box textarea:disabled { background:var(--surface-2); }
-    /* Send / Stop buttons inside the box (bottom-right), Claude-style. */
-    .inbox-btn { position:absolute; right:14px; bottom:14px; width:38px; height:38px; border:0;
+    /* Send / Stop buttons inside the box (bottom-right). */
+    .inbox-btn { position:absolute; right:12px; bottom:12px; width:42px; height:42px; border:0;
       border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#fff; }
-    .inbox-btn.send { background:var(--black,#0b0c0c); }
-    .inbox-btn.send:hover { background:#2a2a2a; }
+    .inbox-btn.send { background:var(--accent); }
+    .inbox-btn.send:hover { background:var(--accent-ink); }
     .inbox-btn.stop { background:var(--red,#d4351c); }
     .inbox-btn.stop:hover { background:#aa2a17; }
-    /* "Show raw response" — a sibling after the bubble (not inside .msg.bot, whose
-       `pre` is display:none). Gated to Advanced+ via data-level. */
-    .raw-wrap { max-width:720px; margin:-4px 40px 12px 0; }
+    /* "Show raw response" — a sibling after the row, indented under the bubble. Gated Advanced+. */
+    .raw-wrap { max-width:760px; margin:-6px 0 12px 52px; }
     .raw-toggle { font-size:12px; color:var(--muted,#6f777b); text-decoration:underline; cursor:pointer; }
     .raw-body { white-space:pre-wrap; background:#fbfbfb; border:1px solid var(--mid-grey,#b1b4b6);
       border-radius:6px; padding:10px 12px; margin:6px 0 0; font-size:12px; max-height:320px; overflow:auto; }
@@ -100,18 +110,27 @@
     // Show "Back a step" only once there is at least one answer to undo.
     function updateBack() { backBtn.hidden = !messages.some(m => m.role === "user"); }
 
+    // Remove the most recent chat entry: any trailing "Show raw response" toggle(s) that
+    // follow the row, then the row (avatar + bubble) itself.
+    function removeLastMsg() {
+      while (chat.lastElementChild && chat.lastElementChild.classList.contains("raw-wrap")) {
+        chat.removeChild(chat.lastElementChild);
+      }
+      if (chat.lastElementChild) chat.removeChild(chat.lastElementChild);
+    }
+
     // Return to the previous question: drop the assistant's latest reply and the
     // answer that prompted it, and put that answer back in the box to edit. Any draft
     // is invalidated, since the answers behind it just changed.
     function goBack() {
       if (messages.length && messages[messages.length - 1].role === "assistant") {
         messages.pop();
-        if (chat.lastElementChild) chat.removeChild(chat.lastElementChild);
+        removeLastMsg();
       }
       if (messages.length && messages[messages.length - 1].role === "user") {
         input.value = messages[messages.length - 1].content;
         messages.pop();
-        if (chat.lastElementChild) chat.removeChild(chat.lastElementChild);
+        removeLastMsg();
       }
       draftFields = null;
       document.getElementById("draft").hidden = true;
@@ -134,20 +153,38 @@
       return html || "<em>Here's my suggestion — review or edit it in the box below, then send.</em>";
     }
 
-    function addMsg(role, text) {
-      const div = document.createElement("div");
-      div.className = "msg " + (role === "user" ? "user" : "bot");
-      div.innerHTML = role === "user" ? esc(text) : fmtBot(text);
-      chat.appendChild(div);
-      div.scrollIntoView({block:"end"});
-      return div;
+    // Avatar glyphs: a robot for the assistant, a person for the user.
+    const AVATAR = {
+      bot: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="11" rx="3"/><path d="M12 8V4.6"/><circle cx="12" cy="3.4" r="1.2" fill="currentColor" stroke="none"/><circle cx="9.2" cy="13.2" r="1.3" fill="currentColor" stroke="none"/><circle cx="14.8" cy="13.2" r="1.3" fill="currentColor" stroke="none"/><path d="M2.6 12v3M21.4 12v3"/></svg>',
+      user: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.3"/><path d="M5.5 19c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/></svg>'
+    };
+
+    // Build a chat row (avatar + bubble) and return {row, bubble}.
+    function makeRow(role) {
+      const r = role === "user" ? "user" : "bot";
+      const row = document.createElement("div");
+      row.className = "chat-row " + r;
+      const av = document.createElement("div");
+      av.className = "avatar " + r; av.innerHTML = AVATAR[r];
+      const bubble = document.createElement("div");
+      bubble.className = "msg " + r;
+      row.appendChild(av); row.appendChild(bubble);
+      chat.appendChild(row);
+      return { row, bubble };
     }
 
-    // Attach a collapsed "Show raw response" toggle after an assistant bubble, revealing
+    function addMsg(role, text) {
+      const { row, bubble } = makeRow(role);
+      bubble.innerHTML = role === "user" ? esc(text) : fmtBot(text);
+      row.scrollIntoView({block:"end"});
+      return row;   // return the row so a raw-response toggle can attach after it
+    }
+
+    // Attach a collapsed "Show raw response" toggle after an assistant row, revealing
     // the untouched model reply (before the json/suggest blocks are stripped for display).
     // Tagged data-level="advanced" so it appears only for Advanced/Expert/Admin profiles.
-    function attachRaw(bubble, raw) {
-      if (bubble == null || raw == null || !String(raw).trim()) return;
+    function attachRaw(row, raw) {
+      if (row == null || raw == null || !String(raw).trim()) return;
       const wrap = document.createElement("div");
       wrap.className = "raw-wrap";
       wrap.setAttribute("data-level", "advanced");
@@ -161,13 +198,13 @@
         a.textContent = pre.hidden ? "Show raw response" : "Hide raw response";
       });
       wrap.appendChild(a); wrap.appendChild(pre);
-      bubble.insertAdjacentElement("afterend", wrap);
+      row.insertAdjacentElement("afterend", wrap);
     }
 
-    // Seed the conversation with the assistant's greeting.
+    // Seed the conversation with the assistant's greeting (given the prominent intro tint).
     const greeting = {{ greeting | tojson }};
     messages.push({role:"assistant", content:greeting});
-    addMsg("assistant", greeting);
+    addMsg("assistant", greeting).querySelector(".msg").classList.add("intro");
     updateBack();
 
     // Ask the assistant for the next reply, given the current messages (and, in edit
@@ -191,30 +228,28 @@
         const lastUser = [...messages].reverse().find(m => m.role === "user");
         const prefill = !!(j.suggestion && (!lastUser || j.suggestion.trim() !== lastUser.content.trim()));
         const prose = display(j.reply);
-        let bubble;
+        let row;
         if (prose) {
-          bubble = addMsg("assistant", j.reply);
+          row = addMsg("assistant", j.reply);
         } else if (prefill) {
           // No prose, but a genuine suggestion is going into the box below.
-          const d = document.createElement("div");
-          d.className = "msg bot";
-          d.innerHTML = "<em>Here's my suggestion — review or edit it in the box below, then send.</em>";
-          chat.appendChild(d); d.scrollIntoView({block:"end"});
-          bubble = d;
+          const m = makeRow("assistant");
+          m.bubble.innerHTML = "<em>Here's my suggestion — review or edit it in the box below, then send.</em>";
+          m.row.scrollIntoView({block:"end"});
+          row = m.row;
         } else {
           // The assistant couldn't understand the answer. Rather than apologise and stall,
           // offer the full list of document types we expect people to search for, pre-filled
           // in the box for the user to edit down to what they want (or replace).
-          const d = document.createElement("div");
-          d.className = "msg bot";
-          d.innerHTML = "<em>I didn't quite catch that. Here's the full list of document types we usually "
+          const m = makeRow("assistant");
+          m.bubble.innerHTML = "<em>I didn't quite catch that. Here's the full list of document types we usually "
             + "search — edit it down to the ones you want (or replace it), then send.</em>";
-          chat.appendChild(d); d.scrollIntoView({block:"end"});
-          bubble = d;
+          m.row.scrollIntoView({block:"end"});
+          row = m.row;
           input.value = MAIN_DOC_TYPES.join(", ");
           autoResize();
         }
-        attachRaw(bubble, j.reply);   // Advanced+ can reveal the untouched model reply
+        attachRaw(row, j.reply);   // Advanced+ can reveal the untouched model reply
         if (prefill) { input.value = j.suggestion; autoResize(); }
         if (j.fields) {
           draftFields = j.fields;
@@ -241,7 +276,7 @@
       if (messages.length && messages[messages.length - 1].role === "user") {
         input.value = messages[messages.length - 1].content;
         messages.pop();
-        if (chat.lastElementChild) chat.removeChild(chat.lastElementChild);
+        removeLastMsg();
       }
       status.textContent = "";
       setThinking(false);
