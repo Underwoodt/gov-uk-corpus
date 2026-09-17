@@ -8,9 +8,9 @@
     .msg.user { background:var(--black,#0b0c0c); color:#fff; margin-left:60px; }
     .msg.bot  { background:#f2f2f2; color:var(--black); margin-right:40px; }
     .msg.bot code, .msg.bot pre { display:none; }   /* hide the raw JSON block from the chat */
-    #composer { display:flex; gap:8px; max-width:720px; margin-top:8px; }
+    #composer { display:flex; gap:8px; max-width:720px; margin-top:8px; align-items:flex-end; }
     #composer textarea { flex:1; padding:10px; border:2px solid var(--black); border-radius:6px;
-      font:inherit; resize:vertical; min-height:52px; }
+      font:inherit; resize:vertical; min-height:120px; max-height:340px; overflow-y:auto; line-height:1.45; }
   </style>
 
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
@@ -37,13 +37,16 @@
   </div>
 
   <div id="composer">
-    <textarea id="input" placeholder="Type your answer…" autofocus></textarea>
+    <textarea id="input" placeholder="Type as much as you like — a few lines is great…" autofocus></textarea>
     <button class="btn secondary-btn" id="back" type="button" hidden
       title="Undo my last answer and return to the previous question">‹ Back a step</button>
     <button class="btn" id="send" type="button">Send</button>
   </div>
   <p id="composer-hint" class="hint" style="max-width:720px;margin:6px 0 0;">Answered too quickly? Use <em>‹ Back a step</em> to return to the
     previous question — your last answer is put back in the box so you can change it.</p>
+  <button class="btn secondary-btn" id="cancel" type="button" hidden
+    style="margin-top:8px;padding:5px 14px;font-size:14px;color:#d4351c;"
+    title="Stop and put your answer back in the box to edit">Cancel &amp; edit answer</button>
   <p id="status" class="secondary" style="max-width:720px;"></p>
 
   <script>
@@ -59,6 +62,11 @@
 
     // Hide the answer box while the assistant is thinking; show it with the next question.
     function showComposer(show) { composer.hidden = !show; composerHint.hidden = !show; }
+    const cancelBtn = document.getElementById("cancel");
+    let currentAbort = null;   // AbortController for the in-flight request
+    // Grow the answer box with its content (up to the CSS max-height).
+    function autoResize() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 340) + "px"; }
+    input.addEventListener("input", autoResize);
     const messages = [];   // {role, content}  (parallel to the .msg nodes in #chat)
     let draftFields = null;
     let editCid = null, editFields = null;   // set when refining an existing category
@@ -83,6 +91,7 @@
       document.getElementById("draft").hidden = true;
       status.textContent = "";
       updateBack();
+      autoResize();
       input.focus();
     }
     backBtn.addEventListener("click", goBack);
@@ -115,11 +124,14 @@
     async function ask() {
       sendBtn.disabled = true; backBtn.disabled = true;
       showComposer(false);
+      cancelBtn.hidden = false;
       status.innerHTML = '<span class="spinner"></span> Thinking…';
+      currentAbort = new AbortController();
       try {
         const r = await fetch("/api/categories/assistant", {
           method:"POST", headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({messages, edit_fields: editFields || undefined})
+          body: JSON.stringify({messages, edit_fields: editFields || undefined}),
+          signal: currentAbort.signal
         });
         const j = await r.json();
         if (j.error) { status.textContent = "Error: " + j.error; return; }
@@ -135,8 +147,11 @@
           document.getElementById("draft").hidden = false;
         }
       } catch (e) {
+        if (e.name === "AbortError") return;   // the Cancel handler restores the box
         status.textContent = "Could not reach the assistant.";
       } finally {
+        currentAbort = null;
+        cancelBtn.hidden = true;
         sendBtn.disabled = false; backBtn.disabled = false;
         showComposer(true);
         updateBack();
@@ -144,10 +159,27 @@
       }
     }
 
+    // Cancel an in-flight request: stop the call and put the answer back in the box to edit.
+    cancelBtn.addEventListener("click", () => {
+      if (currentAbort) currentAbort.abort();
+      if (messages.length && messages[messages.length - 1].role === "user") {
+        input.value = messages[messages.length - 1].content;
+        messages.pop();
+        if (chat.lastElementChild) chat.removeChild(chat.lastElementChild);
+      }
+      status.textContent = "";
+      cancelBtn.hidden = true;
+      showComposer(true);
+      updateBack();
+      autoResize();
+      input.focus();
+    });
+
     async function send() {
       const text = input.value.trim();
       if (!text) return;
       input.value = "";
+      autoResize();
       addMsg("user", text);
       messages.push({role:"user", content:text});
       await ask();
