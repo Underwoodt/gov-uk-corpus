@@ -20,6 +20,7 @@ import io
 import json
 import logging
 import os
+import re
 import threading
 import secrets
 import time
@@ -1377,6 +1378,42 @@ def api_list_runs(request: Request, cid: int):
     return JSONResponse(out)
 
 
+@app.get("/api/categories/{cid}/active-run")
+def api_active_run_summary(request: Request, cid: int):
+    """Summary of the active run for the Active Run tab: its phase chain
+    (inclusion → exclusion) plus a status of complete / incomplete / in_progress."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    conn = connect()
+    try:
+        run_id = _active_run(conn, cid)
+        run = evaluate.get_run(conn, run_id) if run_id else None
+        if not run:
+            return JSONResponse({"run": None})
+        chain = evaluate.run_chain(conn, run_id)
+        category = cat.get_category(conn, cid)
+        try:
+            shortlist_total = cached_count(conn, **_effective_filters(conn, category)) if category else None
+        except Exception:
+            shortlist_total = None
+        continue_reason = evaluate.continuable_reason(chain, shortlist_total)
+        chain_ids = {r["run_id"] for r in chain}
+        ent = _bg_evals.get(cid)
+        in_progress = bool(ent and ent["status"].get("running")
+                           and ent["status"].get("run_id") in chain_ids)
+        status = "in_progress" if in_progress else ("complete" if not continue_reason else "incomplete")
+        rows = [{"phase": r.get("phase"), "provider": r.get("provider"),
+                 "model": r.get("actual_model") or r.get("model"),
+                 "pages": r.get("pages") or 0, "kept": r.get("kept") or 0,
+                 "dropped": r.get("dropped") or 0, "in_tokens": r.get("in_tokens") or 0,
+                 "out_tokens": r.get("out_tokens") or 0, "cost": r.get("cost") or 0}
+                for r in chain]
+        return JSONResponse({"run": {"run_id": run["run_id"], "name": run.get("name")},
+                             "status": status, "chain": rows})
+    finally:
+        conn.close()
+
+
 @app.get("/categories/{cid}/runs/{run_id}", response_class=HTMLResponse)
 def run_detail_page(request: Request, cid: int, run_id: str):
     """Per-run detail: the LLM phase chain (inclusion → exclusion), model used,
@@ -1542,6 +1579,14 @@ def api_run_results(request: Request, cid: int, run_id: str, keep: str = ""):
 def _dl_stamp() -> str:
     """UTC timestamp for download filenames: yy-mm-dd-hr-min."""
     return time.strftime("%y-%m-%d-%H-%M", time.gmtime())
+
+
+def _safe_filename(name: str, default: str) -> str:
+    """A safe download base filename from user input: drop any extension they typed,
+    keep letters/digits/space/dot/dash/underscore, spaces -> dashes, cap the length."""
+    base = re.sub(r"\.(csv|xlsx|json)$", "", (name or "").strip(), flags=re.I)
+    base = re.sub(r"[^A-Za-z0-9._ -]", "", base).strip().replace(" ", "-")
+    return base[:120] or default
 
 
 @app.get("/categories/{cid}/runs/{run_id}/download")
@@ -1781,17 +1826,20 @@ def download_page(request: Request, cid: int, stage: str = "keyword",
             total = shortlist.count(conn, **_merge_extra(sq, ""))
         except Exception:
             total = None
+    # Columns come from the Audit shortlist selection (passed as ?fields=…); fall back
+    # to the default set if the page is opened directly with none.
+    preselect = [f for f in fields if f in shortlist.EXPORT_FIELDS] or list(_AUDIT_DEFAULT_FIELDS)
     resp = templates.TemplateResponse("download.html", ctx(
-        conn, request, category=category, total=total, sections=_DOWNLOAD_SECTIONS,
+        conn, request, category=category, total=total,
         stage=stage, stage_label=dict(_AUDIT_STAGES).get(stage, stage),
-        preselect=[f for f in fields if f in shortlist.EXPORT_FIELDS]))
+        preselect=preselect, default_filename=f"gov-uk-audit-shortlist-{_dl_stamp()}"))
     conn.close()
     return resp
 
 
 @app.get("/categories/{cid}/export")
 def export_category(request: Request, cid: int, format: str = "csv", stage: str = "keyword",
-                    fields: List[str] = Query(default=[])):
+                    filename: str = "", fields: List[str] = Query(default=[])):
     """Build the chosen-format, chosen-field export for an audit stage. Sync route ->
     runs in a threadpool so a large export doesn't block the event loop."""
     if not authed(request):
@@ -1810,7 +1858,7 @@ def export_category(request: Request, cid: int, format: str = "csv", stage: str 
     keys, rows = shortlist.export_rows(conn, fields, **_merge_extra(sq, ""))
     conn.close()
     labels = [shortlist.EXPORT_FIELDS[k][1] for k in keys]
-    name = f"gov-uk-audit-shortlist-{_dl_stamp()}"
+    name = _safe_filename(filename, f"gov-uk-audit-shortlist-{_dl_stamp()}")
 
     if format == "json":
         payload = [{k: r.get(k) for k in keys} for r in rows]

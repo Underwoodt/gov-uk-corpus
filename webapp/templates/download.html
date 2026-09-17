@@ -3,7 +3,7 @@
 {% block title %}Download{% endblock %}
 {% block content %}
 
-  <a class="back" href="{{ url_for('preview_category_page', cid=category.id) }}">‹ Back to results</a>
+  <a class="back" href="{{ url_for('shortlist_page', cid=category.id) }}">‹ Back to audit results</a>
 
   <h1 style="margin:20px 0 5px;">Download shortlist</h1>
   <p class="secondary" style="margin:0 0 25px;">{{ category.display_name }}
@@ -12,35 +12,27 @@
 
   <form method="get" action="{{ url_for('export_category', cid=category.id) }}">
     <input type="hidden" name="stage" value="{{ stage or 'keyword' }}">
-    <div class="field">
-      <label class="q" for="format">Format</label>
-      <select id="format" name="format">
+    {% for f in preselect %}<input type="hidden" name="fields" value="{{ f }}">{% endfor %}
+
+    <div class="field" style="max-width:440px;">
+      <label class="q" for="format">Output type</label>
+      <select id="format" name="format" style="width:100%;">
         <option value="csv">CSV (.csv)</option>
         <option value="xlsx">Excel (.xlsx)</option>
         <option value="json">JSON (.json)</option>
       </select>
     </div>
 
-    <div class="field">
-      <label class="q">Fields to include</label>
-      <p class="hint">URL is always included.</p>
-      <div style="max-width:640px;">
-        {% for section, section_fields in sections %}
-        <fieldset style="border:0;padding:0;margin:0 0 22px;">
-          <legend style="font-weight:700;font-size:17px;padding:0;margin:0 0 8px;border-bottom:2px solid var(--black);width:100%;">{{ section }}</legend>
-          <div style="display:flex;flex-direction:column;gap:10px;">
-            {% for key, label, default_on, disabled, warning in section_fields %}
-            <label class="check">
-              <input type="checkbox" name="fields" value="{{ key }}"
-                {{ 'checked' if (disabled and default_on) or (key in preselect if preselect else default_on) }} {{ 'disabled' if disabled }}>
-              {{ label }}{% if warning %} <span class="secondary">— {{ warning }}</span>{% endif %}
-            </label>
-            {% endfor %}
-          </div>
-        </fieldset>
-        {% endfor %}
-      </div>
+    <div class="field" style="max-width:440px;">
+      <label class="q" for="filename">File name</label>
+      <input id="filename" name="filename" type="text" value="{{ default_filename }}" style="width:100%;">
+      <p class="hint" style="margin-top:6px;">The extension (.csv / .xlsx / .json) is added automatically.</p>
     </div>
+
+    <p class="secondary" style="max-width:640px;">
+      Downloads the <strong>{{ preselect|length }}</strong> column{{ '' if preselect|length == 1 else 's' }} selected on the
+      <a href="{{ url_for('shortlist_page', cid=category.id) }}">Audit shortlist</a> — change the selection there.
+    </p>
 
     <button class="btn" type="submit">Download</button>
   </form>
