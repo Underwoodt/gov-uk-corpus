@@ -32,7 +32,7 @@
       title="Undo my last answer and return to the previous question">‹ Back a step</button>
     <button class="btn" id="send" type="button">Send</button>
   </div>
-  <p class="hint" style="max-width:720px;margin:6px 0 0;">Answered too quickly? Use <em>‹ Back a step</em> to return to the
+  <p id="composer-hint" class="hint" style="max-width:720px;margin:6px 0 0;">Answered too quickly? Use <em>‹ Back a step</em> to return to the
     previous question — your last answer is put back in the box so you can change it.</p>
   <p id="status" class="secondary" style="max-width:720px;"></p>
 
@@ -41,7 +41,12 @@
     const input = document.getElementById("input");
     const sendBtn = document.getElementById("send");
     const backBtn = document.getElementById("back");
+    const composer = document.getElementById("composer");
+    const composerHint = document.getElementById("composer-hint");
     const status = document.getElementById("status");
+
+    // Hide the answer box while the assistant is thinking; show it with the next question.
+    function showComposer(show) { composer.hidden = !show; composerHint.hidden = !show; }
     const messages = [];   // {role, content}  (parallel to the .msg nodes in #chat)
     let draftFields = null;
 
@@ -94,7 +99,7 @@
       addMsg("user", text);
       messages.push({role:"user", content:text});
       sendBtn.disabled = true; backBtn.disabled = true;
-      updateBack();
+      showComposer(false);          // hide the answer box until the next question arrives
       status.innerHTML = '<span class="spinner"></span> Thinking…';
       try {
         const r = await fetch("/api/categories/assistant", {
@@ -114,6 +119,7 @@
         status.textContent = "Could not reach the assistant.";
       } finally {
         sendBtn.disabled = false; backBtn.disabled = false;
+        showComposer(true);         // next question has arrived (or an error) -> answer box back
         updateBack();
         input.focus();
       }
