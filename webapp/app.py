@@ -734,6 +734,26 @@ def api_category_definition(request: Request, cid: int):
         conn.close()
 
 
+def _slug_reference(conn, text: str) -> str:
+    """A note of REAL organisation / document-type slugs matching words in the user's
+    latest message, appended to the interview prompt so the assistant recommends valid
+    slugs (widely) rather than inventing them — and re-checks whenever a field changes."""
+    org_matches = orgs.search(conn, text, limit=20)
+    dt_matches = category_interview.match_document_types(text)
+    if not org_matches and not dt_matches:
+        return ""
+    lines = ["SLUG REFERENCE — real slugs from the corpus that match words in the user's "
+             "latest message. When the user names organisations or document types that are "
+             "NOT exact slugs, recommend from these (widely — offer any that plausibly "
+             "match) and never invent a slug. If a word matches none here, say so and offer "
+             "the closest options."]
+    if org_matches:
+        lines.append("Organisation slugs: " + ", ".join(m["slug"] for m in org_matches))
+    if dt_matches:
+        lines.append("Document-type slugs: " + ", ".join(dt_matches))
+    return "\n".join(lines)
+
+
 @app.post("/api/categories/assistant")
 async def api_category_assistant(request: Request):
     if not authed(request):
@@ -761,8 +781,13 @@ async def api_category_assistant(request: Request):
             return JSONResponse({"error": f"Daily AI budget of ${budget:.2f} reached "
                                  f"(${spent:.4f} spent today)."}, status_code=429)
         cfg = _ai_config(conn)
-        res = await run_in_threadpool(_ai_chat, cfg,
-                                      category_interview.system_prompt(edit_fields), clean)
+        # Re-check the user's latest message against real slugs and hand the model the
+        # matches, so a changed organisation/doc-type field gets valid-slug recommendations.
+        system = category_interview.system_prompt(edit_fields)
+        ref = _slug_reference(conn, last_user)
+        if ref:
+            system = system + "\n\n" + ref
+        res = await run_in_threadpool(_ai_chat, cfg, system, clean)
         if res.get("error"):
             return JSONResponse({"error": res["error"]}, status_code=502)
         _log_ai_usage(conn, res.get("cost_usd"), res.get("input_tokens"),

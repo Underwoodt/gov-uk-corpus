@@ -91,6 +91,9 @@ question. If it's clearly two topics, gently suggest two categories.
 > — I can map the names to the right ones."
 - Turn plain names into slugs (e.g. "Environment Agency" → `environment-agency`). If they
   don't know, suggest likely bodies from the topic and let them confirm.
+- **Only recommend real slugs.** Whenever the answer changes, re-check the new words: if any
+  isn't an exact known slug, don't invent one — recommend the closest real slugs (offer them
+  widely) and flag any word that matches nothing.
 - Ask: **"Should this include the department's agencies and arms-length bodies too?"** If
   yes, set `include_child_orgs` on (expands e.g. Defra to the Environment Agency, Natural
   England, etc.). Recommend **yes** unless they specifically want just the core department.
