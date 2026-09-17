@@ -511,7 +511,7 @@ def login(request: Request, bad: int = 0, locked: int = 0):
     return HTMLResponse(
         f"""{_LOGIN_HEAD}
         <div class='wrap body'><h1>Sign in</h1>{err}
-        <form method=post action='{request.url_for('do_login')}'>
+        <form class='authform' method=post action='{request.url_for('do_login')}'>
         <input type=hidden name=csrf value='{_csrf_token(request)}'>{fields}
         <button class='btn' type=submit>Sign in</button></form>{reg}</div>
         <div class='page-id'>guc-0014</div>""")
@@ -569,22 +569,31 @@ def _register_page(request: Request, *, error: str = "", values: Optional[dict] 
         return html.escape((v.get(k) or "").strip(), quote=True)
     err = (f"<div class='error-summary'><h2>There is a problem</h2><ul><li>{html.escape(error)}</li></ul></div>"
            if error else "")
+    suggestion = accounts.suggest_passphrase()
+    rules_li = "".join(f"<li>{html.escape(r)}</li>" for r in accounts.PASSWORD_RULES)
     return HTMLResponse(
         f"""{_LOGIN_HEAD}
         <div class='wrap body'><h1>Create an account</h1>{err}
         <p class='secondary'>Use your DEFRA or Equal Experts email address.</p>
-        <form method=post action='{request.url_for('do_register')}'>
+        <form class='authform' method=post action='{request.url_for('do_register')}'>
         <input type=hidden name=csrf value='{_csrf_token(request)}'>
         <div class='field'><label class='q' for='fn'>First name</label>
-        <input id='fn' name='first_name' value='{field("first_name")}'></div>
+        <input id='fn' name='first_name' type='text' autocomplete='given-name' value='{field("first_name")}'></div>
         <div class='field'><label class='q' for='ln'>Last name</label>
-        <input id='ln' name='last_name' value='{field("last_name")}'></div>
+        <input id='ln' name='last_name' type='text' autocomplete='family-name' value='{field("last_name")}'></div>
         <div class='field'><label class='q' for='e'>Email address</label>
         <input id='e' name='email' type='email' autocomplete='username' value='{field("email")}'></div>
+        <div class='pw-suggest'>
+        Suggested password: <code id='pwsg'>{suggestion}</code>
+        <button type='button' class='btn secondary-btn' style='padding:4px 10px;font-size:14px;margin-left:8px;'
+          onclick="var p=document.getElementById('pwsg').textContent;document.getElementById('p').value=p;document.getElementById('p2').value=p;">Use this</button>
+        <div class='secondary' style='margin-top:6px;'>Three random words — easy to remember, hard to guess. Or choose your own.</div></div>
         <div class='field'><label class='q' for='p'>Password</label>
         <input id='p' name='password' type='password' autocomplete='new-password'></div>
         <div class='field'><label class='q' for='p2'>Confirm password</label>
         <input id='p2' name='confirm' type='password' autocomplete='new-password'></div>
+        <details><summary>Password rules</summary>
+        <div class='detail'><ul style='margin:0;padding-left:20px;'>{rules_li}</ul></div></details>
         <button class='btn' type=submit>Create account</button></form>
         <p style='margin-top:16px;'><a href='{request.url_for('login')}'>Already have an account? Sign in</a></p></div>
         <div class='page-id'>guc-0015</div>""")
