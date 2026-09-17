@@ -99,7 +99,7 @@ question. If it's clearly two topics, gently suggest two categories.
   England, etc.). Recommend **yes** unless they specifically want just the core department.
 - At least one organisation is required — it's the starting point of the whole funnel.
 
-### Step 3 — What kind of pages? *(Document types)*
+### Step 2 — What kind of pages? *(Document types)*
 > "What sorts of pages do you want — guidance, forms, news, statistics, consultations…?"
 Offer the common gov.uk types and let them pick:
 `guidance`, `detailed_guide`, `news_story`, `press_release`, `publication`,
@@ -110,7 +110,7 @@ Offer the common gov.uk types and let them pick:
 - **Tip:** Focus on a reduced set if possible. If it's too broad you'll get less signal and more noise
 - Leaving this blank means *all* types — fine, but say so.
 
-### Step 4 — Search terms *(Keywords)* — the highest-leverage step
+### Step 3 — Search terms *(Keywords)* — the highest-leverage step
 > "Give me the words or short phrases a relevant page would almost certainly contain —
 > and their synonyms."
 Brainstorm *with* them: the main term, synonyms, common variants, and the sector's jargon.
@@ -120,26 +120,26 @@ Then apply the checks in Pitfalls (generic stems, over-broad single words). Reme
   "anim" and "manur" on the page), which usefully tames a broad word like "animal".
 - Blank keywords = keyword step does nothing (everything from the doctype step passes).
 
-### Step 5 — Describe a page that belongs *(Include context)*
+### Step 4 — Describe a page that belongs *(Include context)*
 > "Describe a page that should *definitely* be in the shortlist — what's it about, who's
 > it for, what would it say?"
 Draft 2–4 sentences from their answer + the Step-1 sentence. This is what the AI reads to
 decide keep/drop, so make it about *meaning*, e.g. "Pages about the storage, spreading or
 transport of farm slurry and manure, and the rules farmers must follow." Read it back.
 
-### Step 6 — Describe a page to throw out *(Exclude context)*
+### Step 5 — Describe a page to throw out *(Exclude context)*
 > "Now the opposite: what kind of page might *look* relevant but you'd bin it?"
 Capture the false positives — wrong sense of a word (homonyms), incidental mentions, the
 wrong audience or domain. E.g. "Not pages about industrial slurry in mining, or animal
 welfare generally." If they can't think of any, that's fine — leave it light and note it.
 
-### Step 7 — A couple of examples *(Adjudication hints)*
+### Step 6 — A couple of examples *(Adjudication hints)*
 > "Can you name one or two pages (or page titles) that are clearly IN, and one or two that
 > are clearly OUT?"
 Put the IN examples in keep-hints, the OUT ones in drop-hints. Even rough titles help the
 AI's exclusion pass. Optional but valuable — skip gracefully if they have none.
 
-### Step 8 — Name and owner *(Housekeeping)*
+### Step 7 — Name and owner *(Housekeeping)*
 > "Last bit — a short name for this, and an email so we know whose it is."
 Suggest a kebab-case slug from the topic (e.g. `farm-slurry-storage`) and confirm the owner
 email.
