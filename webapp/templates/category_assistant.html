@@ -77,11 +77,16 @@
     function esc(s){const d=document.createElement("div");d.textContent=s==null?"":s;return d.innerHTML;}
     // Strip the fenced json block so the user sees prose, not the payload.
     function display(text){ return text.replace(/```json[\s\S]*?```/g, "").trim(); }
+    // Assistant messages: escape first (safe), then render **bold** — used for the
+    // facet title the model leads each question with (e.g. **Organisations**).
+    function fmtBot(text){
+      return esc(display(text)).replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
+    }
 
     function addMsg(role, text) {
       const div = document.createElement("div");
       div.className = "msg " + (role === "user" ? "user" : "bot");
-      div.innerHTML = esc(role === "user" ? text : display(text));
+      div.innerHTML = role === "user" ? esc(text) : fmtBot(text);
       chat.appendChild(div);
       div.scrollIntoView({block:"end"});
     }
