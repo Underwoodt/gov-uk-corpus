@@ -15,6 +15,12 @@
     <a href="{{ url_for('list_categories_page') }}" class="{{ 'active' if active_nav not in ['assistant','settings'] }}">Categories</a>
     <a href="{{ url_for('assistant_page') }}" class="{{ 'active' if active_nav == 'assistant' }}">AI Assistant</a>
     <a href="{{ url_for('settings_page') }}" class="{{ 'active' if active_nav == 'settings' }}">Settings</a>
+    {% if user %}
+    <form method="post" action="{{ url_for('do_logout') }}" style="margin-left:auto;display:flex;align-items:center;gap:12px;">
+      <span class="service" title="{{ user.email }}">{{ user.first_name }} {{ user.last_name }}</span>
+      <button type="submit" style="background:none;border:0;padding:14px 2px;font:inherit;color:var(--grey-text);cursor:pointer;">Sign out</button>
+    </form>
+    {% endif %}
   </div></div>
 
   <div class="wrap body">

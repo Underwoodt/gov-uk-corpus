@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import re
+from datetime import datetime, timezone
 from typing import Optional
 
 from .backend import db
@@ -140,3 +141,71 @@ def get_user(conn, user_id: str, *, with_hash: bool = False) -> Optional[dict]:
     cols = _PUBLIC_COLS + (", password_hash" if with_hash else "")
     row = conn.execute(f"SELECT {cols} FROM auth.users WHERE id = %s", (user_id,)).fetchone()
     return dict(row) if row else None
+
+
+# ---- login: lockout, audit, authentication --------------------------------
+
+MAX_FAILED_LOGINS = 5           # lock the account after this many consecutive failures
+LOCK_MINUTES = 15               # temporary lock duration
+# Enumeration-safe: show the same message whether the email is unknown or the
+# password is wrong (never reveal which).
+LOGIN_FAILED_MESSAGE = "Email address or password is incorrect."
+LOGIN_LOCKED_MESSAGE = ("Too many failed attempts. Your account is temporarily locked — "
+                        "try again later.")
+
+
+def audit(conn, event: str, *, user_id=None, actor_id=None, ip=None, detail=None) -> None:
+    """Append a security audit-log row. Never write secrets/passwords here."""
+    _require_pg()
+    conn.execute(
+        "INSERT INTO auth.audit_log (event, user_id, actor_id, ip, detail) VALUES (%s,%s,%s,%s,%s)",
+        (event, user_id, actor_id, ip, (detail or None)))
+    conn.commit()
+
+
+def _is_locked(user: dict) -> bool:
+    lu = user.get("locked_until")
+    if lu is None:
+        return False
+    if getattr(lu, "tzinfo", None) is None:
+        lu = lu.replace(tzinfo=timezone.utc)
+    return lu > datetime.now(timezone.utc)
+
+
+def _record_failed(conn, user: dict, ip=None) -> None:
+    n = (user.get("failed_login_count") or 0) + 1
+    if n >= MAX_FAILED_LOGINS:
+        conn.execute("UPDATE auth.users SET failed_login_count=%s, "
+                     "locked_until = now() + make_interval(mins => %s), updated_at=now() WHERE id=%s",
+                     (n, LOCK_MINUTES, user["id"]))
+    else:
+        conn.execute("UPDATE auth.users SET failed_login_count=%s, updated_at=now() WHERE id=%s",
+                     (n, user["id"]))
+    conn.commit()
+    audit(conn, "login_failed", user_id=user["id"], ip=ip, detail=f"count={n}")
+
+
+def authenticate(conn, email: str, password: str, *, ip=None):
+    """Verify credentials. Returns (public_user, None) on success, or (None, reason)
+    where reason is 'invalid' | 'inactive' | 'locked'. Enumeration-safe — the caller
+    shows LOGIN_FAILED_MESSAGE for everything except 'locked'. Applies lockout and
+    writes audit rows; never returns or logs the password hash."""
+    _require_pg()
+    user = get_user_by_email(conn, email, with_hash=True)
+    if user is None:
+        return None, "invalid"
+    if user["account_status"] != "active":
+        audit(conn, "login_denied", user_id=user["id"], ip=ip, detail=f"status={user['account_status']}")
+        return None, "inactive"
+    if _is_locked(user):
+        audit(conn, "login_locked", user_id=user["id"], ip=ip)
+        return None, "locked"
+    if not verify_password(user["password_hash"], password):
+        _record_failed(conn, user, ip)
+        return None, "invalid"
+    conn.execute("UPDATE auth.users SET failed_login_count=0, locked_until=NULL, "
+                 "last_login_at=now(), updated_at=now() WHERE id=%s", (user["id"],))
+    conn.commit()
+    audit(conn, "login_succeeded", user_id=user["id"], ip=ip)
+    user.pop("password_hash", None)
+    return user, None
