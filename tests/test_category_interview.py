@@ -39,6 +39,24 @@ class TestParseFields(unittest.TestCase):
         self.assertEqual(set(f), {"slug", "dept_slugs"})
 
 
+class TestParseSuggestion(unittest.TestCase):
+    def test_extracts_suggest_block(self):
+        reply = ("**Organisations**\nWhich bodies publish this?\n\n"
+                 "```suggest\nenvironment-agency, department-for-environment-food-rural-affairs\n```")
+        self.assertEqual(ci.parse_suggestion(reply),
+                         "environment-agency, department-for-environment-food-rural-affairs")
+
+    def test_multiline_context_suggestion(self):
+        reply = "**Include context**\nHere's a draft.\n```suggest\nPages about storing farm slurry.\nAnd the rules farmers follow.\n```"
+        self.assertEqual(ci.parse_suggestion(reply),
+                         "Pages about storing farm slurry.\nAnd the rules farmers follow.")
+
+    def test_none_when_absent(self):
+        self.assertIsNone(ci.parse_suggestion("Just a question, no suggestion."))
+        self.assertIsNone(ci.parse_suggestion(""))
+        self.assertIsNone(ci.parse_suggestion("```suggest\n\n```"))   # empty block -> None
+
+
 class TestEditModePrompt(unittest.TestCase):
     def test_plain_prompt_unchanged(self):
         self.assertEqual(ci.system_prompt(), ci.SYSTEM_PROMPT)

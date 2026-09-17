@@ -114,8 +114,8 @@
     backBtn.addEventListener("click", goBack);
 
     function esc(s){const d=document.createElement("div");d.textContent=s==null?"":s;return d.innerHTML;}
-    // Strip the fenced json block so the user sees prose, not the payload.
-    function display(text){ return text.replace(/```json[\s\S]*?```/g, "").trim(); }
+    // Strip the fenced json/suggest blocks so the user sees prose, not the payload.
+    function display(text){ return text.replace(/```(?:json|suggest)[\s\S]*?```/g, "").trim(); }
     // Assistant messages: escape first (safe), then render **bold** — used for the
     // facet title the model leads each question with (e.g. **Organisations**).
     function fmtBot(text){
@@ -153,6 +153,8 @@
         status.textContent = "";
         messages.push({role:"assistant", content:j.reply});
         addMsg("assistant", j.reply);
+        // Pre-fill the answer box with the assistant's recommended answer, ready to edit.
+        if (j.suggestion) { input.value = j.suggestion; autoResize(); }
         if (j.fields) {
           draftFields = j.fields;
           document.getElementById("draft-note").textContent = editCid

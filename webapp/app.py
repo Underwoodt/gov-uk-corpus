@@ -762,7 +762,8 @@ async def api_category_assistant(request: Request):
                       res.get("output_tokens"), "assistant")
         reply = res.get("reply", "")
         fields = category_interview.parse_fields(reply)
-        return JSONResponse({"reply": reply, "fields": fields})
+        suggestion = category_interview.parse_suggestion(reply)
+        return JSONResponse({"reply": reply, "fields": fields, "suggestion": suggestion})
     finally:
         conn.close()
 

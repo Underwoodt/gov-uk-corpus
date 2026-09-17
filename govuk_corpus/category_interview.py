@@ -40,6 +40,19 @@ always sees which part of the spec they are answering. Use these titles, in orde
 **Organisations**, **Document types**, **Keywords**, **Include context**, **Exclude context**, \
 **Examples**, **Name & owner**.
 - Before each question give a one-line plain-English reason. No jargon unless you define it.
+- With EVERY clarifying question, include your recommended answer as a machine-readable \
+block on its own, so it PRE-FILLS the user's answer box for them to confirm, add to, or \
+delete — exactly:
+```suggest
+<your recommended answer, formatted exactly as the user would type it>
+```
+  Formats: for **Organisations** or **Document types**, a comma-separated list of slugs \
+(e.g. `environment-agency, department-for-environment-food-rural-affairs`). For \
+**Keywords**, a comma-separated list (e.g. `slurry, animal manure`). For **Include \
+context** / **Exclude context**, the finished 2-4 sentence description in plain English. \
+For **Name & owner**, a kebab-case slug. Always give a suggest block when you can \
+recommend a value. Do NOT include a suggest block in the final message where you output \
+the category json.
 - Always propose a sensible starting point so a blank answer is never required.
 - Suggest values inferred from what they've told you; let them confirm or change.
 - Catch these traps: (a) a single broad keyword whose stem is generic (e.g. "animal" -> \
@@ -135,6 +148,19 @@ def edit_greeting(name: str) -> str:
 
 _JSON_FENCE = re.compile(r"```json\s*(\{.*?\})\s*```", re.DOTALL)
 _JSON_BARE = re.compile(r"(\{(?:[^{}]|\{[^{}]*\})*\})", re.DOTALL)
+_SUGGEST_FENCE = re.compile(r"```suggest\s*\n?(.*?)```", re.DOTALL)
+
+
+def parse_suggestion(reply: Optional[str]) -> Optional[str]:
+    """The assistant's recommended answer (its ```suggest block), to pre-fill the user's
+    answer box so they can confirm, add to, or delete it. None if there isn't one."""
+    if not reply:
+        return None
+    m = _SUGGEST_FENCE.search(reply)
+    if not m:
+        return None
+    value = m.group(1).strip()
+    return value or None
 
 
 def parse_fields(reply: str) -> Optional[Dict]:
