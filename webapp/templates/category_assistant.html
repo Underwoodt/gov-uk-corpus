@@ -11,8 +11,8 @@
     #composer { max-width:720px; margin-top:8px; }
     .composer-box { position:relative; }
     .composer-box textarea { width:100%; box-sizing:border-box; padding:12px 56px 12px 14px;
-      border:2px solid var(--black); border-radius:12px; font:inherit; resize:none;
-      min-height:120px; max-height:340px; overflow-y:auto; line-height:1.45; }
+      border:2px solid var(--black); border-radius:12px; font:inherit; resize:vertical;
+      min-height:160px; max-height:640px; overflow-y:auto; line-height:1.45; }
     .composer-box textarea:disabled { background:var(--surface-2); }
     /* Send / Stop buttons inside the box (bottom-right), Claude-style. */
     .inbox-btn { position:absolute; right:14px; bottom:14px; width:38px; height:38px; border:0;
@@ -21,6 +21,12 @@
     .inbox-btn.send:hover { background:#2a2a2a; }
     .inbox-btn.stop { background:var(--red,#d4351c); }
     .inbox-btn.stop:hover { background:#aa2a17; }
+    /* "Show raw response" — a sibling after the bubble (not inside .msg.bot, whose
+       `pre` is display:none). Gated to Advanced+ via data-level. */
+    .raw-wrap { max-width:720px; margin:-4px 40px 12px 0; }
+    .raw-toggle { font-size:12px; color:var(--muted,#6f777b); text-decoration:underline; cursor:pointer; }
+    .raw-body { white-space:pre-wrap; background:#fbfbfb; border:1px solid var(--mid-grey,#b1b4b6);
+      border-radius:6px; padding:10px 12px; margin:6px 0 0; font-size:12px; max-height:320px; overflow:auto; }
   </style>
 
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
@@ -82,7 +88,10 @@
     }
     let currentAbort = null;   // AbortController for the in-flight request
     // Grow the answer box with its content (up to the CSS max-height).
-    function autoResize() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 340) + "px"; }
+    function autoResize() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 640) + "px"; }
+    // The main document types we expect people to search for — offered (to edit down) when
+    // the assistant can't understand an answer.
+    const MAIN_DOC_TYPES = {{ main_doc_types | tojson }};
     input.addEventListener("input", autoResize);
     const messages = [];   // {role, content}  (parallel to the .msg nodes in #chat)
     let draftFields = null;
@@ -131,6 +140,28 @@
       div.innerHTML = role === "user" ? esc(text) : fmtBot(text);
       chat.appendChild(div);
       div.scrollIntoView({block:"end"});
+      return div;
+    }
+
+    // Attach a collapsed "Show raw response" toggle after an assistant bubble, revealing
+    // the untouched model reply (before the json/suggest blocks are stripped for display).
+    // Tagged data-level="advanced" so it appears only for Advanced/Expert/Admin profiles.
+    function attachRaw(bubble, raw) {
+      if (bubble == null || raw == null || !String(raw).trim()) return;
+      const wrap = document.createElement("div");
+      wrap.className = "raw-wrap";
+      wrap.setAttribute("data-level", "advanced");
+      const a = document.createElement("a");
+      a.href = "#"; a.className = "raw-toggle"; a.textContent = "Show raw response";
+      const pre = document.createElement("pre");
+      pre.className = "raw-body"; pre.hidden = true; pre.textContent = raw;
+      a.addEventListener("click", e => {
+        e.preventDefault();
+        pre.hidden = !pre.hidden;
+        a.textContent = pre.hidden ? "Show raw response" : "Hide raw response";
+      });
+      wrap.appendChild(a); wrap.appendChild(pre);
+      bubble.insertAdjacentElement("afterend", wrap);
     }
 
     // Seed the conversation with the assistant's greeting.
@@ -160,17 +191,30 @@
         const lastUser = [...messages].reverse().find(m => m.role === "user");
         const prefill = !!(j.suggestion && (!lastUser || j.suggestion.trim() !== lastUser.content.trim()));
         const prose = display(j.reply);
+        let bubble;
         if (prose) {
-          addMsg("assistant", j.reply);
-        } else {
-          // No readable prose: show an honest note, not a promise of a suggestion that isn't there.
+          bubble = addMsg("assistant", j.reply);
+        } else if (prefill) {
+          // No prose, but a genuine suggestion is going into the box below.
           const d = document.createElement("div");
           d.className = "msg bot";
-          d.innerHTML = prefill
-            ? "<em>Here's my suggestion — review or edit it in the box below, then send.</em>"
-            : "<em>Sorry, that didn't come through clearly. Please rephrase your last answer, or use ‹ Back a step.</em>";
+          d.innerHTML = "<em>Here's my suggestion — review or edit it in the box below, then send.</em>";
           chat.appendChild(d); d.scrollIntoView({block:"end"});
+          bubble = d;
+        } else {
+          // The assistant couldn't understand the answer. Rather than apologise and stall,
+          // offer the full list of document types we expect people to search for, pre-filled
+          // in the box for the user to edit down to what they want (or replace).
+          const d = document.createElement("div");
+          d.className = "msg bot";
+          d.innerHTML = "<em>I didn't quite catch that. Here's the full list of document types we usually "
+            + "search — edit it down to the ones you want (or replace it), then send.</em>";
+          chat.appendChild(d); d.scrollIntoView({block:"end"});
+          bubble = d;
+          input.value = MAIN_DOC_TYPES.join(", ");
+          autoResize();
         }
+        attachRaw(bubble, j.reply);   // Advanced+ can reveal the untouched model reply
         if (prefill) { input.value = j.suggestion; autoResize(); }
         if (j.fields) {
           draftFields = j.fields;
