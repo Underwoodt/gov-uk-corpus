@@ -46,6 +46,26 @@ app = FastAPI(title="Shortlist Builder")
 app.mount("/static", StaticFiles(directory=os.path.join(HERE, "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(HERE, "templates"))
 
+# ---- auth mode (accounts programme, phase 2) ----------------------------
+# "shared" = the existing single DASHBOARD_PASSWORD gate (default; live behaviour
+# is unchanged). "accounts" = per-user session login (built behind this flag).
+AUTH_MODE = os.getenv("AUTH_MODE", "shared").strip().lower()
+
+# ---- security headers ----------------------------------------------------
+# Additive, safe headers on every response. HSTS is opt-in (ENABLE_HSTS=1) because
+# it must only be sent over confirmed HTTPS. CSP is intentionally NOT set here yet:
+# the app uses inline scripts/styles, so a strict policy would break it — that is a
+# later hardening step.
+@app.middleware("http")
+async def _security_headers(request: Request, call_next):
+    resp = await call_next(request)
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    if os.getenv("ENABLE_HSTS") == "1":
+        resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    return resp
+
 # ---- example presets for "start from an example" -------------------------
 EXAMPLES: Dict[str, dict] = {
     "slurry": {
