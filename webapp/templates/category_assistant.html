@@ -155,13 +155,23 @@
         if (j.error) { status.textContent = "Error: " + j.error; return; }
         status.textContent = "";
         messages.push({role:"assistant", content:j.reply});
-        addMsg("assistant", j.reply);
-        // Pre-fill the answer box with the assistant's recommended answer, ready to edit —
-        // but never echo the user's own last message back (that caused a re-send loop).
+        // A genuine, non-echo suggestion pre-fills the box (never echo the user's own last
+        // message — that caused a re-send loop).
         const lastUser = [...messages].reverse().find(m => m.role === "user");
-        if (j.suggestion && (!lastUser || j.suggestion.trim() !== lastUser.content.trim())) {
-          input.value = j.suggestion; autoResize();
+        const prefill = !!(j.suggestion && (!lastUser || j.suggestion.trim() !== lastUser.content.trim()));
+        const prose = display(j.reply);
+        if (prose) {
+          addMsg("assistant", j.reply);
+        } else {
+          // No readable prose: show an honest note, not a promise of a suggestion that isn't there.
+          const d = document.createElement("div");
+          d.className = "msg bot";
+          d.innerHTML = prefill
+            ? "<em>Here's my suggestion — review or edit it in the box below, then send.</em>"
+            : "<em>Sorry, that didn't come through clearly. Please rephrase your last answer, or use ‹ Back a step.</em>";
+          chat.appendChild(d); d.scrollIntoView({block:"end"});
         }
+        if (prefill) { input.value = j.suggestion; autoResize(); }
         if (j.fields) {
           draftFields = j.fields;
           document.getElementById("draft-note").textContent = editCid
