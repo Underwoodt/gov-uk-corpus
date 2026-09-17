@@ -33,6 +33,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_uniq ON auth.users (lower(em
 CREATE TABLE IF NOT EXISTS auth.user_sessions (
     id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id       uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    token_hash    text NOT NULL,                     -- SHA-256 of the cookie secret; never the secret itself
     created_at    timestamptz NOT NULL DEFAULT now(),
     last_seen_at  timestamptz NOT NULL DEFAULT now(),
     expires_at    timestamptz NOT NULL,
@@ -41,6 +42,8 @@ CREATE TABLE IF NOT EXISTS auth.user_sessions (
     user_agent    text
 );
 CREATE INDEX IF NOT EXISTS user_sessions_user ON auth.user_sessions (user_id);
+-- Additive for any pre-existing (Phase-1) sessions table.
+ALTER TABLE auth.user_sessions ADD COLUMN IF NOT EXISTS token_hash text;
 
 -- Security audit log (no secrets are ever written here).
 CREATE TABLE IF NOT EXISTS auth.audit_log (

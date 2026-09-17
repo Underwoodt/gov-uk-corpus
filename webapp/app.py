@@ -30,9 +30,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 
-from govuk_corpus import ai_models, audit
+from govuk_corpus import accounts, ai_models, audit
 from govuk_corpus import categories as cat
-from govuk_corpus import category_counts
+from govuk_corpus import category_counts, sessions
 from govuk_corpus import (audit_stats, category_interview, evaluate, orgs,
                           peak_schedule, pricing, readability, roles, settings, shortlist)
 from govuk_corpus.backend import db
@@ -179,7 +179,9 @@ def ctx(conn, request: Request, **extra) -> dict:
             "budget_bar": {"spent": round(spent, 4), "budget": budget, "pct": pct},
             # Global system role + a gate helper for templates:
             #   {% if can_use('Administrator') %}…{% endif %}
-            "role": role, "can_use": lambda required=None: roles.allows(role, required)}
+            "role": role, "can_use": lambda required=None: roles.allows(role, required),
+            # Accounts mode: the logged-in user (None in shared-password mode).
+            "auth_mode": AUTH_MODE, "user": current_user(request)}
     base.update(extra)
     return base
 
@@ -358,7 +360,43 @@ def _ai_chat(config: dict, system: str, messages: list, max_tokens: int = 1024) 
         return {"error": f"{type(e).__name__}: {e}"}
 
 
+def _secure_cookies() -> bool:
+    """Send the Secure flag once we're on confirmed HTTPS (same signal as HSTS)."""
+    return os.getenv("ENABLE_HSTS") == "1" or os.getenv("SECURE_COOKIES") == "1"
+
+
+def _client_ip(request: Request) -> Optional[str]:
+    xff = request.headers.get("x-forwarded-for", "")
+    if xff:
+        return xff.split(",")[0].strip()[:64]
+    return request.client.host if request.client else None
+
+
+def current_user(request: Request) -> Optional[dict]:
+    """The logged-in user (accounts mode) or None. Resolves the session cookie once
+    per request and caches it on request.state."""
+    if AUTH_MODE != "accounts":
+        return None
+    cached = getattr(request.state, "_user", "unset")
+    if cached != "unset":
+        return cached
+    user = None
+    cookie = request.cookies.get(sessions.COOKIE_NAME, "")
+    if cookie:
+        conn = connect()
+        try:
+            user = sessions.resolve(conn, cookie)
+        except Exception:
+            user = None
+        finally:
+            conn.close()
+    request.state._user = user
+    return user
+
+
 def authed(request: Request) -> bool:
+    if AUTH_MODE == "accounts":
+        return current_user(request) is not None
     if not PASSWORD:
         return True
     token = request.cookies.get(COOKIE, "")
@@ -382,30 +420,79 @@ def form_values(form) -> dict:
 
 
 # ---- auth ---------------------------------------------------------------
+_LOGIN_HEAD = ("""<!doctype html><meta charset=utf-8>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M4 1h5l3 3v11H4z' fill='%231d70b8'/><path d='M9 1v3h3z' fill='%23003078'/><g fill='none' stroke='%23fff' stroke-width='1' stroke-linecap='round'><path d='M6 7h5'/><path d='M6 9h5'/><path d='M6 11h4'/></g></svg>">
+    <link rel=stylesheet href='/static/govuk.css'>
+    <div class='masthead'><div class='wrap'><span class='brand'>Content Shortlist Builder</span></div></div>""")
+
+
 @app.get("/login", response_class=HTMLResponse)
-def login(request: Request, bad: int = 0):
-    body = ("<div class='error-summary'><h2>There is a problem</h2>"
-            "<ul><li>Incorrect password.</li></ul></div>" if bad else "")
+def login(request: Request, bad: int = 0, locked: int = 0):
+    err = ""
+    if locked:
+        err = f"<div class='error-summary'><h2>There is a problem</h2><ul><li>{accounts.LOGIN_LOCKED_MESSAGE}</li></ul></div>"
+    elif bad:
+        msg = accounts.LOGIN_FAILED_MESSAGE if AUTH_MODE == "accounts" else "Incorrect password."
+        err = f"<div class='error-summary'><h2>There is a problem</h2><ul><li>{msg}</li></ul></div>"
+    if AUTH_MODE == "accounts":
+        fields = ("<div class='field'><label class='q' for='e'>Email address</label>"
+                  "<input id='e' name='email' type='email' autocomplete='username'></div>"
+                  "<div class='field'><label class='q' for='p'>Password</label>"
+                  "<input id='p' name='password' type='password' autocomplete='current-password'></div>")
+    else:
+        fields = ("<div class='field'><label class='q' for='p'>Password</label>"
+                  "<input id='p' name='password' type='password'></div>")
     return HTMLResponse(
-        f"""<!doctype html><meta charset=utf-8>
-        <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M4 1h5l3 3v11H4z' fill='%231d70b8'/><path d='M9 1v3h3z' fill='%23003078'/><g fill='none' stroke='%23fff' stroke-width='1' stroke-linecap='round'><path d='M6 7h5'/><path d='M6 9h5'/><path d='M6 11h4'/></g></svg>">
-        <link rel=stylesheet href='/static/govuk.css'>
-        <div class='masthead'><div class='wrap'><span class='brand'>Content Shortlist Builder</span></div></div>
-        <div class='wrap body'><h1>Sign in</h1>{body}
-        <form method=post action='{request.url_for('do_login')}'>
-        <div class='field'><label class='q' for='p'>Password</label>
-        <input id='p' name='password' type='password'></div>
+        f"""{_LOGIN_HEAD}
+        <div class='wrap body'><h1>Sign in</h1>{err}
+        <form method=post action='{request.url_for('do_login')}'>{fields}
         <button class='btn' type=submit>Sign in</button></form></div>
         <div class='page-id'>guc-0014</div>""")
 
 
 @app.post("/login")
-def do_login(request: Request, password: str = Form("")):
+def do_login(request: Request, password: str = Form(""), email: str = Form("")):
+    if AUTH_MODE == "accounts":
+        conn = connect()
+        try:
+            user, reason = accounts.authenticate(conn, email, password, ip=_client_ip(request))
+            if user is None:
+                where = "?locked=1" if reason == "locked" else "?bad=1"
+                return RedirectResponse(url=str(request.url_for("login")) + where, status_code=303)
+            cookie = sessions.create_session(conn, user["id"], ip=_client_ip(request),
+                                             user_agent=request.headers.get("user-agent"))
+        finally:
+            conn.close()
+        resp = RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
+        resp.set_cookie(sessions.COOKIE_NAME, cookie, httponly=True, samesite="lax",
+                        secure=_secure_cookies(), max_age=sessions.SESSION_TTL_HOURS * 3600, path="/")
+        return resp
+    # shared-password mode
     if PASSWORD and not hmac.compare_digest(password, PASSWORD):
         return RedirectResponse(url=str(request.url_for("login")) + "?bad=1", status_code=303)
     resp = RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
     token = hmac.new((PASSWORD or "").encode(), b"ok", hashlib.sha256).hexdigest()
     resp.set_cookie(COOKIE, token, httponly=True, samesite="lax", max_age=86400)
+    return resp
+
+
+@app.post("/logout")
+def do_logout(request: Request):
+    resp = RedirectResponse(url=str(request.url_for("login")), status_code=303)
+    if AUTH_MODE == "accounts":
+        cookie = request.cookies.get(sessions.COOKIE_NAME, "")
+        if cookie:
+            conn = connect()
+            try:
+                user = current_user(request)
+                sessions.revoke(conn, cookie)
+                if user:
+                    accounts.audit(conn, "logout", user_id=user["id"], ip=_client_ip(request))
+            finally:
+                conn.close()
+        resp.delete_cookie(sessions.COOKIE_NAME, path="/")
+    else:
+        resp.delete_cookie(COOKIE)
     return resp
 
 
