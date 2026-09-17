@@ -35,7 +35,7 @@ from starlette.concurrency import run_in_threadpool
 
 from govuk_corpus import accounts, ai_models, audit
 from govuk_corpus import categories as cat
-from govuk_corpus import category_counts, sessions
+from govuk_corpus import category_counts, guardrails, sessions
 from govuk_corpus import (audit_stats, category_interview, evaluate, orgs,
                           peak_schedule, pricing, readability, roles, settings, shortlist)
 from govuk_corpus.backend import db
@@ -746,6 +746,13 @@ async def api_category_assistant(request: Request):
     # Keep only role/content and cap history length to bound cost.
     clean = [{"role": m.get("role"), "content": str(m.get("content") or "")}
              for m in messages[-24:] if m.get("role") in ("user", "assistant")]
+    # Guardrail: block the user's latest message if it carries personal data or
+    # prohibited language, before it reaches the model. Pause on the same question.
+    last_user = next((m["content"] for m in reversed(clean) if m["role"] == "user"), "")
+    finding = guardrails.check(last_user)
+    if finding:
+        return JSONResponse({"reply": guardrails.refusal_message(finding),
+                             "fields": None, "suggestion": None})
     conn = connect()
     try:
         budget = _budget(conn)
@@ -2038,6 +2045,9 @@ async def api_assistant(request: Request):
     system = (form.get("system") or "").strip()
     if not prompt:
         return JSONResponse({"error": "Enter a prompt."}, status_code=400)
+    finding = guardrails.check(prompt)          # block personal data / prohibited language
+    if finding:
+        return JSONResponse({"reply": guardrails.refusal_message(finding)})
     conn = connect()
     cfg = _ai_config(conn)
     budget = _budget(conn)
