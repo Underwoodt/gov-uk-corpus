@@ -132,6 +132,20 @@ class TestShortlistResults(unittest.TestCase):
     def test_count(self):
         self.assertEqual(count(self.conn, keywords=["slurry"]), 2)
 
+    def test_doctype_filter_matches_html_publication_by_parent(self):
+        # An html_publication (a publication's content body) matches on its PARENT's type:
+        # parent guidance is selected -> included; parent news_story is not -> excluded.
+        self.conn.execute("INSERT INTO content (url, document_type, parent_document_type, is_redirect, "
+                          "content_hash, search_text, title) "
+                          "VALUES ('https://www.gov.uk/hg','html_publication','guidance',0,'h','slurry','HG')")
+        self.conn.execute("INSERT INTO content (url, document_type, parent_document_type, is_redirect, "
+                          "content_hash, search_text, title) "
+                          "VALUES ('https://www.gov.uk/hn','html_publication','news_story',0,'h','slurry','HN')")
+        self.conn.commit()
+        urls = shortlist(self.conn, document_types=["guidance"], keywords=["slurry"])
+        self.assertIn("https://www.gov.uk/hg", urls)        # parent=guidance -> included
+        self.assertNotIn("https://www.gov.uk/hn", urls)     # parent=news_story -> excluded
+
     def test_results_derived_columns(self):
         from datetime import datetime, timezone, timedelta
         from govuk_corpus.shortlist import export_rows

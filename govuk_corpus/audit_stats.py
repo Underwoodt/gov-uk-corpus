@@ -35,8 +35,7 @@ def _where(organisations, document_types, keywords, match):
                      f"WHERE po.page_url = c.url AND po.organisation_slug IN ({ph}))")
         params.extend(organisations)
     if document_types:
-        ph = ",".join([_P] * len(document_types))
-        where.append(f"c.document_type IN ({ph})")
+        where.append(shortlist.doctype_clause(document_types))   # html_publication -> parent's type
         params.extend(document_types)
     if keywords:
         clause, kwp = shortlist._keyword_clause(keywords, match, _IS_PG)

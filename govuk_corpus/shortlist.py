@@ -78,8 +78,7 @@ def build_query(
         params.extend(organisations)
 
     if document_types:
-        placeholders = ",".join([_P] * len(document_types))
-        where.append(f"c.document_type IN ({placeholders})")
+        where.append(doctype_clause(document_types))
         params.extend(document_types)
 
     if keywords:
@@ -223,6 +222,24 @@ _PRIMARY_ORG_EXPR = ("(SELECT po.organisation_slug FROM page_organisations po "
 _EFF_DOCTYPE_EXPR = (f"CASE WHEN c.document_type = 'html_publication' "
                      f"THEN COALESCE(NULLIF(c.parent_document_type, ''), {_PARENT_DT_JSON}, c.document_type) "
                      f"ELSE c.document_type END")
+# Public alias: the document-type filter matches on this so an html_publication (the
+# content body of a publication) is selected by its PARENT publication's type. Shared by
+# audit.py / audit_stats.py so the funnel, audit log and dashboard all agree.
+EFFECTIVE_DOCTYPE_EXPR = _EFF_DOCTYPE_EXPR
+
+
+def doctype_clause(document_types: Sequence[str]) -> str:
+    """WHERE fragment for a document-type filter. Matches on the EFFECTIVE type, so an
+    html_publication (a publication's content body) is selected by its PARENT's type —
+    e.g. picking "guidance" also keeps html_publications whose parent is guidance. If
+    "html_publication" is itself selected, every html_publication still matches too, so
+    listing it never silently empties the result. Caller extends params with
+    `document_types` once, in order."""
+    ph = ",".join([_P] * len(document_types))
+    clause = f"{_EFF_DOCTYPE_EXPR} IN ({ph})"
+    if "html_publication" in document_types:
+        clause = f"({clause} OR c.document_type = 'html_publication')"
+    return clause
 
 # Freshness band from public_updated_at (lexical ISO compare against now-relative dates).
 if _IS_PG:
@@ -308,8 +325,7 @@ def org_breakdown(conn, *, organisations: Sequence[str], document_types: Sequenc
     where.append(f"po.organisation_slug IN ({ph})")
     params.extend(organisations)
     if document_types:
-        ph2 = ",".join([_P] * len(document_types))
-        where.append(f"c.document_type IN ({ph2})")
+        where.append(doctype_clause(document_types))     # effective type (html_publication -> parent)
         params.extend(document_types)
     if keywords:
         clause, kwp = _keyword_clause(keywords, match, _IS_PG)

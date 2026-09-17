@@ -18,7 +18,7 @@ import argparse
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from .backend import db
-from .shortlist import _keyword_clause
+from .shortlist import _keyword_clause, doctype_clause
 
 _IS_PG = db.__name__.endswith("db_pg")
 _P = "%s" if _IS_PG else "?"
@@ -35,8 +35,7 @@ def _build_select(organisations: Sequence[str], document_types: Sequence[str],
     params: list = []
 
     if document_types:
-        ph = ",".join([_P] * len(document_types))
-        dt_ok = f"c.document_type IN ({ph})"
+        dt_ok = doctype_clause(document_types)   # html_publication matches on parent's type
         params.extend(document_types)
     else:
         dt_ok = "1=1"
