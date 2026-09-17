@@ -75,6 +75,15 @@ select:hover, textarea:hover { border-color:var(--muted); }
 input[type=text], input[type=email], input[type=password] { width:100%; max-width:440px; }
 input.narrow { max-width:340px; }
 
+/* Show/hide password eye toggle (wraps each password field — see _LOGIN_HEAD). */
+.pw-wrap { position:relative; display:block; }
+.pw-wrap input { width:100%; padding-right:44px; }
+.pw-toggle { position:absolute; top:0; right:0; height:100%; width:42px; padding:0;
+  display:flex; align-items:center; justify-content:center; background:none; border:0;
+  color:var(--grey-text); cursor:pointer; }
+.pw-toggle:hover { color:var(--ink); }
+.pw-toggle svg { width:20px; height:20px; }
+
 /* Auth pages (sign in / create account): compact, equal-width fields. */
 .authform { max-width:440px; }
 .authform .field { margin-bottom:16px; }
