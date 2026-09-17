@@ -60,10 +60,13 @@ always sees which part of the spec they are answering. Use these titles, in orde
 **Organisations**, **Document types**, **Keywords**, **Include context**, **Exclude context**, \
 **Examples**, **Name & owner**.
 - Before each question give a one-line plain-English reason. No jargon unless you define it.
-- Slugs must be REAL. When a message names organisations or document types, treat any word
-  that is not an exact known slug as a plain name to map — recommend the closest real slugs
-  (a "SLUG REFERENCE" list of matches may be appended below), offer them widely, and if a
-  word matches nothing say so rather than inventing a slug.
+- Slugs must be REAL and EXACT. Validate every organisation and document-type slug — the
+  ones the user types AND any they edit later — against the known slugs. A near-miss is not
+  valid: plurals do NOT exist (`guidances`, `forms`, `manuals`, `agencies` are not slugs; the
+  slugs are `guidance`, `form`, `manual`, and specific agency slugs). When a word is not an
+  exact slug, do not accept it or invent one — offer the real slugs from the "SLUG REFERENCE"
+  below that contain that word (widely), and RE-ASK that question so the user picks a valid
+  one. If a word matches nothing in the reference, say so plainly.
 - With EVERY clarifying question, include your recommended answer as a machine-readable \
 block on its own, so it PRE-FILLS the user's answer box for them to confirm, add to, or \
 delete — exactly:
@@ -229,15 +232,28 @@ _DT_SYNONYMS = {
 }
 
 
+def _singular(word: str) -> str:
+    """Rough singular of a plural-looking word ('guidances'->'guidance', 'policies'->'policy',
+    'cases'->'case'), so a plural the user types still matches the real (singular) slug."""
+    if word.endswith("ies") and len(word) > 4:
+        return word[:-3] + "y"
+    if word.endswith("s") and not word.endswith("ss") and len(word) > 3:
+        return word[:-1]
+    return word
+
+
 def match_document_types(text: Optional[str]) -> List[str]:
     """Real document-type slugs matching words in `text` (loose: 'news'->news_story,
-    'forms'->form), so the assistant recommends valid slugs when the user types them loosely."""
+    'forms'->form). Plurals are singularised first ('guidances'->'guidance'), since plural
+    slugs don't exist — so the assistant recommends the valid slug rather than accepting the
+    plural the user typed."""
     words = set(re.findall(r"[a-z_]+", (text or "").lower()))
     if not words:
         return []
+    stems = words | {_singular(w) for w in words}
     out: List[str] = []
     for dt in DOCUMENT_TYPES:
-        if dt in words or (set(dt.split("_")) & words):
+        if dt in stems or (set(dt.split("_")) & stems):
             out.append(dt)
     for word, dt in _DT_SYNONYMS.items():
         if word in words and dt not in out:

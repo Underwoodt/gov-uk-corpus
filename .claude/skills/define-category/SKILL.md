@@ -91,9 +91,11 @@ question. If it's clearly two topics, gently suggest two categories.
 > — I can map the names to the right ones."
 - Turn plain names into slugs (e.g. "Environment Agency" → `environment-agency`). If they
   don't know, suggest likely bodies from the topic and let them confirm.
-- **Only recommend real slugs.** Whenever the answer changes, re-check the new words: if any
-  isn't an exact known slug, don't invent one — recommend the closest real slugs (offer them
-  widely) and flag any word that matches nothing.
+- **Only recommend real, exact slugs.** Validate every slug the user gives — and re-check
+  whenever the answer changes. A near-miss is not valid: plurals don't exist (`agencies` is
+  not a slug). If a word isn't an exact known slug, don't invent one — offer the real slugs
+  that contain that word (widely) and **re-ask** so they pick a valid one; flag any word that
+  matches nothing.
 - Ask: **"Should this include the department's agencies and arms-length bodies too?"** If
   yes, set `include_child_orgs` on (expands e.g. Defra to the Environment Agency, Natural
   England, etc.). Recommend **yes** unless they specifically want just the core department.
@@ -108,6 +110,9 @@ they're after, not the whole list. Prefer the main types we expect people to sea
 `hmrc_manual`, `transaction`, `service_manual_guide`, `farming_grant`, `manual`,
 `countryside_stewardship_grant`.
 - If they only want stable reference material, steer toward `guidance` / `detailed_guide`.
+- **Validate each type — plurals don't exist.** `guidances`, `forms`, `manuals` are not
+  slugs; the slugs are `guidance`, `form`, `manual`. If a word isn't an exact slug, offer the
+  real types that contain it and re-ask rather than accepting it.
 - **Only if they give a non-answer** ("not sure", "you decide", or nothing usable) show the
   *full* list of main types above and ask them to select the ones they want.
 - Focus on a reduced set — too broad means less signal and more noise.
