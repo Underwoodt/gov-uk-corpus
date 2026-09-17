@@ -14,7 +14,7 @@
       <label class="secondary" for="cat-filter" style="display:block;margin-bottom:5px;">Search categories</label>
       <input id="cat-filter" type="text" class="narrow" oninput="filterCats(this.value)">
     </div>
-    <a class="btn" href="{{ url_for('new_category_page') }}">Create a new category</a>
+    <a class="btn" href="{{ url_for('category_assistant_page') }}">Create a new category</a>
   </div>
 
   <p class="secondary" id="count-line" style="margin:0 0 10px;">{{ categories|length }} categor{{ 'y' if categories|length == 1 else 'ies' }}</p>
