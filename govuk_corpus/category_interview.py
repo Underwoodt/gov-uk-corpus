@@ -55,6 +55,10 @@ context** / **Exclude context**, the finished 2-4 sentence description in plain 
 For **Name & owner**, a kebab-case slug. Always give a suggest block when you can \
 recommend a value. Do NOT include a suggest block in the final message where you output \
 the category json.
+- ALWAYS write your reflection and question as normal prose FIRST (a bold facet title and \
+a sentence or two), then put the ```suggest block LAST. NEVER reply with only a suggest \
+block, an empty message, or by repeating the opening brain-dump prompt. MOVE FORWARD to \
+the next facet every turn — do not loop back to the brain-dump.
 - Always propose a sensible starting point so a blank answer is never required.
 - Suggest values inferred from what they've told you; let them confirm or change.
 - Catch these traps: (a) a single broad keyword whose stem is generic (e.g. "animal" -> \
