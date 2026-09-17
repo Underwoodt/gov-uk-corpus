@@ -138,17 +138,18 @@
 
     <div id="tab2-active" class="subpanel2" role="tabpanel">
       <div class="controls">
-        <label>Evaluate next
-          <input id="eval-n" type="number" value="10" min="1" max="{{ eval_max_docs }}" style="width:80px;padding:4px;border:2px solid var(--black);">
-          pages</label>
-        <span class="secondary">(max {{ eval_max_docs }}/run — Settings)</span>
-        <button type="button" class="btn secondary-btn" id="run-eval">Evaluate (active run)</button>
-        <button type="button" class="btn secondary-btn" id="new-run">Start new run</button>
-        <button type="button" class="btn secondary-btn" id="run-bg" title="Runs the whole shortlist on the server — you can close this page">Run to completion (background)</button>
-        <button type="button" class="btn secondary-btn" id="stop-bg" hidden style="color:#d4351c;">Stop background run</button>
+        <button type="button" class="btn secondary-btn" id="new-run"
+          title="You will need to execute this once setup.">Create New Run</button>
+        <button type="button" class="btn secondary-btn" id="run-bg"
+          title="Will only update new items in the query in the background.">Execute Active Run</button>
+        <button type="button" class="btn secondary-btn" id="stop-bg" hidden style="color:#d4351c;"
+          title="Click to stop the current active run. You can restart at any time by re-executing; it will restart where it left off.">Stop Run</button>
         <span id="eval-status" class="secondary"></span>
       </div>
-      <p id="bg-note" class="hint" style="margin:0 0 10px;" hidden>Running on the server — it keeps going even if you
+      <p class="hint" style="margin:8px 0 0;max-width:660px;">Each execution evaluates up to
+        <strong>{{ eval_max_docs }} pages</strong> per run (the limit set in Settings), and only items in the query
+        that haven't been evaluated yet. If more remain when it stops, execute again to continue where it left off.</p>
+      <p id="bg-note" class="hint" style="margin:8px 0 10px;" hidden>Running on the server — it keeps going even if you
         leave this page. Come back any time to see progress.</p>
       <p id="active-run-line" class="secondary" style="margin:0 0 10px;"></p>
       <div id="eval-progress-wrap" hidden style="max-width:640px;margin:0 0 15px;">
@@ -164,7 +165,7 @@
 
     <div id="tab2-history" class="subpanel2" role="tabpanel" hidden>
       <p class="hint" style="margin-top:0;">Every run for this category. Select a run's radio to make it the
-        <strong>active</strong> run (what <em>Evaluate</em> adds to); open a run's name for its per-page details.</p>
+        <strong>active</strong> run (what <em>Execute Active Run</em> adds to); open a run's name for its per-page details.</p>
       <table id="runs-table" hidden>
         <thead><tr><th title="The run that Evaluate / background runs add to">Active</th>
           <th>Name</th><th>Started</th><th>Elapsed</th>
@@ -416,7 +417,6 @@
     window.addEventListener("resize", drawSankey);
 
     // AI evaluation
-    const runEvalBtn = document.getElementById("run-eval");
     function decisionText(k) { return k === 1 ? "keep" : k === 0 ? "drop" : "—"; }
     // Model score → a confidence description of how central the topic is to the page.
     // The label (this fn) and the raw score (scoreText) are shown in separate columns.
@@ -446,8 +446,8 @@
       const j = await (await fetch(`/api/categories/${CID}/runs`)).json();
       activeRun = j.active || null;
       document.getElementById("active-run-line").textContent =
-        activeRun ? `Active run: ${activeRun} (evaluate adds to it; “Start new run” to compare a different model).`
-                  : "No active run — “Evaluate” starts one with the model set in Settings.";
+        activeRun ? `Active run: ${activeRun} (Execute Active Run adds to it; “Create New Run” to compare a different model).`
+                  : "No active run — “Execute Active Run” starts one with the model set in Settings.";
       const table = document.getElementById("runs-table");
       const tbody = table.querySelector("tbody");
       tbody.innerHTML = "";
@@ -500,8 +500,8 @@
           } catch (e) {}
           await loadRuns();
         }));
-      // Radios can't switch the target mid-run — lock them while evaluating.
-      const lockRadios = runEvalBtn.disabled || (stopBgBtn && !stopBgBtn.hidden);
+      // Radios can't switch the target mid-run — lock them while a run is executing.
+      const lockRadios = !!(stopBgBtn && !stopBgBtn.hidden);
       table.querySelectorAll("input.active-run").forEach(radio => { radio.disabled = lockRadios; });
 
       // Feed the latest inclusion (and its exclusion) run into the pipeline Sankey.
@@ -576,74 +576,10 @@
       try {
         await fetch(`/api/categories/${CID}/runs`, { method: "POST" });
         await loadRuns();
-        document.getElementById("eval-status").textContent = "New run started — Evaluate to fill it.";
+        document.getElementById("eval-status").textContent = "New run created — Execute Active Run to evaluate it.";
       } finally { newRunBtn.disabled = false; }
     }
     newRunBtn.addEventListener("click", newRun);
-
-    const EVAL_MAX_DOCS = {{ eval_max_docs }};
-    const EVAL_CHUNK = 25;   // pages per request (short calls); loop to reach the target
-    async function runEval() {
-      const st = document.getElementById("eval-status");
-      const target = Math.min(parseInt(document.getElementById("eval-n").value, 10) || 0, EVAL_MAX_DOCS);
-      if (target < 1) { st.textContent = "Enter how many pages to evaluate."; return; }
-      runEvalBtn.disabled = true;
-      let doneTotal = 0, cost = 0, last = null;
-      const start = performance.now();
-      const wrap = document.getElementById("eval-progress-wrap");
-      const bar = document.getElementById("eval-progress-bar");
-      const avgs = document.getElementById("eval-averages");
-      wrap.hidden = false;
-      bar.style.width = "0%";
-      function updateProgress() {
-        const pct = target ? Math.min(100, (doneTotal / target) * 100) : 0;
-        bar.style.width = pct.toFixed(1) + "%";
-        const elapsed = (performance.now() - start) / 1000;
-        if (doneTotal > 0) {
-          avgs.textContent =
-            `${fmtInt(doneTotal)}/${fmtInt(target)} (${pct.toFixed(0)}%) · `
-            + `avg ${(elapsed / doneTotal).toFixed(1)}s/page · `
-            + `avg $${(cost / doneTotal).toFixed(6)}/page · `
-            + `elapsed ${elapsed.toFixed(0)}s · total $${cost.toFixed(6)}`;
-        }
-      }
-      let phaseLabel = "Inclusion";
-      try {
-        // Loop until the user's target is met; if inclusion finishes and the server
-        // auto-starts the Exclusion phase, keep going through it (target grows).
-        while (doneTotal < target) {
-          const n = Math.min(EVAL_CHUNK, target - doneTotal);
-          st.innerHTML = `<span class="spinner"></span> ${phaseLabel} — evaluating… ${fmtInt(doneTotal)}/${fmtInt(target)}`;
-          const r = await fetch(`/api/categories/${CID}/evaluate?limit=${n}`, { method: "POST" });
-          const j = await r.json();
-          if (j.error) { st.textContent = "Error: " + j.error; last = j; break; }
-          doneTotal += j.evaluated_this_run;
-          cost += j.cost_usd || 0;
-          last = j;
-          if (j.advanced) {              // inclusion done → exclusion started over its keeps
-            phaseLabel = "Exclusion";
-            target += j.advanced.remaining || 0;   // extend so the pass runs to completion
-          }
-          updateProgress();
-          await loadRuns();
-          if (last.run_id) await loadRunResults(last.run_id, "");
-          if (j.stopped === "budget") break;
-          if (!j.advanced && (j.evaluated_this_run === 0 || j.remaining === 0)) break;   // this phase exhausted
-        }
-        if (last && !last.error) {
-          let msg = `Evaluated ${fmtInt(doneTotal)} · $${cost.toFixed(6)} · ${fmtInt(last.remaining)} left in shortlist`;
-          if (last.spent_today != null) msg += ` · $${last.spent_today.toFixed(4)}/$${(last.budget||0).toFixed(2)} today`;
-          if (last.stopped === "budget") msg += " · ⛔ stopped: daily budget reached";
-          st.textContent = msg;
-          if (last.warning) st.textContent += "  ⚠️ " + last.warning;
-        }
-      } catch (e) {
-        st.textContent = "Could not run evaluation.";
-      } finally {
-        runEvalBtn.disabled = false;
-      }
-    }
-    runEvalBtn.addEventListener("click", runEval);
 
     // ---- server-side background run (keeps going with the page closed) ----
     const runBgBtn = document.getElementById("run-bg");
@@ -652,7 +588,7 @@
     let bgTimer = null;
 
     function bgUiRunning(on) {
-      runBgBtn.disabled = on; runEvalBtn.disabled = on; newRunBtn.disabled = on;
+      runBgBtn.disabled = on; newRunBtn.disabled = on;
       stopBgBtn.hidden = !on; bgNote.hidden = !on;
     }
     function renderBgStatus(s) {
@@ -671,6 +607,7 @@
       if (!s.running) {
         if (s.error) msg = "Background run error: " + s.error;
         else if (s.stopped === "budget") msg += " · ⛔ stopped: daily budget reached";
+        else if (s.stopped === "cap") msg += " · ⏸ reached the per-run page limit — Execute again to continue";
         else msg += " · ✅ finished";
       }
       st.textContent = msg;
