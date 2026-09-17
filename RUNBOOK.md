@@ -202,6 +202,84 @@ journalctl -u corpus-shortlist -n 30 --no-pager
 
 ---
 
+## Go-live before HTTPS is ready (deploy now, harden later)
+
+You can deploy today over the existing **HTTP** and tighten security once HTTPS/nginx
+is in place. There are two independent halves — do **A** freely; treat **B** as a
+*testing* deploy, not real go-live, until HTTPS lands.
+
+### Part A — ship the accumulated app changes (safe over HTTP, do anytime)
+
+This is the current shared-password app (`AUTH_MODE` unset → `shared`) on the same HTTP
+you already run. HTTPS changes nothing here; there is **no** security regression.
+
+```bash
+cd /home/ubuntu/gov-uk-corpus
+git pull
+source .venv/bin/activate
+pip install -r requirements.txt          # only if requirements changed
+
+# Schema: adds category_page_counts, gds_checks, gds_stars — all IF NOT EXISTS (safe).
+set -a; . /home/ubuntu/gov-uk-corpus.env; set +a
+.venv/bin/python -c "from govuk_corpus.backend import db; c=db.connect(); db.init_db(c); print('schema applied')"
+
+# One-off backfills for the new features:
+.venv/bin/python -m govuk_corpus.category_counts          # Categories-list page counts
+.venv/bin/python -m govuk_corpus.build_readability --rescan   # GDS stars (prints star histogram)
+
+sudo systemctl restart corpus-shortlist
+journalctl -u corpus-shortlist -n 30 --no-pager
+```
+
+Send me the star histogram printed by `--rescan` so we can calibrate the star bands.
+After deploy, hard-refresh the browser (**Cmd/Ctrl+Shift+R**) so the new CSS loads.
+
+### Part B — turn accounts on over HTTP, then harden when HTTPS lands
+
+`AUTH_MODE=accounts` **works over plain HTTP** because the session/CSRF cookies are only
+marked `Secure` when you opt in (`_secure_cookies()` in [webapp/app.py](webapp/app.py)
+is true only if `ENABLE_HSTS=1` **or** `SECURE_COOKIES=1`).
+
+> ⚠️ **Over HTTP, passwords at login and the session token travel in cleartext.** This
+> is fine for *you* exercising register/login/RBAC with throwaway passwords, but it is
+> **not** safe for real users. Do **not** set `SECURE_COOKIES=1` / `ENABLE_HSTS=1` yet —
+> `Secure` cookies are silently dropped over HTTP and login will appear to fail.
+
+**Enable accounts over HTTP (testing):**
+
+```bash
+# 1. Create the auth schema (isolated 'auth' schema; corpus tables untouched, idempotent).
+set -a; . /home/ubuntu/gov-uk-corpus.env; set +a
+.venv/bin/python -c "from govuk_corpus.backend import db; from govuk_corpus import accounts; c=db.connect(); accounts.init_auth_schema(c); print('auth schema ready')"
+
+# 2. In /home/ubuntu/gov-uk-corpus.env add:  AUTH_MODE=accounts
+#    (leave ENABLE_HSTS / SECURE_COOKIES UNSET while on HTTP)
+sudo systemctl restart corpus-shortlist
+```
+
+Then register the first accounts (DEFRA / Equal Experts email domains only) and test.
+
+**Harden once HTTPS/nginx is live (no code change, env + restart):**
+
+```bash
+# In gov-uk-corpus.env add:  ENABLE_HSTS=1
+#   (this alone flips cookies to Secure AND sends HSTS; SECURE_COOKIES=1 is the same flip
+#    without HSTS if you want Secure cookies before committing to HSTS.)
+sudo systemctl restart corpus-shortlist
+```
+
+Then invalidate any cleartext-era sessions so no HTTP-issued token stays valid — either
+have everyone sign out and back in, or clear the session table once:
+
+```bash
+sudo -u postgres psql -d gov_uk_corpus -c "DELETE FROM auth.user_sessions;"
+```
+
+**Summary:** deploy Part A whenever; run Part B over HTTP only for your own testing with
+burnable credentials; flip `ENABLE_HSTS=1` + force re-login the moment HTTPS is confirmed.
+
+---
+
 ## Operations
 
 | Task | Command |
