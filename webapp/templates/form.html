@@ -52,8 +52,11 @@
 
     <div class="field">
       <label class="q" for="owner_email">Your email address</label>
-      <p class="hint">We email you when a run finishes. This is not a login.</p>
-      <input id="owner_email" name="owner_email" type="text" value="{{ v.owner_email or '' }}">
+      <p class="hint">We email you when a run finishes. This is not a login.{% if user and not is_edit %}
+        Taken from your account.{% endif %}</p>
+      <input id="owner_email" name="owner_email" type="text"
+        value="{{ v.owner_email or (user.email if user else '') }}"
+        {{ 'readonly style=background:#f3f2f1' if (user and not is_edit) else '' }}>
     </div>
 
     <div class="field">

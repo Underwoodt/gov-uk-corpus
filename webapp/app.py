@@ -775,6 +775,10 @@ async def create_category(request: Request):
     conn = connect()
     form = await request.form()
     data = form_values(form)
+    # The owner is whoever is logged in — take their email (accounts mode), not the form.
+    cu = current_user(request)
+    if cu and cu.get("email"):
+        data["owner_email"] = cu["email"]
     errors = cat.validate(data)
     if errors:
         return templates.TemplateResponse("form.html", _form_ctx(conn, request, None, data, errors))
