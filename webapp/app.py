@@ -965,7 +965,7 @@ def preview_category_page(request: Request, cid: int):
 
 
 @app.get("/categories/{cid}/shortlist", response_class=HTMLResponse)
-def shortlist_page(request: Request, cid: int, stage: str = "keyword", tab: str = "shortlist"):
+def shortlist_page(request: Request, cid: int, stage: str = "final", tab: str = "shortlist"):
     """Audit Results page — Shortlist and Dashboard sub-tabs. `stage` pre-selects
     the shortlist stage dropdown; `tab` picks the initial sub-tab (shortlist |
     dashboard). Data loads from /api/categories/{cid}/audit-shortlist and
@@ -978,7 +978,7 @@ def shortlist_page(request: Request, cid: int, stage: str = "keyword", tab: str 
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
     category["display_name"] = cat.prettify(category.get("slug")) or (category.get("description") or "Untitled")
     if stage not in _AUDIT_STAGE_KEYS:
-        stage = "keyword"
+        stage = "final"
     stages = [(s, _FUNNEL_STAGES[s][0]) for s in ("all", "org", "doctype", "keyword")]  # dashboard levels
     gds_check_meta = [{"name": c.name, "weight": c.weight, "reason": c.reason}
                       for c in readability.CHECKS]
