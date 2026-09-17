@@ -39,6 +39,22 @@ class TestParseFields(unittest.TestCase):
         self.assertEqual(set(f), {"slug", "dept_slugs"})
 
 
+class TestEditModePrompt(unittest.TestCase):
+    def test_plain_prompt_unchanged(self):
+        self.assertEqual(ci.system_prompt(), ci.SYSTEM_PROMPT)
+        self.assertEqual(ci.system_prompt(None), ci.SYSTEM_PROMPT)
+
+    def test_edit_prompt_includes_section_and_current_values(self):
+        p = ci.system_prompt({"slug": "farm-slurry", "keywords": "slurry, manure", "bogus": 1})
+        self.assertIn("EDITING AN EXISTING DEFINITION", p)
+        self.assertIn("farm-slurry", p)
+        self.assertIn("slurry, manure", p)
+        self.assertNotIn("bogus", p)                 # only known FIELD_KEYS are embedded
+
+    def test_edit_greeting_names_category(self):
+        self.assertIn("Farm slurry", ci.edit_greeting("Farm slurry"))
+
+
 @unittest.skipUnless(_HAS_WEBAPP, "web app deps (fastapi) not installed")
 class TestAssistantEndpoint(unittest.TestCase):
     def _client(self):

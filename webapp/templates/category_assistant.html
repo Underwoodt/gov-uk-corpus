@@ -16,13 +16,23 @@
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
   <h1 style="margin:16px 0 4px;">Category assistant</h1>
   <p class="hint" style="margin:0 0 16px;max-width:720px;">Answer a few questions and I'll draft a category for you,
-    then open the Create form pre-filled so you can review and save. Nothing is created until you save.
+    then open the form pre-filled so you can review and save. Or pick an existing category below to
+    <strong>refine</strong> it — I'll re-ask each part showing the current value. Nothing is saved until you save.
     Uses AI credit (counts toward the daily budget above).</p>
+
+  <div id="import-bar" style="max-width:720px;margin:0 0 16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+    <label for="import-select" style="font-weight:600;">Refine an existing category:</label>
+    <select id="import-select" style="font:inherit;padding:6px;border:2px solid var(--black);border-radius:6px;">
+      <option value="">— start a new category —</option>
+      {% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+    </select>
+    <button class="btn secondary-btn" id="import-load" type="button">Load &amp; refine</button>
+  </div>
 
   <div id="chat"></div>
 
   <div id="draft" hidden style="max-width:720px;border:2px solid var(--green,#00703c);border-radius:8px;padding:14px 16px;margin:6px 0 12px;">
-    <strong>Draft ready.</strong> I've put together a starting point.
+    <strong>Draft ready.</strong> <span id="draft-note">I've put together a starting point.</span>
     <div style="margin-top:10px;"><button class="btn" id="to-form" type="button">Review in the form →</button></div>
   </div>
 
@@ -44,11 +54,14 @@
     const composer = document.getElementById("composer");
     const composerHint = document.getElementById("composer-hint");
     const status = document.getElementById("status");
+    const importSelect = document.getElementById("import-select");
+    const importLoad = document.getElementById("import-load");
 
     // Hide the answer box while the assistant is thinking; show it with the next question.
     function showComposer(show) { composer.hidden = !show; composerHint.hidden = !show; }
     const messages = [];   // {role, content}  (parallel to the .msg nodes in #chat)
     let draftFields = null;
+    let editCid = null, editFields = null;   // set when refining an existing category
 
     // Show "Back a step" only once there is at least one answer to undo.
     function updateBack() { backBtn.hidden = !messages.some(m => m.role === "user"); }
@@ -97,19 +110,16 @@
     addMsg("assistant", greeting);
     updateBack();
 
-    async function send() {
-      const text = input.value.trim();
-      if (!text) return;
-      input.value = "";
-      addMsg("user", text);
-      messages.push({role:"user", content:text});
+    // Ask the assistant for the next reply, given the current messages (and, in edit
+    // mode, the definition being refined). Hides the answer box while it thinks.
+    async function ask() {
       sendBtn.disabled = true; backBtn.disabled = true;
-      showComposer(false);          // hide the answer box until the next question arrives
+      showComposer(false);
       status.innerHTML = '<span class="spinner"></span> Thinking…';
       try {
         const r = await fetch("/api/categories/assistant", {
           method:"POST", headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({messages})
+          body: JSON.stringify({messages, edit_fields: editFields || undefined})
         });
         const j = await r.json();
         if (j.error) { status.textContent = "Error: " + j.error; return; }
@@ -118,17 +128,54 @@
         addMsg("assistant", j.reply);
         if (j.fields) {
           draftFields = j.fields;
+          document.getElementById("draft-note").textContent = editCid
+            ? "I've applied your changes — review them in the edit form."
+            : "I've put together a starting point.";
           document.getElementById("draft").hidden = false;
         }
       } catch (e) {
         status.textContent = "Could not reach the assistant.";
       } finally {
         sendBtn.disabled = false; backBtn.disabled = false;
-        showComposer(true);         // next question has arrived (or an error) -> answer box back
+        showComposer(true);
         updateBack();
         input.focus();
       }
     }
+
+    async function send() {
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = "";
+      addMsg("user", text);
+      messages.push({role:"user", content:text});
+      await ask();
+    }
+
+    // Import an existing category and re-run the interview to refine it.
+    async function loadExisting() {
+      const cid = importSelect.value;
+      if (!cid) return;
+      importLoad.disabled = true;
+      status.innerHTML = '<span class="spinner"></span> Loading…';
+      try {
+        const j = await (await fetch(`/api/categories/${cid}/definition`)).json();
+        if (j.error) { status.textContent = "Error: " + j.error; return; }
+        editCid = cid; editFields = j.fields || {};
+        // Reset the conversation and seed the edit interview.
+        messages.length = 0; chat.innerHTML = "";
+        draftFields = null; document.getElementById("draft").hidden = true;
+        const greetE = editGreeting(j.name);
+        messages.push({role:"assistant", content:greetE}); addMsg("assistant", greetE);
+        const kickoff = "Let's go through it.";
+        messages.push({role:"user", content:kickoff}); addMsg("user", kickoff);
+        await ask();     // the assistant asks the first facet, showing its current value
+      } finally { importLoad.disabled = false; }
+    }
+    function editGreeting(name){
+      return `Let's refine **${name}**. I'll walk you through each part showing what's set now — keep it as-is or nuance it as we go.`;
+    }
+    importLoad.addEventListener("click", loadExisting);
 
     sendBtn.addEventListener("click", send);
     input.addEventListener("keydown", e => {
@@ -136,7 +183,9 @@
     });
     document.getElementById("to-form").addEventListener("click", () => {
       try { sessionStorage.setItem("category_prefill", JSON.stringify(draftFields)); } catch (e) {}
-      window.location = "{{ url_for('new_category_page') }}?prefill=1";
+      // Refining an existing category -> its edit form; otherwise the create form.
+      window.location = editCid ? `/categories/${editCid}/edit?prefill=1`
+                                : "{{ url_for('new_category_page') }}?prefill=1";
     });
   </script>
 {% endblock %}

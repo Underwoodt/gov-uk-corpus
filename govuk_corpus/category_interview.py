@@ -84,6 +84,39 @@ GREETING = ("Hi! I'll help you define a content category, one step at a time —
             "and I'll suggest starting points as we go.\n\n"
             "**Topic**\nTo begin: in one sentence, what are you trying to find on gov.uk?")
 
+# Appended to the system prompt when the user is refining an EXISTING category, so the
+# interview re-asks each facet showing the current value instead of starting from scratch.
+EDIT_SUFFIX = """
+
+EDITING AN EXISTING DEFINITION
+The user is UPDATING a category that already exists — not creating a new one. Its current \
+definition is below. Re-run the interview to refine it: walk through EACH facet in order \
+(same bold titles), and for every one SHOW the current value first and ask whether to keep \
+it or change it (e.g. "Currently this is X — keep it, or change it?"). Change only what the \
+user asks; keep everything else exactly as it is. When you output the final json, include \
+ALL fields with their current values, except the ones the user changed.
+
+Current definition:
+```json
+{current}
+```
+"""
+
+
+def system_prompt(edit_fields: Optional[Dict] = None) -> str:
+    """The interview system prompt. In edit mode (edit_fields given) the model is told to
+    re-ask each facet showing the current value so the user can keep or nuance it."""
+    if not edit_fields:
+        return SYSTEM_PROMPT
+    current = {k: edit_fields[k] for k in FIELD_KEYS if k in edit_fields}
+    return SYSTEM_PROMPT + EDIT_SUFFIX.format(current=json.dumps(current, indent=2))
+
+
+def edit_greeting(name: str) -> str:
+    """Opening assistant message when refining an existing category."""
+    return (f"Let's refine **{name}**. I'll walk you through each part showing what's set "
+            f"now — keep it as-is or nuance it as we go.")
+
 _JSON_FENCE = re.compile(r"```json\s*(\{.*?\})\s*```", re.DOTALL)
 _JSON_BARE = re.compile(r"(\{(?:[^{}]|\{[^{}]*\})*\})", re.DOTALL)
 
