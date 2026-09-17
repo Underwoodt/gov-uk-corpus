@@ -9,6 +9,11 @@
 </head>
 <body>
   <script>
+    // Apply the saved UI display level (Profile page) as early as possible, before the
+    // page paints, so higher-level elements don't flash in. Unset => everything shows.
+    (function () { try { var l = localStorage.getItem("ui_level"); if (l) document.documentElement.setAttribute("data-ui-level", l); } catch (e) {} })();
+  </script>
+  <script>
     // CSRF: echo the sb_csrf cookie in an X-CSRF-Token header on every same-origin
     // state-changing fetch, so page scripts need no per-call changes. Runs before them.
     (function () {
@@ -37,7 +42,8 @@
     <span class="service">Content Relevance Filters</span>
     <a href="{{ url_for('list_categories_page') }}" class="{{ 'active' if active_nav not in ['assistant','settings'] }}">Categories</a>
     <a href="{{ url_for('assistant_page') }}" class="{{ 'active' if active_nav == 'assistant' }}">AI Assistant</a>
-    <a href="{{ url_for('settings_page') }}" class="{{ 'active' if active_nav == 'settings' }}">Settings</a>
+    <a href="{{ url_for('profile_page') }}" class="{{ 'active' if active_nav == 'profile' }}">Profile</a>
+    <a href="{{ url_for('settings_page') }}" class="{{ 'active' if active_nav == 'settings' }}" data-level="admin">Settings</a>
     {% if user %}
     <form method="post" action="{{ url_for('do_logout') }}" style="margin-left:auto;display:flex;align-items:center;gap:12px;">
       <input type="hidden" name="csrf" value="{{ csrf_token }}">

@@ -15,10 +15,10 @@
 
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
   <h1 style="margin:16px 0 4px;">Category assistant</h1>
-  <p class="hint" style="margin:0 0 16px;max-width:720px;">Answer a few questions and I'll draft a category for you,
-    then open the form pre-filled so you can review and save. Or pick an existing category below to
-    <strong>refine</strong> it — I'll re-ask each part showing the current value. Nothing is saved until you save.
-    Uses AI credit (counts toward the daily budget above).</p>
+  <p class="hint" style="margin:0 0 16px;max-width:720px;">Answer a few questions and I'll draft a category, then
+    <strong>create it and open it</strong> for you. Or pick an existing category below to <strong>refine</strong> it —
+    I'll re-ask each part showing the current value, then save your changes and open it. You can keep editing it
+    afterwards. Uses AI credit (counts toward the daily budget above).</p>
 
   <div id="import-bar" style="max-width:720px;margin:0 0 16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
     <label for="import-select" style="font-weight:600;">Refine an existing category:</label>
@@ -33,7 +33,7 @@
 
   <div id="draft" hidden style="max-width:720px;border:2px solid var(--green,#00703c);border-radius:8px;padding:14px 16px;margin:6px 0 12px;">
     <strong>Draft ready.</strong> <span id="draft-note">I've put together a starting point.</span>
-    <div style="margin-top:10px;"><button class="btn" id="to-form" type="button">Review in the form →</button></div>
+    <div style="margin-top:10px;"><button class="btn" id="to-form" type="button">Create category →</button></div>
   </div>
 
   <div id="composer">
@@ -129,8 +129,9 @@
         if (j.fields) {
           draftFields = j.fields;
           document.getElementById("draft-note").textContent = editCid
-            ? "I've applied your changes — review them in the edit form."
-            : "I've put together a starting point.";
+            ? "Ready to save your changes and open the category."
+            : "Ready to create this category and open it.";
+          document.getElementById("to-form").textContent = editCid ? "Save changes →" : "Create category →";
           document.getElementById("draft").hidden = false;
         }
       } catch (e) {
@@ -181,11 +182,28 @@
     input.addEventListener("keydown", e => {
       if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
     });
+    function addHidden(form, name, value) {
+      const i = document.createElement("input");
+      i.type = "hidden"; i.name = name; i.value = value == null ? "" : value;
+      form.appendChild(i);
+    }
+    // Create (or, in refine mode, update) the category on the server, then land on the
+    // category's page. Submits a real form so the server validates, stores, and redirects;
+    // on a validation problem it shows the form with the errors to fix.
     document.getElementById("to-form").addEventListener("click", () => {
-      try { sessionStorage.setItem("category_prefill", JSON.stringify(draftFields)); } catch (e) {}
-      // Refining an existing category -> its edit form; otherwise the create form.
-      window.location = editCid ? `/categories/${editCid}/edit?prefill=1`
-                                : "{{ url_for('new_category_page') }}?prefill=1";
+      if (!draftFields) return;
+      const f = document.createElement("form");
+      f.method = "post";
+      f.action = editCid ? `/categories/${editCid}/edit` : "{{ url_for('create_category') }}";
+      const m = document.cookie.match(/(?:^|; )sb_csrf=([^;]+)/);
+      addHidden(f, "csrf", m ? decodeURIComponent(m[1]) : "");   // double-submit CSRF
+      ["slug", "owner_email", "dept_slugs", "document_type_slugs", "keywords", "inclusion_context",
+       "exclusion_context", "adjudication_hints_keep", "adjudication_hints_drop"].forEach(k => {
+        if (draftFields[k] != null) addHidden(f, k, draftFields[k]);
+      });
+      if (draftFields.include_child_orgs) addHidden(f, "include_child_orgs", "on");
+      document.body.appendChild(f);
+      f.submit();
     });
   </script>
 {% endblock %}

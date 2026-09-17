@@ -36,12 +36,13 @@ MAX_LEN = {
     "adjudication_hints_drop": 2000, "extra_guidance_urls": 10000, "extra_law_urls": 10000,
 }
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-SLUG_RE = re.compile(r"^[a-z0-9_]+$")
+SLUG_RE = re.compile(r"^[a-z0-9_-]+$")
 
 
 def prettify(slug: Optional[str]) -> str:
-    """Turn a slug into a human display name: animal_liquid_waste -> Animal Liquid Waste."""
-    return (slug or "").replace("_", " ").strip().title()
+    """Turn a slug into a human display name, e.g. animal_liquid_waste or
+    farm-slurry-storage -> 'Animal Liquid Waste' / 'Farm Slurry Storage'."""
+    return (slug or "").replace("_", " ").replace("-", " ").strip().title()
 
 
 _LABELS = {
@@ -78,7 +79,7 @@ def validate(data: Dict[str, Any]) -> List[str]:
     if "slug" in data and not slug:
         errors.append("Name for this category is required.")
     elif slug and not SLUG_RE.match(slug):
-        errors.append("Name must be lowercase letters, numbers and underscores only.")
+        errors.append("Name must be lowercase letters, numbers, hyphens and underscores only.")
     for f, limit in MAX_LEN.items():
         v = data.get(f)
         if v and len(str(v)) > limit:

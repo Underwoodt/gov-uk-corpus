@@ -58,9 +58,9 @@
 
     <div class="field">
       <label class="q" for="slug">Name for this category</label>
-      <p class="hint">Lowercase letters, numbers and underscores, for example
-        <code>animal_liquid_waste</code>.</p>
-      <input id="slug" name="slug" type="text" class="narrow" placeholder="animal_liquid_waste"
+      <p class="hint">Lowercase letters, numbers, hyphens and underscores, for example
+        <code>farm-slurry-storage</code>.</p>
+      <input id="slug" name="slug" type="text" class="narrow" placeholder="farm-slurry-storage"
         value="{{ v.slug or '' }}" {{ 'readonly style=background:#f3f2f1' if is_edit else '' }}>
       {% if is_edit %}<p class="hint">The name is fixed once created, so results stay comparable.</p>{% endif %}
     </div>

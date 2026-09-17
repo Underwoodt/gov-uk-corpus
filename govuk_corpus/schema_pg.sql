@@ -198,7 +198,7 @@ CREATE TABLE IF NOT EXISTS categories (
     created_at                    text,
     updated_at                    text,
     status                        text DEFAULT 'draft',
-    slug                          text,
+    slug                          text,   -- identifier/name: lowercase, digits, hyphens/underscores
     owner_email                   text,
     description                   text,
     dept_slugs                    text,

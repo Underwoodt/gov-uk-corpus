@@ -2051,6 +2051,29 @@ async def api_assistant(request: Request):
     return JSONResponse(result)
 
 
+@app.get("/profile", response_class=HTMLResponse)
+def profile_page(request: Request):
+    """Per-viewer UI display level (Simple / Advanced / Expert / Admin). The choice is
+    stored client-side (localStorage) and applied as a data-ui-level attribute; no login
+    accounts needed. Higher levels reveal more detail; Admin shows everything."""
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    levels = [
+        ("simple", "Simple",
+         "Build categories, run the AI phase, and review and download the final results."),
+        ("advanced", "Advanced",
+         "Adds detailed data on the selection — almost log level."),
+        ("expert", "Expert",
+         "See everything except system configuration."),
+        ("admin", "Admin",
+         "See everything."),
+    ]
+    resp = templates.TemplateResponse("profile.html", ctx(conn, request, levels=levels))
+    conn.close()
+    return resp
+
+
 @app.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request, saved: int = 0):
     if not authed(request):
