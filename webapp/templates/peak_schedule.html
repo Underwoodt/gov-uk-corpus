@@ -14,6 +14,7 @@
     toggle that hour across the week. Shaded = peak.</p>
 
   <form method="post" action="{{ url_for('save_peak_schedule', provider=provider) }}">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
     <div class="controls" style="margin-bottom:12px;gap:10px;align-items:center;">
       <button class="btn secondary-btn" type="button" id="all-peak">All peak</button>
       <button class="btn secondary-btn" type="button" id="all-off">All off-peak</button>

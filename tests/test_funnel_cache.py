@@ -67,6 +67,7 @@ class TestFunnelCache(unittest.TestCase):
               "dept_slugs": "environment-agency", "document_type_slugs": "guidance", "keywords": "slurry"})
         conn.commit(); conn.close()
         c = TestClient(app.app)
+        c.get("/login"); c.headers["X-CSRF-Token"] = c.cookies.get("sb_csrf")   # CSRF double-submit
         self.assertFalse(c.get(f"/api/categories/{cid}/funnel?stage=doctype").json()["cached"])
         self.assertTrue(c.get(f"/api/categories/{cid}/funnel?stage=doctype").json()["cached"])
         self.assertEqual(c.post(f"/api/categories/{cid}/funnel/refresh").status_code, 200)

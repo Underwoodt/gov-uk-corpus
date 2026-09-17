@@ -8,6 +8,26 @@
   <link rel="stylesheet" href="{{ url_for('static', path='govuk.css') }}">
 </head>
 <body>
+  <script>
+    // CSRF: echo the sb_csrf cookie in an X-CSRF-Token header on every same-origin
+    // state-changing fetch, so page scripts need no per-call changes. Runs before them.
+    (function () {
+      function token() { var m = document.cookie.match(/(?:^|; )sb_csrf=([^;]+)/); return m ? decodeURIComponent(m[1]) : ""; }
+      function sameOrigin(u) { try { return !u || u.charAt(0) === "/" || new URL(u, location.href).origin === location.origin; } catch (e) { return false; } }
+      var _fetch = window.fetch;
+      window.fetch = function (input, init) {
+        init = init || {};
+        var method = (init.method || (typeof input === "object" && input && input.method) || "GET").toUpperCase();
+        var url = (typeof input === "string") ? input : (input && input.url);
+        if (method !== "GET" && method !== "HEAD" && sameOrigin(url)) {
+          var h = new Headers(init.headers || {});
+          if (!h.has("X-CSRF-Token")) h.set("X-CSRF-Token", token());
+          init.headers = h;
+        }
+        return _fetch(input, init);
+      };
+    })();
+  </script>
   <div class="masthead"><div class="wrap"><span class="brand">Content Shortlist Builder</span></div></div>
 
   <div class="navbar"><div class="wrap inner">
@@ -17,6 +37,7 @@
     <a href="{{ url_for('settings_page') }}" class="{{ 'active' if active_nav == 'settings' }}">Settings</a>
     {% if user %}
     <form method="post" action="{{ url_for('do_logout') }}" style="margin-left:auto;display:flex;align-items:center;gap:12px;">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
       <span class="service" title="{{ user.email }}">{{ user.first_name }} {{ user.last_name }}</span>
       <button type="submit" style="background:none;border:0;padding:14px 2px;font:inherit;color:var(--grey-text);cursor:pointer;">Sign out</button>
     </form>

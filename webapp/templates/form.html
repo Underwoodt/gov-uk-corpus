@@ -37,6 +37,7 @@
   </div>
 
   <form class="tabpanel" method="post" action="{{ action }}">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
     <h2>Definition</h2>
 
     <div class="field">

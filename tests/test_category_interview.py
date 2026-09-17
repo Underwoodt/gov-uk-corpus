@@ -54,7 +54,9 @@ class TestAssistantEndpoint(unittest.TestCase):
                                     "model": "m", "key": "k", "has_key": True,
                                     "price_in": 1.0, "price_out": 5.0}
         from fastapi.testclient import TestClient
-        return app, TestClient(app.app)
+        c = TestClient(app.app)
+        c.get("/login"); c.headers["X-CSRF-Token"] = c.cookies.get("sb_csrf")   # CSRF double-submit
+        return app, c
 
     def tearDown(self):
         if getattr(self, "path", None) and os.path.exists(self.path):

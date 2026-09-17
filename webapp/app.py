@@ -21,10 +21,11 @@ import json
 import logging
 import os
 import threading
+import secrets
 import time
 from typing import Dict, List, Optional
 
-from fastapi import FastAPI, Form, Query, Request
+from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request
 from fastapi.responses import (HTMLResponse, JSONResponse, PlainTextResponse,
                                RedirectResponse, Response)
 from fastapi.staticfiles import StaticFiles
@@ -43,20 +44,51 @@ DB_PATH = os.getenv("CORPUS_DB", "data/pilot.db")
 PASSWORD = os.getenv("DASHBOARD_PASSWORD")
 COOKIE = "sb_auth"
 
-app = FastAPI(title="Shortlist Builder")
-app.mount("/static", StaticFiles(directory=os.path.join(HERE, "static")), name="static")
-templates = Jinja2Templates(directory=os.path.join(HERE, "templates"))
-
 # ---- auth mode (accounts programme, phase 2) ----------------------------
 # "shared" = the existing single DASHBOARD_PASSWORD gate (default; live behaviour
 # is unchanged). "accounts" = per-user session login (built behind this flag).
 AUTH_MODE = os.getenv("AUTH_MODE", "shared").strip().lower()
 
-# ---- security headers ----------------------------------------------------
-# Additive, safe headers on every response. HSTS is opt-in (ENABLE_HSTS=1) because
-# it must only be sent over confirmed HTTPS. CSP is intentionally NOT set here yet:
-# the app uses inline scripts/styles, so a strict policy would break it — that is a
-# later hardening step.
+# ---- CSRF (double-submit token) -----------------------------------------
+CSRF_COOKIE = "sb_csrf"
+
+
+def _csrf_token(request: Request) -> str:
+    """This browser's CSRF token: the existing cookie, or a fresh one stashed on
+    request.state for the middleware to set on the response."""
+    tok = request.cookies.get(CSRF_COOKIE)
+    if tok:
+        return tok
+    tok = getattr(request.state, "_csrf_new", None)
+    if not tok:
+        tok = secrets.token_urlsafe(32)
+        request.state._csrf_new = tok
+    return tok
+
+
+async def _csrf_guard(request: Request) -> None:
+    """Reject state-changing requests without a matching CSRF token. Double-submit:
+    the token must arrive as the X-CSRF-Token header (fetch) or a `csrf` form field
+    and equal the sb_csrf cookie. Safe methods pass through."""
+    if request.method in ("GET", "HEAD", "OPTIONS", "TRACE"):
+        return
+    cookie = request.cookies.get(CSRF_COOKIE)
+    token = request.headers.get("x-csrf-token")
+    if token is None and "form" in request.headers.get("content-type", "").lower():
+        token = (await request.form()).get("csrf")
+    if not cookie or not token or not hmac.compare_digest(str(cookie), str(token)):
+        raise HTTPException(status_code=403, detail="CSRF check failed")
+
+
+app = FastAPI(title="Shortlist Builder", dependencies=[Depends(_csrf_guard)])
+app.mount("/static", StaticFiles(directory=os.path.join(HERE, "static")), name="static")
+templates = Jinja2Templates(directory=os.path.join(HERE, "templates"))
+
+
+# ---- security headers + CSRF cookie -------------------------------------
+# Additive, safe headers on every response; HSTS is opt-in (ENABLE_HSTS=1, HTTPS
+# only). CSP is intentionally NOT set yet (inline scripts/styles). The CSRF cookie
+# is issued here when absent so forms/fetches always have a token to echo back.
 @app.middleware("http")
 async def _security_headers(request: Request, call_next):
     resp = await call_next(request)
@@ -65,6 +97,11 @@ async def _security_headers(request: Request, call_next):
     resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
     if os.getenv("ENABLE_HSTS") == "1":
         resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    if CSRF_COOKIE not in request.cookies:
+        # Readable by JS (the fetch wrapper echoes it in a header) — not a secret on
+        # its own; it only has to match the copy the browser also sends.
+        resp.set_cookie(CSRF_COOKIE, _csrf_token(request), samesite="lax",
+                        secure=_secure_cookies(), max_age=31536000, path="/")
     return resp
 
 # ---- example presets for "start from an example" -------------------------
@@ -185,7 +222,8 @@ def ctx(conn, request: Request, **extra) -> dict:
             #   {% if can_use('Administrator') %}…{% endif %}
             "role": role, "can_use": lambda required=None: roles.allows(role, required),
             # Accounts mode: the logged-in user (None in shared-password mode).
-            "auth_mode": AUTH_MODE, "user": user}
+            "auth_mode": AUTH_MODE, "user": user,
+            "csrf_token": _csrf_token(request)}
     base.update(extra)
     return base
 
@@ -473,7 +511,8 @@ def login(request: Request, bad: int = 0, locked: int = 0):
     return HTMLResponse(
         f"""{_LOGIN_HEAD}
         <div class='wrap body'><h1>Sign in</h1>{err}
-        <form method=post action='{request.url_for('do_login')}'>{fields}
+        <form method=post action='{request.url_for('do_login')}'>
+        <input type=hidden name=csrf value='{_csrf_token(request)}'>{fields}
         <button class='btn' type=submit>Sign in</button></form>{reg}</div>
         <div class='page-id'>guc-0014</div>""")
 
@@ -535,6 +574,7 @@ def _register_page(request: Request, *, error: str = "", values: Optional[dict] 
         <div class='wrap body'><h1>Create an account</h1>{err}
         <p class='secondary'>Use your DEFRA or Equal Experts email address.</p>
         <form method=post action='{request.url_for('do_register')}'>
+        <input type=hidden name=csrf value='{_csrf_token(request)}'>
         <div class='field'><label class='q' for='fn'>First name</label>
         <input id='fn' name='first_name' value='{field("first_name")}'></div>
         <div class='field'><label class='q' for='ln'>Last name</label>
