@@ -111,11 +111,6 @@
       </div>
     </div>
 
-    <span class="actions" style="margin-top:24px;">
-      <a class="btn secondary-btn" href="{{ url_for('results_table_page', cid=category.id) }}">View results table</a>
-      <a class="btn secondary-btn" href="{{ url_for('download_page', cid=category.id) }}">Download…</a>
-    </span>
-
     <details style="margin-top:30px;" data-level="advanced"><summary>SQL queries that were run (per funnel stage)</summary>
       <div class="detail" style="max-width:none;"><pre class="mono" style="white-space:pre-wrap;font-size:14px;">{{ sql }}</pre>
         <p class="secondary">The COUNT(*) query behind each funnel row, then the shortlist SELECT — separated by
@@ -133,7 +128,7 @@
     {# Nested tabs: the active run's controls vs the history of all runs. #}
     <div class="tabs" role="tablist" style="margin-bottom:20px;">
       <a href="#" class="subtab2 current" data-subtab2="active" data-tabid="{{ page_ref }}b1" role="tab">Active Run</a>
-      <a href="#" class="subtab2" data-subtab2="history" data-tabid="{{ page_ref }}b2" role="tab">Run History</a>
+      <a href="#" class="subtab2" data-subtab2="history" data-tabid="{{ page_ref }}b2" role="tab" data-level="advanced">Run History</a>
     </div>
 
     <div id="tab2-active" class="subpanel2" role="tabpanel">
@@ -199,7 +194,7 @@
       <h2 style="margin-top:10px;">Funnel results</h2>
       <p class="hint" style="margin-top:-14px;">Per-page keep / drop decisions for a run. Pick a run (defaults to the
         latest). <strong>Confidence</strong> describes how central the topic is to the page.</p>
-      <div class="controls" style="align-items:center;">
+      <div class="controls" style="align-items:center;" data-level="advanced">
         <label>Run
           <select id="rr-run-select" style="font-size:15px;padding:6px;border:2px solid var(--black);min-width:280px;"></select>
         </label>
