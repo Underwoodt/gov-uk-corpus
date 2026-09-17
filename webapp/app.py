@@ -15,6 +15,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import hmac
+import html
 import io
 import json
 import logging
@@ -372,6 +373,28 @@ def _client_ip(request: Request) -> Optional[str]:
     return request.client.host if request.client else None
 
 
+# Simple in-process sliding-window rate limiter (per key). Fine for a single
+# uvicorn worker; a shared/DB-backed limiter is a later hardening step.
+_RATE: Dict[str, list] = {}
+
+
+def _rate_limit(key: str, max_hits: int, window_s: int) -> bool:
+    """Record a hit for `key`; return False if it exceeds max_hits in the window."""
+    now = time.time()
+    hits = [t for t in _RATE.get(key, []) if t > now - window_s]
+    if len(hits) >= max_hits:
+        _RATE[key] = hits
+        return False
+    hits.append(now)
+    _RATE[key] = hits
+    return True
+
+
+def _set_session_cookie(resp, cookie: str) -> None:
+    resp.set_cookie(sessions.COOKIE_NAME, cookie, httponly=True, samesite="lax",
+                    secure=_secure_cookies(), max_age=sessions.SESSION_TTL_HOURS * 3600, path="/")
+
+
 def current_user(request: Request) -> Optional[dict]:
     """The logged-in user (accounts mode) or None. Resolves the session cookie once
     per request and caches it on request.state."""
@@ -442,11 +465,13 @@ def login(request: Request, bad: int = 0, locked: int = 0):
     else:
         fields = ("<div class='field'><label class='q' for='p'>Password</label>"
                   "<input id='p' name='password' type='password'></div>")
+    reg = (f"<p style='margin-top:16px;'><a href='{request.url_for('register')}'>Create an account</a></p>"
+           if AUTH_MODE == "accounts" else "")
     return HTMLResponse(
         f"""{_LOGIN_HEAD}
         <div class='wrap body'><h1>Sign in</h1>{err}
         <form method=post action='{request.url_for('do_login')}'>{fields}
-        <button class='btn' type=submit>Sign in</button></form></div>
+        <button class='btn' type=submit>Sign in</button></form>{reg}</div>
         <div class='page-id'>guc-0014</div>""")
 
 
@@ -464,8 +489,7 @@ def do_login(request: Request, password: str = Form(""), email: str = Form("")):
         finally:
             conn.close()
         resp = RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
-        resp.set_cookie(sessions.COOKIE_NAME, cookie, httponly=True, samesite="lax",
-                        secure=_secure_cookies(), max_age=sessions.SESSION_TTL_HOURS * 3600, path="/")
+        _set_session_cookie(resp, cookie)
         return resp
     # shared-password mode
     if PASSWORD and not hmac.compare_digest(password, PASSWORD):
@@ -493,6 +517,72 @@ def do_logout(request: Request):
         resp.delete_cookie(sessions.COOKIE_NAME, path="/")
     else:
         resp.delete_cookie(COOKIE)
+    return resp
+
+
+# ---- registration (accounts mode only) ----------------------------------
+def _register_page(request: Request, *, error: str = "", values: Optional[dict] = None) -> HTMLResponse:
+    v = values or {}
+    def field(k):
+        return html.escape((v.get(k) or "").strip(), quote=True)
+    err = (f"<div class='error-summary'><h2>There is a problem</h2><ul><li>{html.escape(error)}</li></ul></div>"
+           if error else "")
+    return HTMLResponse(
+        f"""{_LOGIN_HEAD}
+        <div class='wrap body'><h1>Create an account</h1>{err}
+        <p class='secondary'>Use your DEFRA or Equal Experts email address.</p>
+        <form method=post action='{request.url_for('do_register')}'>
+        <div class='field'><label class='q' for='fn'>First name</label>
+        <input id='fn' name='first_name' value='{field("first_name")}'></div>
+        <div class='field'><label class='q' for='ln'>Last name</label>
+        <input id='ln' name='last_name' value='{field("last_name")}'></div>
+        <div class='field'><label class='q' for='e'>Email address</label>
+        <input id='e' name='email' type='email' autocomplete='username' value='{field("email")}'></div>
+        <div class='field'><label class='q' for='p'>Password</label>
+        <input id='p' name='password' type='password' autocomplete='new-password'></div>
+        <div class='field'><label class='q' for='p2'>Confirm password</label>
+        <input id='p2' name='confirm' type='password' autocomplete='new-password'></div>
+        <button class='btn' type=submit>Create account</button></form>
+        <p style='margin-top:16px;'><a href='{request.url_for('login')}'>Already have an account? Sign in</a></p></div>
+        <div class='page-id'>guc-0015</div>""")
+
+
+@app.get("/register", response_class=HTMLResponse)
+def register(request: Request):
+    if AUTH_MODE != "accounts":
+        return RedirectResponse(url=str(request.url_for("login")), status_code=303)
+    return _register_page(request)
+
+
+@app.post("/register")
+def do_register(request: Request, first_name: str = Form(""), last_name: str = Form(""),
+                email: str = Form(""), password: str = Form(""), confirm: str = Form("")):
+    if AUTH_MODE != "accounts":
+        return RedirectResponse(url=str(request.url_for("login")), status_code=303)
+    vals = {"first_name": first_name, "last_name": last_name, "email": email}
+    ip = _client_ip(request)
+    if not _rate_limit(f"register:{ip}", 5, 3600):
+        return _register_page(request, error="Too many attempts. Please try again later.", values=vals)
+    if password != confirm:
+        return _register_page(request, error="The passwords do not match.", values=vals)
+    conn = connect()
+    try:
+        # role/account_status are NOT taken from the form (mass-assignment guard):
+        # create_user defaults them to User / active.
+        user = accounts.create_user(conn, email=email, first_name=first_name,
+                                    last_name=last_name, password=password)
+    except accounts.EmailTakenError:
+        conn.close()
+        return _register_page(request, error="An account with that email address already exists.", values=vals)
+    except ValueError as e:
+        conn.close()
+        return _register_page(request, error=str(e), values=vals)
+    accounts.audit(conn, "account_created", user_id=user["id"], ip=ip)
+    cookie = sessions.create_session(conn, user["id"], ip=ip,
+                                     user_agent=request.headers.get("user-agent"))
+    conn.close()
+    resp = RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
+    _set_session_cookie(resp, cookie)
     return resp
 
 
