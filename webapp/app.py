@@ -138,33 +138,6 @@ error in the logs:</p>
 </div></body></html>"""
     return HTMLResponse(body, status_code=500)
 
-# ---- example presets for "start from an example" -------------------------
-EXAMPLES: Dict[str, dict] = {
-    "slurry": {
-        "slug": "slurry_example",
-        "dept_slugs": ["environment-agency", "rural-payments-agency"],
-        "document_type_slugs": ["guidance", "detailed_guide"],
-        "keywords": "slurry\nlagoon\ndigestate\ndirty water\nsilage effluent",
-        "inclusion_context": ("Slurry is liquid or semi-liquid livestock manure: cattle and pig slurry, "
-                              "dirty water, digestate from farm anaerobic digestion, and silage effluent. "
-                              "Include a page if it mentions slurry in this farming sense anywhere, even once."),
-        "exclusion_context": ("Exclude pages where slurry means something other than livestock manure: coal, "
-                             "mining, concrete slurry. Exclude sewage sludge and biosolids."),
-        "adjudication_hints_keep": "Grant page that funds slurry stores even if the rest is about payments",
-        "adjudication_hints_drop": "Sewage sludge or biosolids guidance for treatment works",
-    },
-    "fish": {
-        "slug": "fish_example",
-        "dept_slugs": ["marine-management-organisation"],
-        "document_type_slugs": ["guidance"],
-        "keywords": "catch certificate\nfishery products\nlanding declaration",
-        "inclusion_context": "Commercial sea fisheries: catching, landing, and exporting fishery products.",
-        "exclusion_context": "Exclude angling as a hobby and 'phishing' security pages.",
-        "adjudication_hints_keep": "",
-        "adjudication_hints_drop": "",
-    },
-}
-
 _META_CACHE: Dict[str, str] = {}
 
 # ---- count cache ---------------------------------------------------------
@@ -916,7 +889,6 @@ def _form_ctx(conn, request, category, values, errors) -> dict:
         v=values or {},
         default_doc_types=DEFAULT_DOC_TYPES,
         errors=errors,
-        examples_json=json.dumps(EXAMPLES),
     )
 
 

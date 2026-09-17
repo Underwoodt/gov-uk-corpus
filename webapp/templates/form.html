@@ -41,16 +41,6 @@
     <h2>Definition</h2>
 
     <div class="field">
-      <label class="q" for="example">Start from an example</label>
-      <p class="hint">Fills in the fields below, replacing anything you have typed.</p>
-      <select id="example" onchange="applyExample(this.value)">
-        <option value="">—</option>
-        <option value="slurry">slurry</option>
-        <option value="fish">fish</option>
-      </select>
-    </div>
-
-    <div class="field">
       <label class="q" for="owner_email">Your email address</label>
       <p class="hint">We email you when a run finishes. This is not a login.{% if user and not is_edit %}
         Taken from your account.{% endif %}</p>
@@ -164,23 +154,6 @@
   </form>
 
   <script>
-    var EXAMPLES = {{ examples_json|safe }};
-    function setField(id, val) {
-      var el = document.getElementById(id);
-      if (el && !el.readOnly) el.value = val;
-    }
-    function applyExample(key) {
-      if (!key || !EXAMPLES[key]) return;
-      var ex = EXAMPLES[key];
-      ['slug','keywords','inclusion_context','exclusion_context',
-       'adjudication_hints_keep','adjudication_hints_drop'].forEach(function (id) {
-        if (ex[id] !== undefined) setField(id, ex[id]);
-      });
-      // slug lists -> newline-separated text
-      setField('dept_slugs', (ex.dept_slugs || []).join('\n'));
-      setField('document_type_slugs', (ex.document_type_slugs || []).join('\n'));
-    }
-
     // Pre-fill from the category assistant (handed over via sessionStorage).
     (function () {
       if (!new URLSearchParams(location.search).get("prefill")) return;
