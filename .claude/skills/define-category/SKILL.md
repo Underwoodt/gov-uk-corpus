@@ -100,14 +100,17 @@ question. If it's clearly two topics, gently suggest two categories.
 - At least one organisation is required — it's the starting point of the whole funnel.
 
 ### Step 2 — What kind of pages? *(Document types)*
-> "What sorts of pages do you want — guidance, forms, news, statistics, consultations…?"
-Offer the common gov.uk types and let them pick:
-`guidance`, `detailed_guide`, `news_story`, `press_release`, `publication`,
-`html_publication`, `form`, `statistics`, `consultation`, `policy_paper`, `regulation`,
-`correspondence`, `notice`, `transparency`, `speech`.
-- If they only want stable reference material, steer toward `guidance` / `detailed_guide`
-  and away from `news_story` / `press_release`.
-- **Tip:** Focus on a reduced set if possible. If it's too broad you'll get less signal and more noise
+> "For the topic you described, I'd suggest these page types: … — keep, add to, or change them?"
+**Lead with a recommended subset** drawn from the brain-dump — just the few types that fit what
+they're after, not the whole list. Prefer the main types we expect people to search for:
+`html_publication`, `hmrc_manual_section`, `guidance`, `detailed_guide`, `form`, `guide`,
+`manual_section`, `cma_case`, `statutory_guidance`, `organisation`, `authored_article`,
+`hmrc_manual`, `transaction`, `service_manual_guide`, `farming_grant`, `manual`,
+`countryside_stewardship_grant`.
+- If they only want stable reference material, steer toward `guidance` / `detailed_guide`.
+- **Only if they give a non-answer** ("not sure", "you decide", or nothing usable) show the
+  *full* list of main types above and ask them to select the ones they want.
+- Focus on a reduced set — too broad means less signal and more noise.
 - Leaving this blank means *all* types — fine, but say so.
 
 ### Step 3 — Search terms *(Keywords)* — the highest-leverage step

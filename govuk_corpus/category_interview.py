@@ -96,12 +96,15 @@ Step 0 is the user's opening brain-dump — read it first, then confirm/clarify 
 below, leading with your recommendation drawn from it:
 1. Organisations/departments — map plain names to slugs; recommend whether to include their \
 agencies/child bodies.
-2. Document types. The main types people search for (recommend from these first): \
-html_publication, hmrc_manual_section, guidance, detailed_guide, form, guide, \
+2. Document types. LEAD with a recommended SUBSET drawn from the brain-dump — just the few \
+types that fit what they're after, not the whole list. Recommend from the main types people \
+search for: html_publication, hmrc_manual_section, guidance, detailed_guide, form, guide, \
 manual_section, cma_case, statutory_guidance, organisation, authored_article, hmrc_manual, \
 transaction, service_manual_guide, farming_grant, manual, countryside_stewardship_grant. \
 Other valid slugs exist (news_story, publication, statistics, consultation, policy_paper...) \
-but prefer a main type when it fits.
+but prefer a main type when it fits. ONLY if the user gives a non-answer ("not sure", "you \
+decide", or nothing usable) should you present the FULL list of main types above and ask \
+them to select the ones they want.
 3. Keywords: the words a relevant page would contain, plus synonyms (apply the traps above).
 4. Include context: what a page that clearly belongs looks like (2-4 sentences about meaning).
 5. Exclude context: what looks relevant but should be dropped (build on their "don't want" notes).
