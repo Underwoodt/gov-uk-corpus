@@ -255,6 +255,7 @@ def _provider_key(provider: str) -> Optional[str]:
 
 DEFAULT_DAILY_BUDGET = 20.0     # USD/day
 DEFAULT_MAX_DOCS = 600          # documents per evaluation run
+MAX_CONSEC_EVAL_ERRORS = 6      # consecutive AI errors before a run bails (provider likely down)
 
 
 def _budget(conn) -> float:
@@ -354,15 +355,19 @@ def _ai_reply(config: dict, system: str, prompt: str) -> dict:
 
 def _ai_chat(config: dict, system: str, messages: list, max_tokens: int = 1024) -> dict:
     if not config.get("key"):
-        return {"error": f"No API key set for {config['label']}. Add its key to "
+        return {"fatal": True, "error": f"No API key set for {config['label']}. Add its key to "
                 f"~/gov-uk-corpus.env and restart, or pick a provider that has one in Settings."}
     try:
         import anthropic
     except Exception:
-        return {"error": "The 'anthropic' package is not installed. Run: pip install -r requirements.txt"}
+        return {"fatal": True,
+                "error": "The 'anthropic' package is not installed. Run: pip install -r requirements.txt"}
     try:
+        # Retry transient errors (429 / 5xx / timeouts) at the SDK, honouring Retry-After,
+        # so a single hiccup from a rate-limiting or slow provider self-heals instead of
+        # aborting an evaluation run. Tune with AI_MAX_RETRIES / AI_TIMEOUT.
         client_kwargs = dict(api_key=config["key"], timeout=float(os.getenv("AI_TIMEOUT", "45")),
-                             max_retries=0)
+                             max_retries=int(os.getenv("AI_MAX_RETRIES", "4")))
         if config["base_url"]:               # empty => anthropic SDK default (Claude API)
             client_kwargs["base_url"] = config["base_url"]
         # Org-scoped ("Default") Anthropic keys need the workspace id header.
@@ -1154,6 +1159,8 @@ def _run_evaluation(cid: int, limit: int) -> dict:
         done = 0
         cost = 0.0
         stopped = None
+        skipped = 0
+        consec_err = 0        # AI errors in a row -> likely a provider outage, so bail out
         for r in rows:
             if budget > 0 and spent >= budget:
                 stopped = "budget"
@@ -1170,8 +1177,31 @@ def _run_evaluation(cid: int, limit: int) -> dict:
             res = _ai_reply(cfg, "", prompt)
             ms = int((time.time() - t0) * 1000)
             if res.get("error"):
-                return {"error": res["error"], "run_id": run_id, "evaluated_this_run": done,
-                        "cost_usd": round(cost, 6), "spent_today": round(spent, 4), "budget": budget}
+                # Fatal (no key / bad config) -> stop the run and report it.
+                if res.get("fatal"):
+                    return {"error": res["error"], "fatal": True, "run_id": run_id,
+                            "evaluated_this_run": done, "skipped": skipped,
+                            "cost_usd": round(cost, 6), "spent_today": round(spent, 4), "budget": budget}
+                # Transient (the SDK has already retried): if it keeps failing the
+                # provider is likely down — stop cleanly so we don't mark hundreds of
+                # pages unscored; the user re-executes to resume where it left off.
+                consec_err += 1
+                if consec_err >= MAX_CONSEC_EVAL_ERRORS:
+                    return {"error": f"Stopped after {consec_err} evaluation errors in a row "
+                            f"(last: {res['error']}). The provider may be down or rate-limiting — "
+                            f"re-execute to resume where it left off.",
+                            "run_id": run_id, "evaluated_this_run": done, "skipped": skipped,
+                            "cost_usd": round(cost, 6), "spent_today": round(spent, 4),
+                            "budget": budget, "stopped": "errors"}
+                # Isolated failure: record the page as unscored (so it's excluded next
+                # time and shows on the Run detail 'Not parsed' list) and carry on.
+                evaluate.save_page(conn, run_id, cid, r["url"],
+                                   {"keep": None, "score": None,
+                                    "reason": f"skipped after AI error: {str(res['error'])[:300]}"}, ms)
+                skipped += 1
+                done += 1
+                continue
+            consec_err = 0
             decision = (evaluate.parse_exclusion(res.get("reply", "")) if is_exclusion
                         else evaluate.parse_decision(res.get("reply", "")))
             evaluate.save_page(conn, run_id, cid, r["url"], decision, ms)
@@ -1206,9 +1236,10 @@ def _run_evaluation(cid: int, limit: int) -> dict:
         warning = (f"Within 10% of the ${budget:.2f} daily budget (${spent:.4f} spent today)."
                    if budget > 0 and spent >= 0.9 * budget else None)
         return {"run_id": run_id, "model": run["model"], "provider": run["provider"],
-                "phase": phase, "evaluated_this_run": done, "cost_usd": round(cost, 6),
-                "spent_today": round(spent, 4), "budget": budget, "advanced": advanced,
-                "warning": warning, "stopped": stopped, "remaining": remaining, "run": run}
+                "phase": phase, "evaluated_this_run": done, "skipped": skipped,
+                "cost_usd": round(cost, 6), "spent_today": round(spent, 4), "budget": budget,
+                "advanced": advanced, "warning": warning, "stopped": stopped,
+                "remaining": remaining, "run": run}
     finally:
         conn.close()
 
@@ -1255,14 +1286,17 @@ def _background_eval_loop(cid: int, stop_event: threading.Event, status: dict) -
         conn = connect()
         try:
             cap = _max_docs(conn)          # pages-per-run limit (Settings), e.g. 600
+            status["run_id"] = _active_run(conn, cid) or None   # so "In Progress" shows at once
         finally:
             conn.close()
         while not stop_event.is_set():
             res = _run_evaluation(cid, BG_EVAL_CHUNK)
             if res.get("error"):
                 status["error"] = res["error"]
+                logging.getLogger("assistant").warning("background eval stopped (cid=%s): %s", cid, res["error"])
                 break
             status["done"] += res.get("evaluated_this_run", 0)
+            status["skipped"] = status.get("skipped", 0) + res.get("skipped", 0)
             status["cost"] += res.get("cost_usd") or 0.0
             status["phase"] = res.get("phase")
             status["remaining"] = res.get("remaining")
@@ -1304,8 +1338,8 @@ async def api_bg_eval_start(request: Request, cid: int):
         if ent and ent["status"].get("running"):
             return JSONResponse({"already_running": True, "status": ent["status"]})
         stop_event = threading.Event()
-        status = {"running": True, "done": 0, "cost": 0.0, "phase": None, "remaining": None,
-                  "run_id": None, "stopped": None, "error": None,
+        status = {"running": True, "done": 0, "skipped": 0, "cost": 0.0, "phase": None,
+                  "remaining": None, "run_id": None, "stopped": None, "error": None,
                   "started_at": db.now_iso(), "finished_at": None}
         t = threading.Thread(target=_background_eval_loop, args=(cid, stop_event, status), daemon=True)
         _bg_evals[cid] = {"thread": t, "stop": stop_event, "status": status}
