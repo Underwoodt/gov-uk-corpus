@@ -487,7 +487,7 @@ def form_values(form) -> dict:
 _LOGIN_HEAD = ("""<!doctype html><meta charset=utf-8>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M4 1h5l3 3v11H4z' fill='%231d70b8'/><path d='M9 1v3h3z' fill='%23003078'/><g fill='none' stroke='%23fff' stroke-width='1' stroke-linecap='round'><path d='M6 7h5'/><path d='M6 9h5'/><path d='M6 11h4'/></g></svg>">
     <link rel=stylesheet href='/static/govuk.css'>
-    <div class='masthead'><div class='wrap'><span class='brand'>Content Shortlist Builder</span></div></div>""")
+    <div class='masthead'><div class='wrap'><img class='brand-logo' src='/static/notgovuk.svg' alt='NOT.GOV.UK — Defra supplier, operated with GOV.UK API-supplied data'><span class='brand'>Content Shortlist Builder</span></div></div>""")
 
 
 @app.get("/login", response_class=HTMLResponse)
