@@ -50,6 +50,23 @@ a:focus, button:focus, input:focus, textarea:focus, select:focus, summary:focus 
 .site-strap { text-align:center; color:var(--muted); font-size:13px; letter-spacing:.02em;
   padding:20px 16px 40px; border-top:1px solid var(--border); margin-top:48px; }
 
+/* UI display level (Profile, guc-0016): hide elements marked for a HIGHER level than the
+   viewer has chosen. No data-ui-level set => everything shows (Admin). Tag an element with
+   data-level="advanced|expert|admin" to reveal it only at that level or above. */
+[data-ui-level="simple"] [data-level="advanced"],
+[data-ui-level="simple"] [data-level="expert"],
+[data-ui-level="simple"] [data-level="admin"],
+[data-ui-level="advanced"] [data-level="expert"],
+[data-ui-level="advanced"] [data-level="admin"],
+[data-ui-level="expert"] [data-level="admin"] { display:none !important; }
+
+/* Profile page level cards. */
+.level-card { display:flex; gap:12px; align-items:flex-start; border:2px solid var(--border-mid);
+  border-radius:8px; padding:14px 16px; cursor:pointer; background:var(--white); }
+.level-card:hover { border-color:var(--muted); }
+.level-card.current { border-color:var(--black); background:var(--surface-2); }
+.level-card input { margin-top:3px; flex:none; }
+
 .phase { display:flex; gap:12px; align-items:center; padding:14px 0; flex-wrap:wrap; }
 .tag { background:var(--tag-blue); color:var(--dark-blue); font-size:12px; font-weight:700;
   letter-spacing:.04em; text-transform:uppercase; padding:3px 9px; border-radius:999px; }

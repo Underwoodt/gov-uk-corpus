@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block page_id %}guc-0016{% endblock %}
+{% block title %}Profile{% endblock %}
+{% block content %}
+  <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
+  <h1 style="margin:16px 0 6px;">Your profile</h1>
+  <p class="hint" style="max-width:720px;">Choose how much of the interface you want to see. Higher levels reveal more
+    detail; lower levels keep things focused. This is saved in this browser and takes effect straight away — change it
+    any time.</p>
+
+  <div id="levels" style="max-width:660px;display:flex;flex-direction:column;gap:12px;margin:18px 0;">
+    {% for key, title, desc in levels %}
+    <label class="level-card" data-level-key="{{ key }}">
+      <input type="radio" name="ui_level" value="{{ key }}">
+      <span><strong>{{ title }}</strong>
+        <span class="secondary" style="display:block;font-size:14px;margin-top:2px;">{{ desc }}</span></span>
+    </label>
+    {% endfor %}
+  </div>
+  <p id="profile-status" class="secondary" style="max-width:660px;"></p>
+
+  <script>
+    // The display level is stored per-browser and applied as a data-ui-level attribute on
+    // <html>; CSS hides elements marked for a higher level (see govuk.css). Unset = Admin
+    // (everything shows), so nothing is hidden until a lower level is chosen.
+    function currentLevel() { try { return localStorage.getItem("ui_level") || "admin"; } catch (e) { return "admin"; } }
+    function apply(level) {
+      document.documentElement.setAttribute("data-ui-level", level);
+      try { localStorage.setItem("ui_level", level); } catch (e) {}
+    }
+    (function () {
+      const cur = currentLevel();
+      const cards = document.querySelectorAll(".level-card");
+      document.querySelectorAll('input[name="ui_level"]').forEach(r => {
+        r.checked = (r.value === cur);
+        r.addEventListener("change", () => {
+          apply(r.value);
+          cards.forEach(c => c.classList.toggle("current", c.dataset.levelKey === r.value));
+          document.getElementById("profile-status").textContent =
+            "Saved — showing the " + r.value.charAt(0).toUpperCase() + r.value.slice(1) + " view.";
+        });
+      });
+      cards.forEach(c => c.classList.toggle("current", c.dataset.levelKey === cur));
+    })();
+  </script>
+{% endblock %}
