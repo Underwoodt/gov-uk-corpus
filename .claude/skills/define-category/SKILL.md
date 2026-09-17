@@ -121,6 +121,10 @@ Then apply the checks in Pitfalls (generic stems, over-broad single words). Reme
 - **Keywords are OR'd** — more keywords = a *wider* net, not narrower.
 - **Multi-word phrases are ANDed internally** after stemming ("animal manure" needs both
   "anim" and "manur" on the page), which usefully tames a broad word like "animal".
+- **Keep each phrase to at most 2 words** — a longer phrase rarely appears in full and
+  over-narrows the match. Allow a third word only when it's a stopword (e.g. `of`, `the`,
+  `and`, `in`, `for`), so `secretary of state` is fine but `rural payments agency scheme`
+  is not.
 - Blank keywords = keyword step does nothing (everything from the doctype step passes).
 
 ### Step 4 — Describe a page that belongs *(Include context)*

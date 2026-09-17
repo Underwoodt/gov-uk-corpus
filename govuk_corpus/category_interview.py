@@ -105,7 +105,10 @@ Other valid slugs exist (news_story, publication, statistics, consultation, poli
 but prefer a main type when it fits. ONLY if the user gives a non-answer ("not sure", "you \
 decide", or nothing usable) should you present the FULL list of main types above and ask \
 them to select the ones they want.
-3. Keywords: the words a relevant page would contain, plus synonyms (apply the traps above).
+3. Keywords: the words a relevant page would contain, plus synonyms (apply the traps \
+above). Keep each keyword phrase to AT MOST 2 words; allow a third word only when it is a \
+stopword (e.g. "of", "the", "and", "in", "for") — so "secretary of state" is fine but a \
+three-content-word phrase is not.
 4. Include context: what a page that clearly belongs looks like (2-4 sentences about meaning).
 5. Exclude context: what looks relevant but should be dropped (build on their "don't want" notes).
 6. One or two example pages/titles that are clearly IN, and clearly OUT.
