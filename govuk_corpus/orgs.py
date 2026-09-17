@@ -87,6 +87,48 @@ def get_org(conn, slug: str) -> Optional[Dict[str, Any]]:
     return dict(row) if row else None
 
 
+import re as _re
+
+# Function/noise words that would over-match (generic org words match nearly everything).
+_SEARCH_STOP = {
+    "the", "of", "and", "for", "a", "an", "to", "in", "on", "with", "from", "that", "this",
+    "have", "has", "you", "your", "our", "all", "any", "pages", "page", "step", "steps",
+    "guide", "guides", "related", "about", "publish", "published", "document", "documents",
+    "agency", "agencies", "department", "departments", "office", "offices", "service",
+    "services", "authority", "board", "committee", "council", "team", "group", "unit",
+}
+
+
+def search(conn, query: str, limit: int = 20) -> List[Dict[str, Any]]:
+    """Organisations whose slug, title or acronym matches a word in `query`. Broad, so it
+    can recommend the REAL slugs when a user types organisation names or acronyms that
+    aren't exact slugs. Returns [{slug, title}], shortest slugs first, de-duplicated."""
+    tokens = [t for t in _re.findall(r"[a-z0-9][a-z0-9&\-]+", (query or "").lower())
+              if t not in _SEARCH_STOP]
+    if not tokens:
+        return []
+    seen: Set[str] = set()
+    out: List[Dict[str, Any]] = []
+    for t in tokens:
+        if len(t) >= 4:      # slug/title substring OR exact acronym
+            sql = (f"SELECT slug, title FROM organisations WHERE lower(slug) LIKE {_P} "
+                   f"OR lower(title) LIKE {_P} OR lower(acronym) = {_P} "
+                   f"ORDER BY length(slug) LIMIT {_P}")
+            params = (f"%{t}%", f"%{t}%", t, limit)
+        else:                # short token (e.g. an acronym like EA): exact acronym only
+            sql = (f"SELECT slug, title FROM organisations WHERE lower(acronym) = {_P} "
+                   f"ORDER BY length(slug) LIMIT {_P}")
+            params = (t, limit)
+        for row in conn.execute(sql, params).fetchall():
+            d = dict(row)
+            if d["slug"] not in seen:
+                seen.add(d["slug"])
+                out.append({"slug": d["slug"], "title": d.get("title")})
+        if len(out) >= limit:
+            break
+    return out[:limit]
+
+
 def children(conn, slug: str) -> List[str]:
     """Direct child slugs of `slug`."""
     rows = conn.execute(

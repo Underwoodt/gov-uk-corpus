@@ -60,6 +60,10 @@ always sees which part of the spec they are answering. Use these titles, in orde
 **Organisations**, **Document types**, **Keywords**, **Include context**, **Exclude context**, \
 **Examples**, **Name & owner**.
 - Before each question give a one-line plain-English reason. No jargon unless you define it.
+- Slugs must be REAL. When a message names organisations or document types, treat any word
+  that is not an exact known slug as a plain name to map — recommend the closest real slugs
+  (a "SLUG REFERENCE" list of matches may be appended below), offer them widely, and if a
+  word matches nothing say so rather than inventing a slug.
 - With EVERY clarifying question, include your recommended answer as a machine-readable \
 block on its own, so it PRE-FILLS the user's answer box for them to confirm, add to, or \
 delete — exactly:
@@ -187,6 +191,37 @@ def parse_suggestion(reply: Optional[str]) -> Optional[str]:
         return None
     value = m.group(1).strip()
     return value or None
+
+
+# The gov.uk document-type slugs the funnel understands, for recommending real slugs when
+# a user names doc types loosely ("news", "forms", "guides").
+DOCUMENT_TYPES = (
+    "guidance", "detailed_guide", "news_story", "press_release", "publication",
+    "html_publication", "form", "statistics", "consultation", "policy_paper", "regulation",
+    "correspondence", "notice", "transparency", "speech", "case_study", "map",
+)
+_DT_SYNONYMS = {
+    "news": "news_story", "press": "press_release", "forms": "form", "stats": "statistics",
+    "guide": "detailed_guide", "guides": "detailed_guide", "policy": "policy_paper",
+    "policies": "policy_paper", "regulations": "regulation", "consultations": "consultation",
+    "publications": "publication", "notices": "notice", "speeches": "speech", "maps": "map",
+}
+
+
+def match_document_types(text: Optional[str]) -> List[str]:
+    """Real document-type slugs matching words in `text` (loose: 'news'->news_story,
+    'forms'->form), so the assistant recommends valid slugs when the user types them loosely."""
+    words = set(re.findall(r"[a-z_]+", (text or "").lower()))
+    if not words:
+        return []
+    out: List[str] = []
+    for dt in DOCUMENT_TYPES:
+        if dt in words or (set(dt.split("_")) & words):
+            out.append(dt)
+    for word, dt in _DT_SYNONYMS.items():
+        if word in words and dt not in out:
+            out.append(dt)
+    return out
 
 
 def parse_fields(reply: str) -> Optional[Dict]:
