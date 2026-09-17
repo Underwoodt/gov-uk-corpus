@@ -21,6 +21,12 @@
     .inbox-btn.send:hover { background:#2a2a2a; }
     .inbox-btn.stop { background:var(--red,#d4351c); }
     .inbox-btn.stop:hover { background:#aa2a17; }
+    /* "Show raw response" — a sibling after the bubble (not inside .msg.bot, whose
+       `pre` is display:none). Gated to Advanced+ via data-level. */
+    .raw-wrap { max-width:720px; margin:-4px 40px 12px 0; }
+    .raw-toggle { font-size:12px; color:var(--muted,#6f777b); text-decoration:underline; cursor:pointer; }
+    .raw-body { white-space:pre-wrap; background:#fbfbfb; border:1px solid var(--mid-grey,#b1b4b6);
+      border-radius:6px; padding:10px 12px; margin:6px 0 0; font-size:12px; max-height:320px; overflow:auto; }
   </style>
 
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
@@ -131,6 +137,28 @@
       div.innerHTML = role === "user" ? esc(text) : fmtBot(text);
       chat.appendChild(div);
       div.scrollIntoView({block:"end"});
+      return div;
+    }
+
+    // Attach a collapsed "Show raw response" toggle after an assistant bubble, revealing
+    // the untouched model reply (before the json/suggest blocks are stripped for display).
+    // Tagged data-level="advanced" so it appears only for Advanced/Expert/Admin profiles.
+    function attachRaw(bubble, raw) {
+      if (bubble == null || raw == null || !String(raw).trim()) return;
+      const wrap = document.createElement("div");
+      wrap.className = "raw-wrap";
+      wrap.setAttribute("data-level", "advanced");
+      const a = document.createElement("a");
+      a.href = "#"; a.className = "raw-toggle"; a.textContent = "Show raw response";
+      const pre = document.createElement("pre");
+      pre.className = "raw-body"; pre.hidden = true; pre.textContent = raw;
+      a.addEventListener("click", e => {
+        e.preventDefault();
+        pre.hidden = !pre.hidden;
+        a.textContent = pre.hidden ? "Show raw response" : "Hide raw response";
+      });
+      wrap.appendChild(a); wrap.appendChild(pre);
+      bubble.insertAdjacentElement("afterend", wrap);
     }
 
     // Seed the conversation with the assistant's greeting.
@@ -160,8 +188,9 @@
         const lastUser = [...messages].reverse().find(m => m.role === "user");
         const prefill = !!(j.suggestion && (!lastUser || j.suggestion.trim() !== lastUser.content.trim()));
         const prose = display(j.reply);
+        let bubble;
         if (prose) {
-          addMsg("assistant", j.reply);
+          bubble = addMsg("assistant", j.reply);
         } else {
           // No readable prose: show an honest note, not a promise of a suggestion that isn't there.
           const d = document.createElement("div");
@@ -170,7 +199,9 @@
             ? "<em>Here's my suggestion — review or edit it in the box below, then send.</em>"
             : "<em>Sorry, that didn't come through clearly. Please rephrase your last answer, or use ‹ Back a step.</em>";
           chat.appendChild(d); d.scrollIntoView({block:"end"});
+          bubble = d;
         }
+        attachRaw(bubble, j.reply);   // Advanced+ can reveal the untouched model reply
         if (prefill) { input.value = j.suggestion; autoResize(); }
         if (j.fields) {
           draftFields = j.fields;
