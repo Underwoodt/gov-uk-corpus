@@ -28,17 +28,46 @@
 
   <div id="composer">
     <textarea id="input" placeholder="Type your answer…" autofocus></textarea>
+    <button class="btn secondary-btn" id="back" type="button" hidden
+      title="Undo my last answer and return to the previous question">‹ Back a step</button>
     <button class="btn" id="send" type="button">Send</button>
   </div>
+  <p class="hint" style="max-width:720px;margin:6px 0 0;">Answered too quickly? Use <em>‹ Back a step</em> to return to the
+    previous question — your last answer is put back in the box so you can change it.</p>
   <p id="status" class="secondary" style="max-width:720px;"></p>
 
   <script>
     const chat = document.getElementById("chat");
     const input = document.getElementById("input");
     const sendBtn = document.getElementById("send");
+    const backBtn = document.getElementById("back");
     const status = document.getElementById("status");
-    const messages = [];   // {role, content}
+    const messages = [];   // {role, content}  (parallel to the .msg nodes in #chat)
     let draftFields = null;
+
+    // Show "Back a step" only once there is at least one answer to undo.
+    function updateBack() { backBtn.hidden = !messages.some(m => m.role === "user"); }
+
+    // Return to the previous question: drop the assistant's latest reply and the
+    // answer that prompted it, and put that answer back in the box to edit. Any draft
+    // is invalidated, since the answers behind it just changed.
+    function goBack() {
+      if (messages.length && messages[messages.length - 1].role === "assistant") {
+        messages.pop();
+        if (chat.lastElementChild) chat.removeChild(chat.lastElementChild);
+      }
+      if (messages.length && messages[messages.length - 1].role === "user") {
+        input.value = messages[messages.length - 1].content;
+        messages.pop();
+        if (chat.lastElementChild) chat.removeChild(chat.lastElementChild);
+      }
+      draftFields = null;
+      document.getElementById("draft").hidden = true;
+      status.textContent = "";
+      updateBack();
+      input.focus();
+    }
+    backBtn.addEventListener("click", goBack);
 
     function esc(s){const d=document.createElement("div");d.textContent=s==null?"":s;return d.innerHTML;}
     // Strip the fenced json block so the user sees prose, not the payload.
@@ -56,6 +85,7 @@
     const greeting = {{ greeting | tojson }};
     messages.push({role:"assistant", content:greeting});
     addMsg("assistant", greeting);
+    updateBack();
 
     async function send() {
       const text = input.value.trim();
@@ -63,7 +93,8 @@
       input.value = "";
       addMsg("user", text);
       messages.push({role:"user", content:text});
-      sendBtn.disabled = true;
+      sendBtn.disabled = true; backBtn.disabled = true;
+      updateBack();
       status.innerHTML = '<span class="spinner"></span> Thinking…';
       try {
         const r = await fetch("/api/categories/assistant", {
@@ -82,7 +113,8 @@
       } catch (e) {
         status.textContent = "Could not reach the assistant.";
       } finally {
-        sendBtn.disabled = false;
+        sendBtn.disabled = false; backBtn.disabled = false;
+        updateBack();
         input.focus();
       }
     }
