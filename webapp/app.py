@@ -106,6 +106,38 @@ async def _security_headers(request: Request, call_next):
                         secure=_secure_cookies(), max_age=31536000, path="/")
     return resp
 
+
+# ---- last-resort error page ---------------------------------------------
+# Best practice: never surface a traceback, SQL, or stack detail to the user —
+# it leaks internals and is a standard pentest finding. Instead we log the full
+# traceback server-side under a short reference and show the user a plain page
+# carrying only that reference, which they can quote when reporting the problem
+# (an operator then greps the logs for `ref=<code>`). HTTPException (403/404/…)
+# keeps Starlette's own handling — this only catches unhandled 500s.
+_error_log = logging.getLogger("webapp.error")
+
+
+@app.exception_handler(Exception)
+async def _unhandled_error(request: Request, exc: Exception):
+    ref = secrets.token_hex(4)
+    _error_log.exception("unhandled error ref=%s method=%s path=%s",
+                         ref, request.method, request.url.path)
+    body = f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Something went wrong</title>
+<link rel="stylesheet" href="/static/govuk.css"></head>
+<body><div class="container" style="max-width:640px;margin:60px auto;padding:0 20px;">
+<h1>Sorry, something went wrong</h1>
+<p>The page couldn't be displayed because of a problem on our side. This has been
+logged and we can look into it.</p>
+<p>If you report this, please quote the reference below so we can find the exact
+error in the logs:</p>
+<p><strong>Reference:</strong> <code style="font-size:1.1em;">{ref}</code></p>
+<p style="margin-top:28px;"><a href="/">Return to the start page</a></p>
+</div></body></html>"""
+    return HTMLResponse(body, status_code=500)
+
 # ---- example presets for "start from an example" -------------------------
 EXAMPLES: Dict[str, dict] = {
     "slurry": {

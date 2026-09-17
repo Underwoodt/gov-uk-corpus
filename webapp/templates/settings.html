@@ -230,7 +230,7 @@
           <td><a href="{{ url_for('admin_edit_user_page', user_id=u.id) }}">{{ u.email }}</a></td>
           <td>{{ u.role }}</td>
           <td>{{ u.account_status }}</td>
-          <td>{{ (u.created_at or '')[:10] }}</td>
+          <td>{{ (u.created_at | string)[:10] if u.created_at else '' }}</td>
         </tr>
         {% endfor %}
       </tbody>
