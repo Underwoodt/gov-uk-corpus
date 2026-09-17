@@ -63,13 +63,22 @@ code, .mono { font-family:var(--mono); font-size:.92em; }
 /* ---- forms ---- */
 .field { margin-bottom:28px; }
 label.q, .field > label, legend.q { display:block; font-size:17px; font-weight:700; margin-bottom:6px; }
-input[type=text], input[type=email], input[type=number], input[type=search], textarea, select {
+input[type=text], input[type=email], input[type=password], input[type=number], input[type=search], textarea, select {
   font-family:var(--sans); font-size:16px; padding:9px 11px; background:var(--white);
   border:1.5px solid var(--border-mid); border-radius:var(--radius-sm); color:var(--ink); }
-input[type=text]:hover, input[type=email]:hover, input[type=number]:hover, input[type=search]:hover,
+input[type=text]:hover, input[type=email]:hover, input[type=password]:hover, input[type=number]:hover, input[type=search]:hover,
 select:hover, textarea:hover { border-color:var(--muted); }
-input[type=text], input[type=email] { width:100%; max-width:440px; }
+input[type=text], input[type=email], input[type=password] { width:100%; max-width:440px; }
 input.narrow { max-width:340px; }
+
+/* Auth pages (sign in / create account): compact, equal-width fields. */
+.authform { max-width:440px; }
+.authform .field { margin-bottom:16px; }
+.authform input[type=text], .authform input[type=email], .authform input[type=password] {
+  width:100%; max-width:none; box-sizing:border-box; }
+.pw-suggest { background:var(--surface-2); border:1px solid var(--border);
+  border-radius:var(--radius-sm); padding:12px 14px; margin:0 0 16px; font-size:15px; max-width:440px; }
+.pw-suggest code { font-family:ui-monospace, Menlo, Consolas, monospace; font-weight:700; font-size:16px; }
 textarea { width:100%; }
 select { min-width:120px; }
 

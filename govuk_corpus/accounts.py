@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import re
+import secrets
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -23,7 +24,62 @@ ALLOWED_DOMAINS = ("defra.gov.uk", "equalexperts.com")
 DOMAIN_REJECT_MESSAGE = "Please use your DEFRA or Equal Experts email address."
 ROLES = ("Admin", "Team Manager", "User", "Tester")
 STATUSES = ("pending", "active", "disabled")
+
+# Password policy. Best practice (NIST 800-63B): make length the primary control,
+# accept a long passphrase, allow a generous character set, and reject only the
+# characters that get mis-typed or paste-mangled (control / non-ASCII).
 MIN_PASSWORD_LEN = 8
+MAX_PASSWORD_LEN = 128
+_PASSWORD_ALLOWED = frozenset(chr(c) for c in range(0x20, 0x7F))   # printable ASCII: space..~
+
+PASSWORD_RULES = (
+    f"At least {MIN_PASSWORD_LEN} characters — longer is stronger. A short phrase of "
+    "three random words is easiest to remember and hard to guess.",
+    f"Up to {MAX_PASSWORD_LEN} characters.",
+    "Letters, numbers, spaces and standard keyboard symbols only.",
+    "No accented or non-English letters and no control characters.",
+    "Don't reuse a password from another website.",
+)
+
+# A small, deliberately plain wordlist for the suggested passphrase. Every word is
+# 5+ letters, so three of them plus separators always clear the 12-character minimum.
+# Not security-sensitive on its own — Argon2 hashing and length carry the strength;
+# it is only a starting suggestion the user can accept or replace.
+_WORDS = (
+    "amber", "anchor", "apple", "arrow", "aspen", "basil", "beacon", "birch", "bison",
+    "bramble", "breeze", "cedar", "cider", "clover", "cobalt", "copper", "coral",
+    "cotton", "crane", "delta", "ember", "falcon", "fern", "fjord", "forest", "garden",
+    "ginger", "glacier", "granite", "harbour", "hazel", "heron", "indigo", "island",
+    "jasper", "juniper", "kettle", "lantern", "ledger", "linen", "maple", "meadow",
+    "mellow", "mirror", "moss", "nectar", "orchid", "otter", "pebble", "pewter",
+    "pine", "quartz", "raven", "ribbon", "river", "saffron", "sable", "spruce",
+    "stone", "sugar", "thistle", "timber", "topaz", "velvet", "walnut", "willow",
+)
+
+
+def suggest_passphrase(words: int = 3) -> str:
+    """Return a memorable suggested passphrase: `words` random words joined by hyphens
+    (lowercase letters + hyphens only, always over 12 characters). Uses `secrets` for
+    unbiased random choice. A suggestion only — the user may type their own."""
+    picks = [secrets.choice(_WORDS) for _ in range(max(1, words))]
+    phrase = "-".join(picks)
+    while len(phrase) <= 12:                       # guard against an unlucky short draw
+        picks.append(secrets.choice(_WORDS))
+        phrase = "-".join(picks)
+    return phrase
+
+
+def validate_password(password: str) -> None:
+    """Raise ValueError with a user-facing message if the password fails policy.
+    Length first, then the allowed-character check (see PASSWORD_RULES)."""
+    if not password or len(password) < MIN_PASSWORD_LEN:
+        raise ValueError(f"Password must be at least {MIN_PASSWORD_LEN} characters.")
+    if len(password) > MAX_PASSWORD_LEN:
+        raise ValueError(f"Password must be {MAX_PASSWORD_LEN} characters or fewer.")
+    if any(ch not in _PASSWORD_ALLOWED for ch in password):
+        raise ValueError("Password contains characters that aren't allowed. Use letters, "
+                         "numbers, spaces and standard keyboard symbols only.")
+
 
 _SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "schema_auth.sql")
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -109,8 +165,7 @@ def create_user(conn, *, email: str, first_name: str, last_name: str, password: 
         raise ValueError("invalid account status")
     if not (first_name or "").strip() or not (last_name or "").strip():
         raise ValueError("First and last name are required.")
-    if not password or len(password) < MIN_PASSWORD_LEN:
-        raise ValueError(f"Password must be at least {MIN_PASSWORD_LEN} characters.")
+    validate_password(password)
     pw = hash_password(password)
     try:
         row = conn.execute(

@@ -11,6 +11,44 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault("CORPUS_DB", ":memory:")
 
 from webapp import app as webapp_app
+from govuk_corpus import accounts
+
+
+class TestPasswordPolicy(unittest.TestCase):
+    def test_accepts_min_length(self):
+        accounts.validate_password("a" * accounts.MIN_PASSWORD_LEN)   # no raise
+
+    def test_rejects_too_short(self):
+        with self.assertRaises(ValueError):
+            accounts.validate_password("a" * (accounts.MIN_PASSWORD_LEN - 1))
+        with self.assertRaises(ValueError):
+            accounts.validate_password("")
+
+    def test_rejects_too_long(self):
+        with self.assertRaises(ValueError):
+            accounts.validate_password("a" * (accounts.MAX_PASSWORD_LEN + 1))
+
+    def test_allows_spaces_and_symbols(self):
+        accounts.validate_password("correct horse battery!")   # spaces + punctuation ok
+
+    def test_rejects_non_ascii_and_control(self):
+        with self.assertRaises(ValueError):
+            accounts.validate_password("passwordé-with-accent")   # accented letter
+        with self.assertRaises(ValueError):
+            accounts.validate_password("bad\tcontrol\nchars")     # control chars
+
+
+class TestSuggestedPassphrase(unittest.TestCase):
+    def test_shape(self):
+        for _ in range(200):
+            p = accounts.suggest_passphrase()
+            self.assertGreater(len(p), 12)
+            self.assertEqual(p.count("-"), p.count("-"))          # hyphen-joined
+            self.assertGreaterEqual(len(p.split("-")), 3)
+            accounts.validate_password(p)                         # a suggestion must pass policy
+
+    def test_is_random(self):
+        self.assertGreater(len({accounts.suggest_passphrase() for _ in range(50)}), 1)
 
 
 class TestRateLimit(unittest.TestCase):
