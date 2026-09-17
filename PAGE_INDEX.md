@@ -29,7 +29,7 @@ we can pin the report to an exact page.
   `{% block page_id %}guc-0003{% endblock %}`.
 - The style (fixed, bottom-left, mid-grey `--muted`) lives in
   [`webapp/static/govuk.css`](webapp/static/govuk.css) under `.page-id`.
-- Pages **not** built on `base.html` (currently only the inline sign-in page in
+- Pages **not** built on `base.html` (the inline sign-in and create-account pages in
   [`webapp/app.py`](webapp/app.py)) render `<div class="page-id">guc-NNNN</div>` directly.
 
 **Adding a page (checklist):**
