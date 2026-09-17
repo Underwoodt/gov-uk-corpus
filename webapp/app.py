@@ -834,6 +834,25 @@ async def api_category_assistant(request: Request):
         conn.close()
 
 
+def _slug_errors(conn, data: dict) -> list:
+    """Server-side slug validation — the hard backstop behind the assistant's guidance.
+    Reject organisation / document-type slugs that don't exist (plurals and typos won't),
+    suggesting the closest real slugs. Returns human-readable errors ([] if all valid)."""
+    errors: list = []
+    known_dt = set(category_interview.DOCUMENT_TYPES)
+    for s in cat.parse_list(data.get("document_type_slugs")):
+        if s not in known_dt:
+            near = category_interview.match_document_types(s)
+            hint = f" Did you mean: {', '.join(near)}?" if near else ""
+            errors.append(f"Unknown document type '{s}' — not a real slug.{hint}")
+    for s in cat.parse_list(data.get("dept_slugs")):
+        if orgs.get_org(conn, s) is None:
+            near = [m["slug"] for m in orgs.search(conn, s, limit=5)]
+            hint = f" Did you mean: {', '.join(near)}?" if near else ""
+            errors.append(f"Unknown organisation '{s}' — not a real slug.{hint}")
+    return errors
+
+
 @app.post("/categories/new")
 async def create_category(request: Request):
     if not authed(request):
@@ -845,7 +864,7 @@ async def create_category(request: Request):
     cu = current_user(request)
     if cu and cu.get("email"):
         data["owner_email"] = cu["email"]
-    errors = cat.validate(data)
+    errors = cat.validate(data) + _slug_errors(conn, data)
     if errors:
         return templates.TemplateResponse("form.html", _form_ctx(conn, request, None, data, errors))
     cid = cat.create_category(conn, data)
@@ -877,7 +896,7 @@ async def update_category(request: Request, cid: int):
     form = await request.form()
     data = form_values(form)
     data["slug"] = category.get("slug")  # name is fixed after creation
-    errors = cat.validate(data)
+    errors = cat.validate(data) + _slug_errors(conn, data)
     if errors:
         merged = {**category, **data}
         return templates.TemplateResponse("form.html", _form_ctx(conn, request, category, merged, errors))
