@@ -32,6 +32,13 @@
     {% if run.status %}· {{ run.status }}{% endif %}
   </p>
 
+  {# Live status: shown only while a background evaluation for this run's lineage is
+     in progress. Populated by JS polling evaluate-bg/status; auto-refreshes on finish. #}
+  <div id="run-live" hidden style="margin:12px 0 0;padding:10px 14px;border-left:4px solid var(--blue);
+    background:var(--panel-blue);border-radius:0 5px 5px 0;max-width:840px;font-size:15px;">
+    <span class="spinner"></span> <span id="run-live-text">Checking…</span>
+  </div>
+
   {% if continue_reason %}
   <p style="margin:12px 0 0;">
     <button class="btn" id="complete-run" type="button">Continue LLM evaluation</button>
@@ -134,6 +141,7 @@
 
   <script>
     const CID = {{ category.id }}, RUN_ID = {{ run.run_id|tojson }};
+    const CHAIN_IDS = {{ (chain|map(attribute='run_id')|list)|tojson }};
     const nameInput = document.getElementById("run-name");
     const status = document.getElementById("name-status");
     async function saveName() {
@@ -182,5 +190,42 @@
         } catch (e) { cs.textContent = "Could not start."; completeBtn.disabled = false; }
       });
     }
+
+    // Live "is this run still running?" check. Polls the background-evaluation status
+    // and shows the banner only while a bg run for THIS run's lineage is in progress;
+    // when it finishes, refresh so the phase table shows the final numbers.
+    (function () {
+      const box = document.getElementById("run-live");
+      const txt = document.getElementById("run-live-text");
+      if (!box) return;
+      const CHAIN = CHAIN_IDS.map(String);
+      let timer = null, everRan = false;
+      async function check() {
+        let s;
+        try { s = await (await fetch(`/api/categories/${CID}/evaluate-bg/status`)).json(); }
+        catch (e) { return; }
+        const mine = !!(s.running && s.run_id != null && CHAIN.includes(String(s.run_id)));
+        if (completeBtn) completeBtn.disabled = mine;   // don't offer "Continue" while it runs
+        if (mine) {
+          everRan = true;
+          box.hidden = false;
+          const done = Number(s.done || 0).toLocaleString();
+          txt.textContent = `This run is still evaluating in the background — ${done} pages done`
+            + (s.remaining != null ? ` · ${Number(s.remaining).toLocaleString()} left` : "")
+            + (s.phase ? ` · ${s.phase}` : "");
+          if (!timer) timer = setInterval(check, 3000);
+        } else {
+          if (timer) { clearInterval(timer); timer = null; }
+          if (everRan) {                        // was running, now done → show final data
+            box.style.borderLeftColor = "var(--green)";
+            txt.innerHTML = "Evaluation finished — refreshing…";
+            setTimeout(() => location.reload(), 900);
+          } else {
+            box.hidden = true;                  // not running: no banner
+          }
+        }
+      }
+      check();
+    })();
   </script>
 {% endblock %}
