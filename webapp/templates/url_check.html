@@ -67,7 +67,6 @@
   <!-- Tab 3: Check Results -->
   <section class="stabpanel" data-tab="results" hidden>
     <div class="controls" style="margin:0 0 12px;align-items:center;gap:14px;flex-wrap:wrap;">
-      <button class="btn" id="uc-check" type="button">Run check</button>
       <button class="btn secondary-btn" id="uc-download" type="button" disabled>Download CSV</button>
       <span class="uc-status secondary"></span>
     </div>
@@ -83,17 +82,17 @@
         <tbody></tbody>
       </table>
     </div>
-    <p id="uc-empty" class="secondary" hidden>Add URLs to the “Should be in” or “Should not be in” tabs, then run the check.</p>
+    <p id="uc-empty" class="secondary" hidden>Add URLs to the “Should be in” or “Should not be in” tabs to see results here.</p>
   </section>
 
   <script>
     const UC_CID = {{ category.id }};
     const ucInclude = document.getElementById("uc-include");
     const ucExclude = document.getElementById("uc-exclude");
-    const ucCheck = document.getElementById("uc-check");
     const ucDownload = document.getElementById("uc-download");
     const ucStatusEls = [...document.querySelectorAll(".uc-status")];
     let ucResults = [];
+    let ucRunning = false;
 
     function ucSetStatus(html) { ucStatusEls.forEach(s => s.innerHTML = html); }
     function ucEsc(s){ const d = document.createElement("div"); d.textContent = s == null ? "" : s; return d.innerHTML; }
@@ -101,14 +100,17 @@
       ? '<span class="uc-ok" title="Yes" aria-label="yes">&#10004;</span>'
       : '<span class="uc-no" title="No" aria-label="no">&#10008;</span>'; }
 
-    // Sub-tabs.
+    // Sub-tabs. Opening Check Results always (re)runs the check.
+    let ucShowTab;
     (function () {
       const tabs = [...document.querySelectorAll(".stab")];
       const panels = [...document.querySelectorAll(".stabpanel")];
       function show(t) {
         tabs.forEach(a => a.classList.toggle("current", a.dataset.tab === t));
         panels.forEach(p => p.hidden = p.dataset.tab !== t);
+        if (t === "results") ucRun();
       }
+      ucShowTab = show;
       tabs.forEach(a => a.addEventListener("click", e => { e.preventDefault(); show(a.dataset.tab); }));
     })();
 
@@ -127,15 +129,18 @@
     }));
 
     // Run the check: save the lists first (so the checks match what's stored), then check both.
+    // Invoked automatically whenever the Check Results tab opens.
     async function ucRun() {
+      if (ucRunning) return;
       const expected = ucInclude.value.split("\n").map(s => s.trim()).filter(Boolean);
       const unexpected = ucExclude.value.split("\n").map(s => s.trim()).filter(Boolean);
       if (!expected.length && !unexpected.length) {
         document.getElementById("uc-empty").hidden = false;
         document.getElementById("uc-table").hidden = true;
-        ucSetStatus("Add some URLs first."); return;
+        ucDownload.disabled = true;
+        ucSetStatus(""); return;
       }
-      ucCheck.disabled = true;
+      ucRunning = true;
       ucSetStatus('<span class="spinner"></span> Checking…');
       try {
         try { await ucSaveList(); } catch (e) { /* non-fatal: still run the check */ }
@@ -165,10 +170,12 @@
       } catch (e) {
         ucSetStatus("Could not run the check.");
       } finally {
-        ucCheck.disabled = false;
+        ucRunning = false;
       }
     }
-    ucCheck.addEventListener("click", ucRun);
+
+    // On open: if either list already has URLs, jump to Check Results and run automatically.
+    if (ucInclude.value.trim() || ucExclude.value.trim()) ucShowTab("results");
 
     // Download the results as CSV: URL, Should be in/not in, In corpus, Active, Final result.
     function ucCsvCell(v){ v = String(v == null ? "" : v); return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
