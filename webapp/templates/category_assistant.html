@@ -48,6 +48,22 @@
     .raw-toggle { font-size:12px; color:var(--muted,#6f777b); text-decoration:underline; cursor:pointer; }
     .raw-body { white-space:pre-wrap; background:#fbfbfb; border:1px solid var(--mid-grey,#b1b4b6);
       border-radius:6px; padding:10px 12px; margin:6px 0 0; font-size:12px; max-height:320px; overflow:auto; }
+    /* Organisations picker rendered inline in the chat (mirrors the category form). */
+    .ow { margin-top:10px; }
+    .ow-sel { display:flex; flex-wrap:wrap; gap:6px; align-items:center; min-height:34px;
+      border:1px solid var(--mid-grey,#b1b4b6); border-radius:6px; padding:6px 8px; background:#fff; margin-bottom:6px; }
+    .ow-sel .empty { color:var(--muted,#6f777b); font-size:13px; }
+    .ow-chip { display:inline-flex; align-items:center; gap:6px; background:var(--accent,#1d56d6); color:#fff;
+      border-radius:4px; padding:3px 4px 3px 10px; font-size:13px; font-weight:600; }
+    .ow-x { background:none; border:0; color:#fff; font-size:16px; line-height:1; cursor:pointer; padding:0 3px; border-radius:3px; }
+    .ow-x:hover { background:rgba(255,255,255,.25); }
+    .ow-search { width:100%; box-sizing:border-box; padding:8px 10px; border:2px solid var(--black,#0b0c0c);
+      border-radius:6px; margin-bottom:6px; font:inherit; }
+    .ow-list { max-height:220px; overflow-y:auto; border:2px solid var(--black,#0b0c0c); border-radius:6px; padding:6px 8px; background:#fff; }
+    .ow-item { display:flex; align-items:center; gap:8px; padding:3px 4px; font-size:14px; cursor:pointer; border-radius:4px; color:var(--black,#0b0c0c); }
+    .ow-item:hover { background:#eef4fe; }
+    .ow-item input { width:18px; height:18px; flex:0 0 auto; margin:0; }
+    .ow-actions { margin-top:10px; display:flex; gap:12px; align-items:center; }
   </style>
 
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
@@ -117,6 +133,8 @@
     const messages = [];   // {role, content}  (parallel to the .msg nodes in #chat)
     let draftFields = null;
     let editCid = null, editFields = null;   // set when refining an existing category
+    // Organisations are chosen with a picker (not the LLM). Set once the user confirms it.
+    let orgSlugs = null, orgChildInclude = true, orgStepDone = false, orgStepActive = false;
 
     // Show "Back a step" only once there is at least one answer to undo.
     function updateBack() { backBtn.hidden = !messages.some(m => m.role === "user"); }
@@ -333,14 +351,91 @@
       input.focus();
     });
 
+    // Organisations step — a deterministic picker (no LLM). Pre-ticks the organisations the
+    // brain-dump named; the user edits and confirms, then the interview continues.
+    async function runOrgStep(brainDump) {
+      orgStepActive = true;
+      setThinking(true);
+      status.innerHTML = '<span class="spinner"></span> Finding organisations…';
+      let data;
+      try {
+        data = await (await fetch("/api/org-options", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: brainDump })
+        })).json();
+      } catch (e) {
+        status.textContent = "Could not load organisations."; setThinking(false); orgStepActive = false; return;
+      }
+      setThinking(false); status.textContent = "";
+      const options = data.options || [], matched = {};
+      (data.matched || []).forEach(s => matched[s] = true);
+
+      const { row, bubble } = makeRow("assistant");
+      bubble.innerHTML = (data.matched && data.matched.length)
+        ? "<strong>Organisations</strong><br>I've picked out the organisations you mentioned — tick or untick as needed, then confirm."
+        : "<strong>Organisations</strong><br>Which organisations publish these pages? Search and tick the ones to include, then confirm.";
+      const w = document.createElement("div"); w.className = "ow";
+      const selBox = document.createElement("div"); selBox.className = "ow-sel";
+      const search = document.createElement("input"); search.type = "search"; search.className = "ow-search"; search.placeholder = "Search organisations…";
+      const list = document.createElement("div"); list.className = "ow-list";
+      options.forEach(o => {
+        const lab = document.createElement("label"); lab.className = "ow-item"; lab.dataset.t = (o.title + " " + o.slug).toLowerCase();
+        const cb = document.createElement("input"); cb.type = "checkbox"; cb.value = o.slug; cb.checked = !!matched[o.slug];
+        const sp = document.createElement("span"); sp.textContent = o.title;
+        lab.appendChild(cb); lab.appendChild(sp); list.appendChild(lab);
+      });
+      function renderSel() {
+        const checked = [...list.querySelectorAll("input:checked")];
+        selBox.innerHTML = "";
+        if (!checked.length) { const e = document.createElement("span"); e.className = "empty"; e.textContent = "None selected — searches all organisations."; selBox.appendChild(e); return; }
+        checked.forEach(cb => {
+          const label = cb.parentNode.querySelector("span").textContent;
+          const chip = document.createElement("span"); chip.className = "ow-chip";
+          const t = document.createElement("span"); t.textContent = label;
+          const x = document.createElement("button"); x.type = "button"; x.className = "ow-x"; x.textContent = "×"; x.setAttribute("aria-label", "Remove " + label);
+          x.addEventListener("click", () => { cb.checked = false; renderSel(); });
+          chip.appendChild(t); chip.appendChild(x); selBox.appendChild(chip);
+        });
+      }
+      search.addEventListener("input", () => { const q = search.value.trim().toLowerCase(); [...list.querySelectorAll(".ow-item")].forEach(it => it.hidden = !!q && it.dataset.t.indexOf(q) === -1); });
+      list.addEventListener("change", renderSel);
+      const childLab = document.createElement("label"); childLab.className = "ow-item"; childLab.style.marginTop = "8px";
+      const childCb = document.createElement("input"); childCb.type = "checkbox"; childCb.checked = true;
+      const csp = document.createElement("span"); csp.textContent = "Include child organisations";
+      childLab.appendChild(childCb); childLab.appendChild(csp);
+      const actions = document.createElement("div"); actions.className = "ow-actions";
+      const confirmBtn = document.createElement("button"); confirmBtn.type = "button"; confirmBtn.className = "btn"; confirmBtn.textContent = "Confirm organisations";
+      actions.appendChild(confirmBtn);
+      w.appendChild(selBox); w.appendChild(search); w.appendChild(list); w.appendChild(childLab); w.appendChild(actions);
+      bubble.appendChild(w); renderSel(); row.scrollIntoView({ block: "end" });
+
+      confirmBtn.addEventListener("click", () => {
+        const checked = [...list.querySelectorAll("input:checked")];
+        orgSlugs = checked.map(cb => cb.value);
+        orgChildInclude = childCb.checked;
+        orgStepDone = true; orgStepActive = false;
+        w.querySelectorAll("input, button").forEach(el => el.disabled = true);
+        confirmBtn.textContent = "Organisations confirmed";
+        const names = checked.map(cb => cb.parentNode.querySelector("span").textContent);
+        addMsg("user", orgSlugs.length ? ("Organisations: " + names.join(", ")) : "Organisations: all of GOV.UK");
+        messages.push({ role: "user", content: "Organisations chosen: "
+          + (orgSlugs.length ? orgSlugs.join(", ") : "all organisations")
+          + (orgChildInclude ? " (include child organisations)" : "")
+          + ". These are final — do not re-ask organisations; continue with document types and the rest." });
+        updateBack();
+        ask();
+      });
+    }
+
     async function send() {
-      if (input.disabled) return;          // ignore while the assistant is thinking
+      if (input.disabled || orgStepActive) return;   // ignore while thinking or in the org step
       const text = input.value.trim();
       if (!text) return;
       input.value = "";
       autoResize();
       addMsg("user", text);
       messages.push({role:"user", content:text});
+      if (!editCid && !orgStepDone) { await runOrgStep(text); return; }   // brain-dump -> org picker
       await ask();
     }
 
@@ -383,6 +478,10 @@
     // on a validation problem it shows the form with the errors to fix.
     document.getElementById("to-form").addEventListener("click", () => {
       if (!draftFields) return;
+      if (orgSlugs !== null) {                     // the picker owns Organisations, not the LLM
+        draftFields.dept_slugs = orgSlugs.join(", ");
+        draftFields.include_child_orgs = orgChildInclude;
+      }
       const f = document.createElement("form");
       f.method = "post";
       f.action = editCid ? `/categories/${editCid}/edit` : "{{ url_for('create_category') }}";

@@ -1750,6 +1750,26 @@ def api_doc_type_counts(request: Request, orgs: str = "", children: str = "0"):
         conn.close()
 
 
+@app.post("/api/org-options")
+async def api_org_options(request: Request):
+    """All organisations for the picker, plus the slugs matched from a brain-dump (via
+    orgs.search) so the category assistant can pre-tick them — no LLM needed."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    body = await request.json()
+    text = str(body.get("text") or "")
+    conn = connect()
+    try:
+        options = orgs.all_orgs(conn)
+        opt_slugs = {o["slug"] for o in options}
+        matched = []
+        if text.strip():
+            matched = [m["slug"] for m in orgs.search(conn, text, limit=30) if m["slug"] in opt_slugs]
+        return JSONResponse({"options": options, "matched": matched})
+    finally:
+        conn.close()
+
+
 @app.get("/api/categories/{cid}/runs")
 def api_list_runs(request: Request, cid: int):
     if not authed(request):
