@@ -89,27 +89,52 @@
 
     <section id="tab-exact" class="subpanel" role="tabpanel">
     <div class="breakdowns">
-      <div id="org-breakdown" hidden>
+      <div id="org-breakdown">
         <div style="display:flex;justify-content:space-between;align-items:baseline;">
           <h2 style="margin:0;font-size:19px;">Which organisations matched</h2>
           <a href="#" id="org-toggle" hidden style="font-size:14px;">Show all</a>
         </div>
         <p class="hint" style="margin-top:2px;">Pages contributed by each organisation (within the document-type
           and keyword filters). Organisations overlap, so these don't sum to the total.</p>
-        <table style="width:100%;"><tbody id="org-rows"></tbody></table>
+        <table style="width:100%;"><tbody id="org-rows"><tr><td class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr></tbody></table>
         <p id="org-empty" class="secondary" hidden>No organisations set for this category.</p>
       </div>
 
-      <div id="kw-breakdown" hidden>
+      <div id="kw-breakdown">
         <div style="display:flex;justify-content:space-between;align-items:baseline;">
           <h2 style="margin:0;font-size:19px;">Which terms matched</h2>
           <a href="#" id="kw-toggle" hidden style="font-size:14px;">Show all</a>
         </div>
         <p class="hint" style="margin-top:2px;">Pages matching each keyword on its own (within the organisation and
           document-type filters). Terms overlap, so these don't sum to the keyword total.</p>
-        <table style="width:100%;"><tbody id="kw-rows"></tbody></table>
+        <table style="width:100%;"><tbody id="kw-rows"><tr><td class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr></tbody></table>
         <p id="kw-empty" class="secondary" hidden>No keywords set for this category.</p>
       </div>
+    </div>
+
+    <div id="kw-pages" style="margin-top:36px;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;">
+        <h2 style="margin:0;font-size:19px;">Pages in this shortlist</h2>
+        <a href="{{ url_for('download_page', cid=category.id) }}?stage=keyword" id="kw-pages-download"
+          style="font-size:14px;">Download…</a>
+      </div>
+      <p class="hint" style="margin-top:2px;">Every page matching the organisation, document-type and keyword
+        filters — the input shortlist. <span id="kw-pages-total"></span></p>
+      <div style="overflow-x:auto;">
+        <table id="kw-pages-table" style="font-size:14px;width:100%;">
+          <thead><tr><th>Title</th><th>Document type</th><th>URL</th></tr></thead>
+          <tbody id="kw-pages-rows">
+            <tr><td colspan="3" class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p id="kw-pages-empty" class="secondary" hidden>No pages in this shortlist.</p>
+      <div id="kw-pages-pager" class="controls" style="margin-top:12px;align-items:center;" hidden>
+        <button class="btn secondary-btn" id="kwp-prev" type="button">‹ Prev</button>
+        <span id="kwp-range" class="secondary"></span>
+        <button class="btn secondary-btn" id="kwp-next" type="button">Next ›</button>
+      </div>
+      <p id="kw-pages-status" class="secondary" style="margin:6px 0 0;"></p>
     </div>
 
     <details style="margin-top:30px;" data-level="advanced"><summary>SQL queries that were run (per funnel stage)</summary>
@@ -264,18 +289,59 @@
       }
       loadOrgBreakdown();       // 'which organisations matched'
       loadKeywordBreakdown();   // 'which terms matched'
+      loadKwPages();            // 'pages in this shortlist'
     }
+
+    // "Pages in this shortlist" — the deterministic keyword-stage results, paginated,
+    // with a Download link for the full data (same export as the audit page).
+    const KWP_PAGE = 25;
+    let kwpOffset = 0;
+    async function loadKwPages() {
+      const tbody = document.getElementById("kw-pages-rows");
+      const status = document.getElementById("kw-pages-status");
+      tbody.innerHTML =
+        `<tr><td colspan="3" class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr>`;
+      document.getElementById("kw-pages-empty").hidden = true;
+      try {
+        const j = await (await fetch(`/api/categories/${CID}/results-table?limit=${KWP_PAGE}&offset=${kwpOffset}`)).json();
+        if (j.error) { tbody.innerHTML = ""; status.textContent = "Error: " + j.error; return; }
+        const rows = j.rows || [], total = j.total, known = total != null;
+        document.getElementById("kw-pages-total").textContent = known ? (fmtInt(total) + " pages.") : "";
+        document.getElementById("kw-pages-empty").hidden = rows.length !== 0 || (known && total !== 0);
+        tbody.innerHTML = rows.length ? rows.map(r =>
+          `<tr>` +
+            `<td><a href="${esc(r.url)}">${esc(r.title || r.url)}</a></td>` +
+            `<td>${esc(r.effective_document_type || "—")}</td>` +
+            `<td><a href="${esc(r.url)}" class="mono" style="font-size:13px;">${esc(r.url)}</a></td>` +
+          `</tr>`).join("") : "";
+        const from = rows.length ? kwpOffset + 1 : 0, to = kwpOffset + rows.length;
+        document.getElementById("kwp-range").textContent =
+          `${fmtInt(from)}–${fmtInt(to)}` + (known ? ` of ${fmtInt(total)}` : "");
+        document.getElementById("kwp-prev").disabled = kwpOffset <= 0;
+        document.getElementById("kwp-next").disabled = known ? (kwpOffset + KWP_PAGE >= total) : (rows.length < KWP_PAGE);
+        document.getElementById("kw-pages-pager").hidden = kwpOffset === 0 && rows.length < KWP_PAGE;
+        status.textContent = "";
+      } catch (e) { tbody.innerHTML = ""; status.textContent = "Could not load the pages list."; }
+    }
+    document.getElementById("kwp-prev").addEventListener("click", () => { kwpOffset = Math.max(0, kwpOffset - KWP_PAGE); loadKwPages(); });
+    document.getElementById("kwp-next").addEventListener("click", () => { kwpOffset += KWP_PAGE; loadKwPages(); });
 
     // "Which organisations matched" — per-organisation page counts, rendered as bars.
     const ORG_TOP = 8;
     let orgExpanded = false, orgRows = [];
     async function loadOrgBreakdown() {
       const wrap = document.getElementById("org-breakdown");
+      wrap.hidden = false;
+      document.getElementById("org-rows").innerHTML =
+        `<tr><td class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr>`;
       try {
         const j = await (await fetch(`/api/categories/${CID}/org-breakdown`)).json();
         orgRows = j.orgs || [];
-      } catch (e) { return; }
-      wrap.hidden = false;
+      } catch (e) {
+        document.getElementById("org-rows").innerHTML =
+          `<tr><td class="secondary" style="padding:10px 6px;">Could not load this breakdown.</td></tr>`;
+        return;
+      }
       document.getElementById("org-empty").hidden = orgRows.length !== 0;
       document.getElementById("org-toggle").hidden = orgRows.length <= ORG_TOP;
       renderOrgRows();
@@ -304,11 +370,17 @@
     let kwExpanded = false, kwTerms = [];
     async function loadKeywordBreakdown() {
       const wrap = document.getElementById("kw-breakdown");
+      wrap.hidden = false;
+      document.getElementById("kw-rows").innerHTML =
+        `<tr><td class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr>`;
       try {
         const j = await (await fetch(`/api/categories/${CID}/keyword-breakdown`)).json();
         kwTerms = j.terms || [];
-      } catch (e) { return; }
-      wrap.hidden = false;
+      } catch (e) {
+        document.getElementById("kw-rows").innerHTML =
+          `<tr><td class="secondary" style="padding:10px 6px;">Could not load this breakdown.</td></tr>`;
+        return;
+      }
       document.getElementById("kw-empty").hidden = kwTerms.length !== 0;
       const toggle = document.getElementById("kw-toggle");
       toggle.hidden = kwTerms.length <= KW_TOP;
