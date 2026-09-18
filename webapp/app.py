@@ -1516,45 +1516,35 @@ async def api_url_check(request: Request, cid: int):
     tagged = tagged[:1000]
     if not tagged:
         return JSONResponse({"results": [], "has_run": False})
-    listed = {u for u, _ in tagged}
+    urls = [u for u, _ in tagged]
     conn = connect()
     try:
         category = cat.get_category(conn, cid)
         if not category:
             return JSONResponse({"error": "not found"}, status_code=404)
-        # This category's whole final shortlist (the exclusion run's keeps, else inclusion's).
-        final_all, inc = set(), evaluate.latest_inclusion_run(conn, category["id"])
-        if inc:
-            run_id = evaluate.latest_exclusion_run(conn, inc) or inc
-            final_all = {dict(r)["url"] for r in conn.execute(
-                f"SELECT url FROM evaluation_results WHERE run_id = {shortlist._P} AND keep = 1",
-                (run_id,)).fetchall()}
-        # URLs that reached the final shortlist but aren't on either list — unexpected
-        # inclusions to review. Ordered and capped.
-        extra_all = sorted(final_all - listed)
-        extras = extra_all[:500]
-        extras_truncated = len(extra_all) > len(extras)
-
-        all_urls = [u for u, _ in tagged] + extras
-        ph = ",".join([shortlist._P] * len(all_urls))
+        ph = ",".join([shortlist._P] * len(urls))
         # In the corpus, and active (live/fetched, not a redirect or withdrawn).
         info = {dict(r)["url"]: dict(r) for r in conn.execute(
             f"SELECT url, is_redirect, withdrawn, content_hash FROM content WHERE url IN ({ph})",
-            tuple(all_urls)).fetchall()}
-
-        def _row(u, kind):
+            tuple(urls)).fetchall()}
+        # In this category's final shortlist (the exclusion run's keeps, else inclusion's).
+        final, inc = set(), evaluate.latest_inclusion_run(conn, category["id"])
+        if inc:
+            run_id = evaluate.latest_exclusion_run(conn, inc) or inc
+            final = {dict(r)["url"] for r in conn.execute(
+                f"SELECT url FROM evaluation_results WHERE run_id = {shortlist._P} AND keep = 1 "
+                f"AND url IN ({ph})", tuple([run_id, *urls])).fetchall()}
+        results = []
+        for u, kind in tagged:
             row = info.get(u)
-            return {
+            results.append({
                 "url": u, "kind": kind,
                 "corpus": row is not None,
                 "active": bool(row and not row.get("is_redirect") and not row.get("withdrawn")
                                and row.get("content_hash")),
-                "final": u in final_all,
-            }
-        results = [_row(u, kind) for u, kind in tagged]
-        results += [_row(u, "Not expected") for u in extras]
-        return JSONResponse({"results": results, "has_run": bool(inc),
-                             "extras_truncated": extras_truncated})
+                "final": u in final,
+            })
+        return JSONResponse({"results": results, "has_run": bool(inc)})
     finally:
         conn.close()
 

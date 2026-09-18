@@ -14,7 +14,6 @@
     .uc-pill { display:inline-block; font-size:12px; font-weight:700; padding:2px 9px; border-radius:999px; }
     .uc-exp { background:#e0ecff; color:#0b3d91; }         /* Expected */
     .uc-unexp { background:#fde7e4; color:#942012; }       /* Unexpected */
-    .uc-extra { background:#fff3d6; color:#7a5a00; }       /* Not expected (in final, not listed) */
     /* Final result reads as pass/fail against the URL's expectation:
        Expected should be In; Unexpected should be Out. */
     .uc-pass { color:var(--green,#00703c); font-weight:700; }
@@ -34,9 +33,7 @@
   <h1 style="margin:16px 0 6px;">URL check <span class="secondary" style="font-weight:400;font-size:18px;">— {{ category.display_name }}</span></h1>
   <p class="hint" style="max-width:760px;">Keep two lists of gov.uk URLs against this category and check them against the
     corpus. <strong>Expected</strong> URLs are pages that should reach the final shortlist; <strong>Unexpected</strong>
-    URLs are pages that should stay out. Both lists are saved with the category. The check also
-    surfaces any <strong>Not expected</strong> URLs — pages that reached the final shortlist but
-    aren't on either list.</p>
+    URLs are pages that should stay out. Both lists are saved with the category.</p>
 
   <div class="tabs" role="tablist" style="margin:18px 0 20px;">
     <a href="#" class="stab current" data-tab="expected">Expected URLs</a>
@@ -149,13 +146,12 @@
         if (j.error) { ucSetStatus("Error: " + j.error); return; }
         ucResults = j.results || [];
         document.querySelector("#uc-table tbody").innerHTML = ucResults.map(x => {
-          const kindCls = x.kind === "Unexpected" ? "uc-unexp"
-            : (x.kind === "Not expected" ? "uc-extra" : "uc-exp");
-          const kind = `<span class="uc-pill ${kindCls}">${ucEsc(x.kind)}</span>`;
+          const kind = x.kind === "Unexpected"
+            ? '<span class="uc-pill uc-unexp">Unexpected</span>'
+            : '<span class="uc-pill uc-exp">Expected</span>';
           // In/Out label, coloured green when it matches expectation, red when it doesn't:
-          // Expected passes if In; Unexpected passes if Out; Not-expected inclusions are surprises (fail).
-          const pass = x.kind === "Unexpected" ? !x.final
-            : (x.kind === "Not expected" ? false : x.final);
+          // Expected passes if it's In; Unexpected passes if it's Out.
+          const pass = (x.kind === "Unexpected") ? !x.final : x.final;
           const fin = `<span class="${pass ? 'uc-pass' : 'uc-fail'}" title="${pass ? 'as expected' : 'not as expected'}">`
             + (x.final ? 'In' : 'Out') + '</span>';
           return `<tr><td class="uc-url"><a href="${ucEsc(x.url)}" target="_blank" rel="noopener">${ucEsc(x.url)}</a></td>`
@@ -165,10 +161,8 @@
         document.getElementById("uc-table").hidden = ucResults.length === 0;
         document.getElementById("uc-empty").hidden = ucResults.length !== 0;
         ucDownload.disabled = ucResults.length === 0;
-        let note = j.has_run ? "" :
-          '<em>No AI run yet for this category — “Final result” is Out for every URL until the pipeline has run.</em>';
-        if (j.extras_truncated) note += (note ? " " : "") + '<em>Showing the first 500 unexpected inclusions.</em>';
-        ucSetStatus(note);
+        ucSetStatus(j.has_run ? "" :
+          '<em>No AI run yet for this category — “Final result” is Out for every URL until the pipeline has run.</em>');
       } catch (e) {
         ucSetStatus("Could not run the check.");
       } finally {
