@@ -1534,6 +1534,25 @@ async def api_url_check(request: Request, cid: int):
         conn.close()
 
 
+@app.post("/categories/{cid}/url-check/save")
+async def save_url_checklist(request: Request, cid: int):
+    """Store this category's URL-check lists: URLs that should be included in the final
+    shortlist, and URLs that should be excluded (kept for later checks)."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    body = await request.json()
+    include = str(body.get("should_include_urls") or "")[:20000]
+    exclude = str(body.get("should_exclude_urls") or "")[:20000]
+    conn = connect()
+    try:
+        if not cat.get_category(conn, cid):
+            return JSONResponse({"error": "not found"}, status_code=404)
+        cat.set_url_checklist(conn, cid, include, exclude)
+        return JSONResponse({"ok": True})
+    finally:
+        conn.close()
+
+
 @app.get("/api/categories/{cid}/runs")
 def api_list_runs(request: Request, cid: int):
     if not authed(request):

@@ -123,6 +123,18 @@ def update_category(conn, cid: int, data: Dict[str, Any], status: Optional[str] 
     conn.commit()
 
 
+def set_url_checklist(conn, cid: int, should_include_urls: str, should_exclude_urls: str) -> None:
+    """Persist the URL-check lists (guc-0018) for a category. These are managed only on the
+    URL check page — the category form doesn't carry them — so this updates just these two
+    columns and leaves every other field untouched."""
+    conn.execute(
+        f"UPDATE categories SET should_include_urls={_P}, should_exclude_urls={_P}, "
+        f"updated_at={_P} WHERE id={_P}",
+        ((should_include_urls or "").strip() or None,
+         (should_exclude_urls or "").strip() or None, now_iso(), cid))
+    conn.commit()
+
+
 def delete_category(conn, cid: int) -> None:
     conn.execute(f"DELETE FROM categories WHERE id={_P}", (cid,))
     conn.commit()

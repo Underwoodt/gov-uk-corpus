@@ -212,7 +212,9 @@ CREATE TABLE IF NOT EXISTS categories (
     extra_guidance_urls           text,
     only_use_extra_guidance_urls  smallint DEFAULT 0,
     extra_law_urls                text,
-    only_use_extra_law_urls       smallint DEFAULT 0
+    only_use_extra_law_urls       smallint DEFAULT 0,
+    should_include_urls           text,   -- URLs expected IN the final shortlist (URL-check list)
+    should_exclude_urls           text    -- URLs expected OUT of the shortlist (for later checks)
 );
 
 -- Keyword search (Path A): Postgres full-text over title + description + body.
@@ -241,6 +243,9 @@ CREATE INDEX IF NOT EXISTS idx_content_parent_document_type ON content(parent_do
 -- Category display name/identifier (added after initial deploy).
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS slug text;
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS include_child_orgs smallint DEFAULT 0;
+-- URL-check lists: URLs expected in / out of the final shortlist (guc-0018).
+ALTER TABLE categories ADD COLUMN IF NOT EXISTS should_include_urls text;
+ALTER TABLE categories ADD COLUMN IF NOT EXISTS should_exclude_urls text;
 
 -- Precomputed "input shortlist" size per category (organisations + document
 -- types, no keywords). Refreshed as the tidy-up phase of the nightly corpus

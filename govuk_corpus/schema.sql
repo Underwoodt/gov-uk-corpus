@@ -232,7 +232,9 @@ CREATE TABLE IF NOT EXISTS categories (
     extra_guidance_urls           TEXT,
     only_use_extra_guidance_urls  INTEGER DEFAULT 0,
     extra_law_urls                TEXT,
-    only_use_extra_law_urls       INTEGER DEFAULT 0
+    only_use_extra_law_urls       INTEGER DEFAULT 0,
+    should_include_urls           TEXT,   -- URLs expected IN the final shortlist (URL-check list)
+    should_exclude_urls           TEXT    -- URLs expected OUT of the shortlist (for later checks)
 );
 
 -- Precomputed "input shortlist" size per category (organisations + document

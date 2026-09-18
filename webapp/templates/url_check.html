@@ -3,7 +3,7 @@
 {% block title %}{{ category.display_name }} — URL check{% endblock %}
 {% block content %}
   <style>
-    #uc-urls { width:100%; max-width:760px; box-sizing:border-box; min-height:160px; padding:12px 14px;
+    .uc-box { width:100%; max-width:760px; box-sizing:border-box; min-height:120px; padding:12px 14px;
       border:2px solid var(--black); border-radius:10px; font:inherit; line-height:1.45; resize:vertical; }
     #uc-table { font-size:14px; margin-top:8px; }
     #uc-table th, #uc-table td { padding:8px 12px; }
@@ -24,15 +24,29 @@
   </div>
 
   <h1 style="margin:16px 0 6px;">URL check <span class="secondary" style="font-weight:400;font-size:18px;">— {{ category.display_name }}</span></h1>
-  <p class="hint" style="max-width:760px;">Paste gov.uk URLs (one per line) to check each one against this category:
-    whether it's <strong>in the corpus</strong>, whether it's an <strong>active</strong> page
-    (a live, fetched page — not withdrawn or a redirect), and whether it's <strong>in the final shortlist</strong>
-    (kept after the AI inclusion and exclusion passes).</p>
+  <p class="hint" style="max-width:760px;">This category's URL checklist, saved with the category. The
+    <strong>should be included</strong> list is the pages you expect to reach the final shortlist —
+    check each one against the corpus below. The <strong>should be excluded</strong> list is stored
+    for later checks.</p>
 
-  <label class="q" for="uc-urls" style="display:block;font-weight:700;margin-bottom:6px;">URLs</label>
-  <textarea id="uc-urls" placeholder="https://www.gov.uk/guidance/...&#10;https://www.gov.uk/government/publications/..."></textarea>
+  <div class="field" style="max-width:760px;">
+    <label class="q" for="uc-include">Should be included</label>
+    <p class="hint" style="margin:2px 0 6px;">One gov.uk URL per line — pages that should reach the final shortlist.</p>
+    <textarea id="uc-include" class="uc-box"
+      placeholder="https://www.gov.uk/guidance/...&#10;https://www.gov.uk/government/publications/...">{{ category.should_include_urls or '' }}</textarea>
+  </div>
+
+  <div class="field" style="max-width:760px;">
+    <label class="q" for="uc-exclude">Should be excluded
+      <span class="secondary" style="font-weight:400;">(stored for later checks)</span></label>
+    <p class="hint" style="margin:2px 0 6px;">One gov.uk URL per line — pages that should <em>not</em> be shortlisted. Saved for a future check.</p>
+    <textarea id="uc-exclude" class="uc-box"
+      placeholder="https://www.gov.uk/...">{{ category.should_exclude_urls or '' }}</textarea>
+  </div>
+
   <div class="controls" style="margin:12px 0;align-items:center;gap:14px;">
-    <button class="btn" id="uc-check" type="button">Check URLs</button>
+    <button class="btn" id="uc-check" type="button">Check the include list</button>
+    <button class="btn secondary-btn" id="uc-save" type="button">Save checklist</button>
     <span id="uc-status" class="secondary"></span>
   </div>
 
@@ -51,7 +65,9 @@
   <script>
     const UC_CID = {{ category.id }};
     const ucBtn = document.getElementById("uc-check");
-    const ucBox = document.getElementById("uc-urls");
+    const ucSave = document.getElementById("uc-save");
+    const ucBox = document.getElementById("uc-include");
+    const ucExclude = document.getElementById("uc-exclude");
     const ucStatus = document.getElementById("uc-status");
     function ucEsc(s){ const d = document.createElement("div"); d.textContent = s == null ? "" : s; return d.innerHTML; }
     function ucMark(ok){ return ok
@@ -86,5 +102,24 @@
       }
     }
     ucBtn.addEventListener("click", ucRun);
+
+    // Persist both lists onto the category.
+    async function ucSaveList() {
+      ucSave.disabled = true;
+      ucStatus.innerHTML = '<span class="spinner"></span> Saving…';
+      try {
+        const r = await fetch(`/categories/${UC_CID}/url-check/save`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ should_include_urls: ucBox.value, should_exclude_urls: ucExclude.value })
+        });
+        const j = await r.json();
+        ucStatus.textContent = j.ok ? "Checklist saved." : ("Error: " + (j.error || "could not save"));
+      } catch (e) {
+        ucStatus.textContent = "Could not save the checklist.";
+      } finally {
+        ucSave.disabled = false;
+      }
+    }
+    ucSave.addEventListener("click", ucSaveList);
   </script>
 {% endblock %}
