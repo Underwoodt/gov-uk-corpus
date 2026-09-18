@@ -12,8 +12,9 @@
     .uc-no { color:var(--red,#d4351c); font-weight:700; font-size:16px; }
     .uc-url { word-break:break-all; max-width:460px; }
     .uc-pill { display:inline-block; font-size:12px; font-weight:700; padding:2px 9px; border-radius:999px; }
-    .uc-exp { background:#e0ecff; color:#0b3d91; }         /* Expected */
-    .uc-unexp { background:#fde7e4; color:#942012; }       /* Unexpected */
+    /* Lozenge shares the pass/fail colour of the In/Out field. */
+    .uc-pill-pass { background:#d7ecdf; color:#00532c; }   /* matches In/Out green */
+    .uc-pill-fail { background:#f8d7d1; color:#8e1c0c; }   /* matches In/Out red */
     /* Final result reads as pass/fail against the URL's expectation:
        Expected should be In; Unexpected should be Out. */
     .uc-pass { color:var(--green,#00703c); font-weight:700; }
@@ -146,12 +147,10 @@
         if (j.error) { ucSetStatus("Error: " + j.error); return; }
         ucResults = j.results || [];
         document.querySelector("#uc-table tbody").innerHTML = ucResults.map(x => {
-          const kind = x.kind === "Unexpected"
-            ? '<span class="uc-pill uc-unexp">Unexpected</span>'
-            : '<span class="uc-pill uc-exp">Expected</span>';
-          // In/Out label, coloured green when it matches expectation, red when it doesn't:
-          // Expected passes if it's In; Unexpected passes if it's Out.
+          // Expected passes if it's In; Unexpected passes if it's Out. The lozenge and the
+          // In/Out field share the same pass (green) / fail (red) colour.
           const pass = (x.kind === "Unexpected") ? !x.final : x.final;
+          const kind = `<span class="uc-pill ${pass ? 'uc-pill-pass' : 'uc-pill-fail'}">${ucEsc(x.kind)}</span>`;
           const fin = `<span class="${pass ? 'uc-pass' : 'uc-fail'}" title="${pass ? 'as expected' : 'not as expected'}">`
             + (x.final ? 'In' : 'Out') + '</span>';
           return `<tr><td class="uc-url"><a href="${ucEsc(x.url)}" target="_blank" rel="noopener">${ucEsc(x.url)}</a></td>`
