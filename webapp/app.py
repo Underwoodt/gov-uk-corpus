@@ -2378,14 +2378,31 @@ def _require_admin(request: Request):
     return u if (u and roles.allows(u.get("role"), "admin")) else None
 
 
+@app.get("/admin/users", response_class=HTMLResponse)
+def admin_users_page(request: Request, user_ok: int = 0, user_error: str = ""):
+    """Admin: view every user and open each one to edit their profile (guc-0020).
+    Accounts mode + admin only."""
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    if not _require_admin(request):
+        conn.close()
+        return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
+    resp = templates.TemplateResponse("admin_users.html", ctx(
+        conn, request, active_nav="users", users=accounts.list_users(conn),
+        account_roles=accounts.ROLES, user_ok=user_ok, user_error=user_error))
+    conn.close()
+    return resp
+
+
 @app.post("/admin/users")
 async def admin_create_user(request: Request):
     """Admin creates an account (accounts mode). Same fields as registration, plus role."""
     if not authed(request):
         return login_redirect(request)
-    settings_url = str(request.url_for("settings_page"))
+    users_url = str(request.url_for("admin_users_page"))
     if not _require_admin(request):
-        return RedirectResponse(url=settings_url, status_code=303)
+        return RedirectResponse(url=users_url, status_code=303)
     form = await request.form()
     role = form.get("role") if form.get("role") in accounts.ROLES else "User"
     conn = connect()
@@ -2395,13 +2412,12 @@ async def admin_create_user(request: Request):
                              last_name=(form.get("last_name") or ""),
                              password=(form.get("password") or ""), role=role)
     except accounts.EmailTakenError:
-        return RedirectResponse(url=settings_url + "?user_error=exists#users", status_code=303)
+        return RedirectResponse(url=users_url + "?user_error=exists", status_code=303)
     except ValueError as e:
-        return RedirectResponse(url=settings_url + "?user_error=" + quote(str(e)) + "#users",
-                                status_code=303)
+        return RedirectResponse(url=users_url + "?user_error=" + quote(str(e)), status_code=303)
     finally:
         conn.close()
-    return RedirectResponse(url=settings_url + "?user_ok=1#users", status_code=303)
+    return RedirectResponse(url=users_url + "?user_ok=1", status_code=303)
 
 
 @app.get("/admin/users/{user_id}/edit", response_class=HTMLResponse)
@@ -2409,12 +2425,12 @@ def admin_edit_user_page(request: Request, user_id: str):
     if not authed(request):
         return login_redirect(request)
     if not _require_admin(request):
-        return RedirectResponse(url=str(request.url_for("settings_page")), status_code=303)
+        return RedirectResponse(url=str(request.url_for("admin_users_page")), status_code=303)
     conn = connect()
     try:
         u = accounts.get_user(conn, user_id)
         if not u:
-            return RedirectResponse(url=str(request.url_for("settings_page")) + "#users", status_code=303)
+            return RedirectResponse(url=str(request.url_for("admin_users_page")), status_code=303)
         return templates.TemplateResponse("user_edit.html", ctx(
             conn, request, u=u, account_roles=accounts.ROLES, account_statuses=accounts.STATUSES))
     finally:
@@ -2426,7 +2442,7 @@ async def admin_update_user(request: Request, user_id: str):
     if not authed(request):
         return login_redirect(request)
     if not _require_admin(request):
-        return RedirectResponse(url=str(request.url_for("settings_page")), status_code=303)
+        return RedirectResponse(url=str(request.url_for("admin_users_page")), status_code=303)
     form = await request.form()
     role = form.get("role") if form.get("role") in accounts.ROLES else None
     status = form.get("account_status") if form.get("account_status") in accounts.STATUSES else None
@@ -2436,7 +2452,7 @@ async def admin_update_user(request: Request, user_id: str):
                              last_name=form.get("last_name"), role=role, account_status=status)
     finally:
         conn.close()
-    return RedirectResponse(url=str(request.url_for("settings_page")) + "?user_ok=1#users", status_code=303)
+    return RedirectResponse(url=str(request.url_for("admin_users_page")) + "?user_ok=1", status_code=303)
 
 
 @app.get("/settings", response_class=HTMLResponse)

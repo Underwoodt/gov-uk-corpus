@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block page_id %}guc-0020{% endblock %}
+{% block title %}User administration{% endblock %}
+{% block content %}
+  <a class="back" href="{{ url_for('settings_page') }}">‹ Settings</a>
+  <h1 style="margin:16px 0 6px;">User administration</h1>
+  <p class="lede" style="margin:0 0 20px;max-width:680px;">View everyone with an account and open a user to edit
+    their name, role and status. Creating an account here follows the same rules as sign-up.</p>
+
+  {% if user_ok %}<div class="success" style="margin-bottom:16px;">Saved.</div>{% endif %}
+  {% if user_error %}<div class="error-summary"><h2>There is a problem</h2><ul><li>{{
+    'An account with that email address already exists.' if user_error == 'exists' else user_error }}</li></ul></div>{% endif %}
+
+  <h2 style="margin:24px 0 8px;">Users</h2>
+  {% if users %}
+  <div class="table-wrap" style="max-width:900px;"><table style="font-size:14px;">
+    <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Created</th><th></th></tr></thead>
+    <tbody>
+      {% for u in users %}
+      <tr>
+        <td><a class="name-link" href="{{ url_for('admin_edit_user_page', user_id=u.id) }}">{{
+          ((u.first_name or '') ~ ' ' ~ (u.last_name or '')).strip() or u.email }}</a></td>
+        <td><a href="{{ url_for('admin_edit_user_page', user_id=u.id) }}">{{ u.email }}</a></td>
+        <td>{{ u.role }}</td>
+        <td>{{ u.account_status }}</td>
+        <td>{{ (u.created_at | string)[:10] if u.created_at else '' }}</td>
+        <td><a href="{{ url_for('admin_edit_user_page', user_id=u.id) }}">Edit</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<p class="secondary">No users yet.</p>{% endif %}
+
+  <h2 style="margin:36px 0 8px;">Add a user</h2>
+  <p class="hint" style="margin-top:0;">Creates an account (allowed email domains only). Share the temporary
+    password with the person — they can change it on their profile.</p>
+  <form method="post" action="{{ url_for('admin_create_user') }}" style="max-width:520px;">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <div class="field"><label class="q" for="u_first">First name</label>
+      <input id="u_first" name="first_name" type="text"></div>
+    <div class="field"><label class="q" for="u_last">Last name</label>
+      <input id="u_last" name="last_name" type="text"></div>
+    <div class="field"><label class="q" for="u_email">Email address</label>
+      <input id="u_email" name="email" type="email" autocomplete="off"></div>
+    <div class="field"><label class="q" for="u_pass">Temporary password</label>
+      <input id="u_pass" name="password" type="password" autocomplete="new-password"></div>
+    <div class="field"><label class="q" for="u_role">Role</label>
+      <select id="u_role" name="role" style="font-size:16px;padding:6px;border:2px solid var(--black);">
+        {% for r in account_roles %}<option value="{{ r }}" {{ 'selected' if r == 'User' }}>{{ r }}</option>{% endfor %}
+      </select></div>
+    <button class="btn" type="submit">Create account</button>
+  </form>
+{% endblock %}
