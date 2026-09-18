@@ -1496,8 +1496,8 @@ def _clean_urls(raw) -> list:
 
 @app.post("/api/categories/{cid}/url-check")
 async def api_url_check(request: Request, cid: int):
-    """Check this category's Expected and Unexpected URL lists. For each URL return its
-    `kind` (Expected | Unexpected), `corpus` (a row exists in content), `active` (a live,
+    """Check this category's "Should be in" and "Should not be in" URL lists. For each URL
+    return its `kind` ("Should be in" | "Should not be in"), `corpus` (a row exists), `active` (a live,
     fetched page — not a redirect or withdrawn), and `final` (kept in this category's final
     shortlist, after inclusion + exclusion). Lists are de-duplicated and capped."""
     if not authed(request):
@@ -1505,14 +1505,14 @@ async def api_url_check(request: Request, cid: int):
     body = await request.json()
     expected = _clean_urls(body.get("expected"))
     unexpected = _clean_urls(body.get("unexpected"))
-    # One ordered, de-duplicated list — a URL in both lists is treated as Expected.
+    # One ordered, de-duplicated list — a URL in both lists is treated as "Should be in".
     tagged, seen = [], set()
     for u in expected:
         if u not in seen:
-            seen.add(u); tagged.append((u, "Expected"))
+            seen.add(u); tagged.append((u, "Should be in"))
     for u in unexpected:
         if u not in seen:
-            seen.add(u); tagged.append((u, "Unexpected"))
+            seen.add(u); tagged.append((u, "Should not be in"))
     tagged = tagged[:1000]
     if not tagged:
         return JSONResponse({"results": [], "has_run": False})

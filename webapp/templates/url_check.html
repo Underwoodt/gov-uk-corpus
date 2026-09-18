@@ -33,16 +33,16 @@
 
   <h1 style="margin:16px 0 6px;">URL check <span class="secondary" style="font-weight:400;font-size:18px;">— {{ category.display_name }}</span></h1>
   <p class="hint" style="max-width:760px;">Keep two lists of gov.uk URLs against this category and check them against the
-    corpus. <strong>Expected</strong> URLs are pages that should reach the final shortlist; <strong>Unexpected</strong>
-    URLs are pages that should stay out. Both lists are saved with the category.</p>
+    corpus. <strong>Should be in</strong> URLs are pages that should reach the final shortlist;
+    <strong>Should not be in</strong> URLs are pages that should stay out. Both lists are saved with the category.</p>
 
   <div class="tabs" role="tablist" style="margin:18px 0 20px;">
-    <a href="#" class="stab current" data-tab="expected">Expected URLs</a>
-    <a href="#" class="stab" data-tab="unexpected">Unexpected URLs</a>
+    <a href="#" class="stab current" data-tab="expected">Should be in</a>
+    <a href="#" class="stab" data-tab="unexpected">Should not be in</a>
     <a href="#" class="stab" data-tab="results">Check Results</a>
   </div>
 
-  <!-- Tab 1: Expected URLs -->
+  <!-- Tab 1: Should be in -->
   <section class="stabpanel" data-tab="expected">
     <p class="hint" style="margin:0 0 6px;max-width:760px;">One gov.uk URL per line — pages you expect to reach the final shortlist.</p>
     <textarea id="uc-include" class="uc-box"
@@ -53,7 +53,7 @@
     </div>
   </section>
 
-  <!-- Tab 2: Unexpected URLs -->
+  <!-- Tab 2: Should not be in -->
   <section class="stabpanel" data-tab="unexpected" hidden>
     <p class="hint" style="margin:0 0 6px;max-width:760px;">One gov.uk URL per line — pages you expect to <em>not</em> be shortlisted.</p>
     <textarea id="uc-exclude" class="uc-box"
@@ -75,7 +75,7 @@
       <table id="uc-table" hidden>
         <thead><tr>
           <th>URL</th>
-          <th>Expected / Unexpected</th>
+          <th>Should be in / not in</th>
           <th class="uc-c">In the corpus</th>
           <th class="uc-c">Active</th>
           <th class="uc-c">Final result</th>
@@ -83,7 +83,7 @@
         <tbody></tbody>
       </table>
     </div>
-    <p id="uc-empty" class="secondary" hidden>Add URLs to the Expected or Unexpected tabs, then run the check.</p>
+    <p id="uc-empty" class="secondary" hidden>Add URLs to the “Should be in” or “Should not be in” tabs, then run the check.</p>
   </section>
 
   <script>
@@ -112,7 +112,7 @@
       tabs.forEach(a => a.addEventListener("click", e => { e.preventDefault(); show(a.dataset.tab); }));
     })();
 
-    // Persist both lists onto the category (the Expected list is the category's include list).
+    // Persist both lists onto the category (the "Should be in" list is the category.s include list).
     async function ucSaveList() {
       const r = await fetch(`/categories/${UC_CID}/url-check/save`, {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -147,9 +147,9 @@
         if (j.error) { ucSetStatus("Error: " + j.error); return; }
         ucResults = j.results || [];
         document.querySelector("#uc-table tbody").innerHTML = ucResults.map(x => {
-          // Expected passes if it's In; Unexpected passes if it's Out. The lozenge and the
-          // In/Out field share the same pass (green) / fail (red) colour.
-          const pass = (x.kind === "Unexpected") ? !x.final : x.final;
+          // "Should be in" passes when In; "Should not be in" passes when Out. The lozenge
+          // and the In/Out field share the same pass (green) / fail (red) colour.
+          const pass = (x.kind === "Should not be in") ? !x.final : x.final;
           const kind = `<span class="uc-pill ${pass ? 'uc-pill-pass' : 'uc-pill-fail'}">${ucEsc(x.kind)}</span>`;
           const fin = `<span class="${pass ? 'uc-pass' : 'uc-fail'}" title="${pass ? 'as expected' : 'not as expected'}">`
             + (x.final ? 'In' : 'Out') + '</span>';
@@ -170,11 +170,11 @@
     }
     ucCheck.addEventListener("click", ucRun);
 
-    // Download the results as CSV: URL, Expected/Unexpected, In corpus, Active, Final result.
+    // Download the results as CSV: URL, Should be in/not in, In corpus, Active, Final result.
     function ucCsvCell(v){ v = String(v == null ? "" : v); return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
     ucDownload.addEventListener("click", () => {
       if (!ucResults.length) return;
-      const header = ["URL", "Expected/Unexpected", "In corpus", "Active", "Final result"];
+      const header = ["URL", "Should be in / not in", "In corpus", "Active", "Final result"];
       const rows = ucResults.map(x => [x.url, x.kind, x.corpus ? "Yes" : "No", x.active ? "Yes" : "No", x.final ? "In" : "Out"]);
       const csv = [header, ...rows].map(r => r.map(ucCsvCell).join(",")).join("\r\n");
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });

@@ -79,8 +79,8 @@ letter (e.g. `guc-0003b1`); the nested pane's id is what shows in the corner.
 | guc-0004b | GDS Compliance (Non-LLM) | Audit Results (`guc-0004`) |
 | guc-0016a | Your details | Profile (`guc-0016`) |
 | guc-0016b | Interface complexity | Profile (`guc-0016`) |
-| guc-0018a | Expected URLs | URL check (`guc-0018`) |
-| guc-0018b | Unexpected URLs | URL check (`guc-0018`) |
+| guc-0018a | Should be in | URL check (`guc-0018`) |
+| guc-0018b | Should not be in | URL check (`guc-0018`) |
 | guc-0018c | Check Results | URL check (`guc-0018`) |
 
 ## Retired IDs
