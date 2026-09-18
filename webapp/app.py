@@ -1482,26 +1482,41 @@ def url_check_page(request: Request, cid: int):
     return resp
 
 
-@app.post("/api/categories/{cid}/url-check")
-async def api_url_check(request: Request, cid: int):
-    """For each pasted URL return three checks against this category:
-    `corpus` (a row exists in content), `active` (a live, fetched page — not a redirect or
-    withdrawn), and `final` (kept in this category's final shortlist, after inclusion +
-    exclusion). URLs are de-duplicated and capped."""
-    if not authed(request):
-        return JSONResponse({"error": "auth"}, status_code=401)
-    body = await request.json()
-    raw = body.get("urls")
+def _clean_urls(raw) -> list:
+    """One-per-line or list -> a de-duplicated list of trimmed URLs."""
     lines = raw.splitlines() if isinstance(raw, str) else (raw if isinstance(raw, list) else [])
-    urls, seen = [], set()
+    out, seen = [], set()
     for u in lines:
         u = str(u or "").strip()
         if u and u not in seen:
             seen.add(u)
-            urls.append(u)
-    urls = urls[:500]
-    if not urls:
+            out.append(u)
+    return out
+
+
+@app.post("/api/categories/{cid}/url-check")
+async def api_url_check(request: Request, cid: int):
+    """Check this category's Expected and Unexpected URL lists. For each URL return its
+    `kind` (Expected | Unexpected), `corpus` (a row exists in content), `active` (a live,
+    fetched page — not a redirect or withdrawn), and `final` (kept in this category's final
+    shortlist, after inclusion + exclusion). Lists are de-duplicated and capped."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    body = await request.json()
+    expected = _clean_urls(body.get("expected"))
+    unexpected = _clean_urls(body.get("unexpected"))
+    # One ordered, de-duplicated list — a URL in both lists is treated as Expected.
+    tagged, seen = [], set()
+    for u in expected:
+        if u not in seen:
+            seen.add(u); tagged.append((u, "Expected"))
+    for u in unexpected:
+        if u not in seen:
+            seen.add(u); tagged.append((u, "Unexpected"))
+    tagged = tagged[:1000]
+    if not tagged:
         return JSONResponse({"results": [], "has_run": False})
+    urls = [u for u, _ in tagged]
     conn = connect()
     try:
         category = cat.get_category(conn, cid)
@@ -1520,10 +1535,11 @@ async def api_url_check(request: Request, cid: int):
                 f"SELECT url FROM evaluation_results WHERE run_id = {shortlist._P} AND keep = 1 "
                 f"AND url IN ({ph})", tuple([run_id, *urls])).fetchall()}
         results = []
-        for u in urls:
+        for u, kind in tagged:
             row = info.get(u)
             results.append({
                 "url": u,
+                "kind": kind,
                 "corpus": row is not None,
                 "active": bool(row and not row.get("is_redirect") and not row.get("withdrawn")
                                and row.get("content_hash")),

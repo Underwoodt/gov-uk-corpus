@@ -6,8 +6,13 @@
   <h1 style="margin:16px 0 18px;">Your profile</h1>
 
   {% if accounts_mode and me %}
+  <div class="tabs" role="tablist" style="margin:0 0 22px;">
+    <a href="#" class="stab current" data-tab="details">Your details</a>
+    <a href="#" class="stab" data-tab="interface">Interface complexity</a>
+  </div>
+
   <!-- Section 1: Your details (name, email, password) -->
-  <section id="details" style="max-width:660px;margin:0 0 40px;">
+  <section class="stabpanel" data-tab="details" id="details" style="max-width:660px;margin:0 0 40px;">
     <h2 style="margin:0 0 12px;">Your details</h2>
 
     {% if details_ok %}<div class="success">Your details were saved.</div>{% endif %}
@@ -48,7 +53,8 @@
   {% endif %}
 
   <!-- Section 2: Interface complexity (per-browser display level) -->
-  <section id="interface" style="max-width:660px;">
+  <section class="stabpanel" data-tab="interface" id="interface" style="max-width:660px;"
+    {% if accounts_mode and me %}hidden{% endif %}>
     <h2 style="margin:0 0 6px;">Interface complexity</h2>
     <p class="hint">Choose how much of the interface you want to see. Higher levels reveal more detail; lower
       levels keep things focused. This is saved in this browser and takes effect straight away — change it any time.</p>
@@ -87,6 +93,20 @@
         });
       });
       cards.forEach(c => c.classList.toggle("current", c.dataset.levelKey === cur));
+    })();
+
+    // Profile tabs (Your details / Interface complexity).
+    (function () {
+      const tabs = [...document.querySelectorAll(".stab")];
+      const panels = [...document.querySelectorAll(".stabpanel")];
+      if (!tabs.length) return;
+      function show(t) {
+        tabs.forEach(a => a.classList.toggle("current", a.dataset.tab === t));
+        panels.forEach(p => p.hidden = p.dataset.tab !== t);
+      }
+      tabs.forEach(a => a.addEventListener("click", e => { e.preventDefault(); show(a.dataset.tab); }));
+      // If a save redirect targeted the interface anchor, open that tab; otherwise details.
+      show(location.hash === "#interface" ? "interface" : "details");
     })();
   </script>
 {% endblock %}

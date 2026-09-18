@@ -3,14 +3,19 @@
 {% block title %}{{ category.display_name }} — URL check{% endblock %}
 {% block content %}
   <style>
-    .uc-box { width:100%; max-width:760px; box-sizing:border-box; min-height:120px; padding:12px 14px;
+    .uc-box { width:100%; max-width:760px; box-sizing:border-box; min-height:200px; padding:12px 14px;
       border:2px solid var(--black); border-radius:10px; font:inherit; line-height:1.45; resize:vertical; }
     #uc-table { font-size:14px; margin-top:8px; }
     #uc-table th, #uc-table td { padding:8px 12px; }
     .uc-c { text-align:center; white-space:nowrap; }
     .uc-ok { color:var(--green,#00703c); font-weight:700; font-size:16px; }
     .uc-no { color:var(--red,#d4351c); font-weight:700; font-size:16px; }
-    .uc-url { word-break:break-all; max-width:520px; }
+    .uc-url { word-break:break-all; max-width:460px; }
+    .uc-pill { display:inline-block; font-size:12px; font-weight:700; padding:2px 9px; border-radius:999px; }
+    .uc-exp { background:#e0ecff; color:#0b3d91; }         /* Expected */
+    .uc-unexp { background:#fde7e4; color:#942012; }       /* Unexpected */
+    .uc-in { color:var(--green,#00703c); font-weight:700; }
+    .uc-out { color:var(--grey-text,#505a5f); font-weight:700; }
   </style>
 
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
@@ -24,102 +29,155 @@
   </div>
 
   <h1 style="margin:16px 0 6px;">URL check <span class="secondary" style="font-weight:400;font-size:18px;">— {{ category.display_name }}</span></h1>
-  <p class="hint" style="max-width:760px;">This category's URL checklist, saved with the category. The
-    <strong>should be included</strong> list is the pages you expect to reach the final shortlist —
-    check each one against the corpus below. The <strong>should be excluded</strong> list is stored
-    for later checks.</p>
+  <p class="hint" style="max-width:760px;">Keep two lists of gov.uk URLs against this category and check them against the
+    corpus. <strong>Expected</strong> URLs are pages that should reach the final shortlist; <strong>Unexpected</strong>
+    URLs are pages that should stay out. Both lists are saved with the category.</p>
 
-  <div class="field" style="max-width:760px;">
-    <label class="q" for="uc-include">Should be included</label>
-    <p class="hint" style="margin:2px 0 6px;">One gov.uk URL per line — pages that should reach the final shortlist.</p>
+  <div class="tabs" role="tablist" style="margin:18px 0 20px;">
+    <a href="#" class="stab current" data-tab="expected">Expected URLs</a>
+    <a href="#" class="stab" data-tab="unexpected">Unexpected URLs</a>
+    <a href="#" class="stab" data-tab="results">Check Results</a>
+  </div>
+
+  <!-- Tab 1: Expected URLs -->
+  <section class="stabpanel" data-tab="expected">
+    <p class="hint" style="margin:0 0 6px;max-width:760px;">One gov.uk URL per line — pages you expect to reach the final shortlist.</p>
     <textarea id="uc-include" class="uc-box"
       placeholder="https://www.gov.uk/guidance/...&#10;https://www.gov.uk/government/publications/...">{{ category.should_include_urls or '' }}</textarea>
-  </div>
+    <div class="controls" style="margin:12px 0;align-items:center;gap:14px;">
+      <button class="btn secondary-btn uc-save" type="button">Save lists</button>
+      <span class="uc-status secondary"></span>
+    </div>
+  </section>
 
-  <div class="field" style="max-width:760px;">
-    <label class="q" for="uc-exclude">Should be excluded
-      <span class="secondary" style="font-weight:400;">(stored for later checks)</span></label>
-    <p class="hint" style="margin:2px 0 6px;">One gov.uk URL per line — pages that should <em>not</em> be shortlisted. Saved for a future check.</p>
+  <!-- Tab 2: Unexpected URLs -->
+  <section class="stabpanel" data-tab="unexpected" hidden>
+    <p class="hint" style="margin:0 0 6px;max-width:760px;">One gov.uk URL per line — pages you expect to <em>not</em> be shortlisted.</p>
     <textarea id="uc-exclude" class="uc-box"
       placeholder="https://www.gov.uk/...">{{ category.should_exclude_urls or '' }}</textarea>
-  </div>
+    <div class="controls" style="margin:12px 0;align-items:center;gap:14px;">
+      <button class="btn secondary-btn uc-save" type="button">Save lists</button>
+      <span class="uc-status secondary"></span>
+    </div>
+  </section>
 
-  <div class="controls" style="margin:12px 0;align-items:center;gap:14px;">
-    <button class="btn" id="uc-check" type="button">Check the include list</button>
-    <button class="btn secondary-btn" id="uc-save" type="button">Save checklist</button>
-    <span id="uc-status" class="secondary"></span>
-  </div>
-
-  <div style="overflow-x:auto;">
-    <table id="uc-table" hidden>
-      <thead><tr>
-        <th>URL</th>
-        <th class="uc-c">In the corpus</th>
-        <th class="uc-c">Active</th>
-        <th class="uc-c">In the final shortlist</th>
-      </tr></thead>
-      <tbody></tbody>
-    </table>
-  </div>
+  <!-- Tab 3: Check Results -->
+  <section class="stabpanel" data-tab="results" hidden>
+    <div class="controls" style="margin:0 0 12px;align-items:center;gap:14px;flex-wrap:wrap;">
+      <button class="btn" id="uc-check" type="button">Run check</button>
+      <button class="btn secondary-btn" id="uc-download" type="button" disabled>Download CSV</button>
+      <span class="uc-status secondary"></span>
+    </div>
+    <div style="overflow-x:auto;">
+      <table id="uc-table" hidden>
+        <thead><tr>
+          <th>URL</th>
+          <th>Expected / Unexpected</th>
+          <th class="uc-c">In the corpus</th>
+          <th class="uc-c">Active</th>
+          <th class="uc-c">Final result</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p id="uc-empty" class="secondary" hidden>Add URLs to the Expected or Unexpected tabs, then run the check.</p>
+  </section>
 
   <script>
     const UC_CID = {{ category.id }};
-    const ucBtn = document.getElementById("uc-check");
-    const ucSave = document.getElementById("uc-save");
-    const ucBox = document.getElementById("uc-include");
+    const ucInclude = document.getElementById("uc-include");
     const ucExclude = document.getElementById("uc-exclude");
-    const ucStatus = document.getElementById("uc-status");
+    const ucCheck = document.getElementById("uc-check");
+    const ucDownload = document.getElementById("uc-download");
+    const ucStatusEls = [...document.querySelectorAll(".uc-status")];
+    let ucResults = [];
+
+    function ucSetStatus(html) { ucStatusEls.forEach(s => s.innerHTML = html); }
     function ucEsc(s){ const d = document.createElement("div"); d.textContent = s == null ? "" : s; return d.innerHTML; }
     function ucMark(ok){ return ok
       ? '<span class="uc-ok" title="Yes" aria-label="yes">&#10004;</span>'
       : '<span class="uc-no" title="No" aria-label="no">&#10008;</span>'; }
 
+    // Sub-tabs.
+    (function () {
+      const tabs = [...document.querySelectorAll(".stab")];
+      const panels = [...document.querySelectorAll(".stabpanel")];
+      function show(t) {
+        tabs.forEach(a => a.classList.toggle("current", a.dataset.tab === t));
+        panels.forEach(p => p.hidden = p.dataset.tab !== t);
+      }
+      tabs.forEach(a => a.addEventListener("click", e => { e.preventDefault(); show(a.dataset.tab); }));
+    })();
+
+    // Persist both lists onto the category (the Expected list is the category's include list).
+    async function ucSaveList() {
+      const r = await fetch(`/categories/${UC_CID}/url-check/save`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ should_include_urls: ucInclude.value, should_exclude_urls: ucExclude.value })
+      });
+      return r.json();
+    }
+    document.querySelectorAll(".uc-save").forEach(b => b.addEventListener("click", async () => {
+      ucSetStatus('<span class="spinner"></span> Saving…');
+      try { const j = await ucSaveList(); ucSetStatus(j.ok ? "Lists saved." : ("Error: " + (j.error || "could not save"))); }
+      catch (e) { ucSetStatus("Could not save the lists."); }
+    }));
+
+    // Run the check: save the lists first (so the checks match what's stored), then check both.
     async function ucRun() {
-      const urls = ucBox.value.split("\n").map(s => s.trim()).filter(Boolean);
-      if (!urls.length) { ucStatus.textContent = "Enter at least one URL."; return; }
-      ucBtn.disabled = true;
-      ucStatus.innerHTML = '<span class="spinner"></span> Checking ' + urls.length + ' URL' + (urls.length === 1 ? '' : 's') + '…';
+      const expected = ucInclude.value.split("\n").map(s => s.trim()).filter(Boolean);
+      const unexpected = ucExclude.value.split("\n").map(s => s.trim()).filter(Boolean);
+      if (!expected.length && !unexpected.length) {
+        document.getElementById("uc-empty").hidden = false;
+        document.getElementById("uc-table").hidden = true;
+        ucSetStatus("Add some URLs first."); return;
+      }
+      ucCheck.disabled = true;
+      ucSetStatus('<span class="spinner"></span> Checking…');
       try {
+        try { await ucSaveList(); } catch (e) { /* non-fatal: still run the check */ }
         const r = await fetch(`/api/categories/${UC_CID}/url-check`, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ urls })
+          body: JSON.stringify({ expected, unexpected })
         });
         const j = await r.json();
-        if (j.error) { ucStatus.textContent = "Error: " + j.error; return; }
-        const rows = j.results || [];
-        document.querySelector("#uc-table tbody").innerHTML = rows.map(x =>
-          `<tr><td class="uc-url"><a href="${ucEsc(x.url)}" target="_blank" rel="noopener">${ucEsc(x.url)}</a></td>`
-          + `<td class="uc-c">${ucMark(x.corpus)}</td>`
-          + `<td class="uc-c">${ucMark(x.active)}</td>`
-          + `<td class="uc-c">${ucMark(x.final)}</td></tr>`).join("");
-        document.getElementById("uc-table").hidden = rows.length === 0;
-        ucStatus.innerHTML = j.has_run ? "" :
-          '<em>No AI run yet for this category — “In the final shortlist” stays ✗ for every URL until the pipeline has run.</em>';
+        if (j.error) { ucSetStatus("Error: " + j.error); return; }
+        ucResults = j.results || [];
+        document.querySelector("#uc-table tbody").innerHTML = ucResults.map(x => {
+          const kind = x.kind === "Unexpected"
+            ? '<span class="uc-pill uc-unexp">Unexpected</span>'
+            : '<span class="uc-pill uc-exp">Expected</span>';
+          const fin = x.final ? '<span class="uc-in">In</span>' : '<span class="uc-out">Out</span>';
+          return `<tr><td class="uc-url"><a href="${ucEsc(x.url)}" target="_blank" rel="noopener">${ucEsc(x.url)}</a></td>`
+            + `<td>${kind}</td><td class="uc-c">${ucMark(x.corpus)}</td>`
+            + `<td class="uc-c">${ucMark(x.active)}</td><td class="uc-c">${fin}</td></tr>`;
+        }).join("");
+        document.getElementById("uc-table").hidden = ucResults.length === 0;
+        document.getElementById("uc-empty").hidden = ucResults.length !== 0;
+        ucDownload.disabled = ucResults.length === 0;
+        ucSetStatus(j.has_run ? "" :
+          '<em>No AI run yet for this category — “Final result” is Out for every URL until the pipeline has run.</em>');
       } catch (e) {
-        ucStatus.textContent = "Could not run the check.";
+        ucSetStatus("Could not run the check.");
       } finally {
-        ucBtn.disabled = false;
+        ucCheck.disabled = false;
       }
     }
-    ucBtn.addEventListener("click", ucRun);
+    ucCheck.addEventListener("click", ucRun);
 
-    // Persist both lists onto the category.
-    async function ucSaveList() {
-      ucSave.disabled = true;
-      ucStatus.innerHTML = '<span class="spinner"></span> Saving…';
-      try {
-        const r = await fetch(`/categories/${UC_CID}/url-check/save`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ should_include_urls: ucBox.value, should_exclude_urls: ucExclude.value })
-        });
-        const j = await r.json();
-        ucStatus.textContent = j.ok ? "Checklist saved." : ("Error: " + (j.error || "could not save"));
-      } catch (e) {
-        ucStatus.textContent = "Could not save the checklist.";
-      } finally {
-        ucSave.disabled = false;
-      }
-    }
-    ucSave.addEventListener("click", ucSaveList);
+    // Download the results as CSV: URL, Expected/Unexpected, In corpus, Active, Final result.
+    function ucCsvCell(v){ v = String(v == null ? "" : v); return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+    ucDownload.addEventListener("click", () => {
+      if (!ucResults.length) return;
+      const header = ["URL", "Expected/Unexpected", "In corpus", "Active", "Final result"];
+      const rows = ucResults.map(x => [x.url, x.kind, x.corpus ? "Yes" : "No", x.active ? "Yes" : "No", x.final ? "In" : "Out"]);
+      const csv = [header, ...rows].map(r => r.map(ucCsvCell).join(",")).join("\r\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `url-check-${UC_CID}.csv`;
+      document.body.appendChild(a); a.click();
+      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 0);
+    });
   </script>
 {% endblock %}
