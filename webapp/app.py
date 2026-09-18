@@ -1615,7 +1615,7 @@ def _govuk_search(query: str, count: int = 20) -> dict:
             link = "https://www.gov.uk" + link
         out.append({"title": (item.get("title") or link).strip(),
                     "link": link, "description": (item.get("description") or "").strip()})
-    return {"results": out, "total": data.get("total")}
+    return {"results": out, "total": data.get("total"), "query_url": url}
 
 
 @app.get("/govuk-search", response_class=HTMLResponse)

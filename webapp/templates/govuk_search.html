@@ -12,6 +12,21 @@
     .gs-title a:hover { text-decoration:underline; }
     .gs-link { font-size:13px; color:var(--green,#00703c); word-break:break-all; margin:0 0 4px; }
     .gs-desc { font-size:14px; color:var(--ink); margin:0; max-width:70ch; }
+    /* Roll-down disclosure showing the exact API query. */
+    .gs-query-wrap { max-width:760px; margin:2px 0 10px; }
+    summary.rolldown { display:inline-flex; align-items:center; gap:10px; cursor:pointer;
+      list-style:none; font-weight:700; font-size:14px; color:var(--blue,#1d70b8);
+      padding:8px 12px; border:1px solid var(--border-mid,#b1b4b6); border-radius:var(--radius-sm,5px);
+      background:var(--surface-2,#f3f2f1); width:max-content; max-width:100%; margin:0; }
+    summary.rolldown::-webkit-details-marker { display:none; }
+    summary.rolldown::before { content:"›"; font-size:18px; line-height:1; color:var(--muted,#6b7477);
+      transition:transform .15s ease; }
+    details[open] > summary.rolldown::before { transform:rotate(90deg); }
+    summary.rolldown:hover { background:var(--surface-3,#ebe9e8); border-color:var(--muted,#6b7477); }
+    .gs-query { margin:10px 0 0; padding:10px 12px; background:#fbfbfb; border:1px solid var(--mid-grey,#b1b4b6);
+      border-radius:6px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px;
+      word-break:break-all; }
+    .gs-query a { color:var(--blue,#1d70b8); }
   </style>
 
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
@@ -30,6 +45,11 @@
   </form>
   <p id="gs-status" class="secondary" style="max-width:760px;"></p>
 
+  <details class="gs-query-wrap" id="gs-query-wrap" hidden>
+    <summary class="rolldown">GOV.UK Search API query</summary>
+    <div class="gs-query" id="gs-query"></div>
+  </details>
+
   <div id="gs-results"></div>
 
   <script>
@@ -38,6 +58,8 @@
     const gsGo = document.getElementById("gs-go");
     const gsStatus = document.getElementById("gs-status");
     const gsOut = document.getElementById("gs-results");
+    const gsQueryWrap = document.getElementById("gs-query-wrap");
+    const gsQuery = document.getElementById("gs-query");
     function gsEsc(s){ const d = document.createElement("div"); d.textContent = s == null ? "" : s; return d.innerHTML; }
 
     async function gsSearch() {
@@ -49,6 +71,10 @@
       try {
         const params = new URLSearchParams({ q, count: gsCount.value });
         const j = await (await fetch(`/api/govuk-search?${params}`)).json();
+        if (j.query_url) {
+          gsQuery.innerHTML = `<a href="${gsEsc(j.query_url)}" target="_blank" rel="noopener">${gsEsc(j.query_url)}</a>`;
+          gsQueryWrap.hidden = false;
+        }
         if (j.error) { gsStatus.textContent = "Error: " + j.error; return; }
         const rows = j.results || [];
         if (!rows.length) { gsStatus.textContent = "No GOV.UK pages found for that."; return; }
