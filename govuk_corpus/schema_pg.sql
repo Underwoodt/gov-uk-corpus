@@ -295,3 +295,19 @@ UPDATE ai_models SET in_miss_off  = COALESCE(in_miss_off,  input_per_m),
                      out_off      = COALESCE(out_off,       output_per_m),
                      out_peak     = COALESCE(out_peak,      output_per_m)
  WHERE in_miss_off IS NULL OR out_off IS NULL;
+
+-- Per-page feedback (guc-0019): a rating + comment left from the feedback widget on any
+-- page. Star questions are 1-5; created_by/email are set when the app runs in accounts mode.
+CREATE TABLE IF NOT EXISTS page_feedback (
+    id               bigint PRIMARY KEY,
+    page_id          text,
+    page_title       text,
+    feedback_text    text,
+    q_functionality  smallint,   -- "does this page do what you need?"  (1-5)
+    q_ease           smallint,   -- "is it easy to use?"                (1-5)
+    q_quality        smallint,   -- "quality of the results / output?"  (1-5)
+    created_at       text,
+    created_by       text,       -- user id (accounts mode) or NULL
+    created_by_email text
+);
+CREATE INDEX IF NOT EXISTS idx_page_feedback_created ON page_feedback (created_at DESC);

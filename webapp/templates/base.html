@@ -77,5 +77,123 @@
 
   <!-- Per-page tracking ID (guc-####). Every page sets this — see PAGE_INDEX.md. -->
   <div class="page-id">{% block page_id %}{% endblock %}</div>
+
+  <!-- Per-page feedback widget (records the page id + title, rating and comment). -->
+  <style>
+    .fb-fab{position:fixed;right:18px;bottom:18px;z-index:40;display:inline-flex;align-items:center;gap:8px;
+      background:var(--blue,#1d70b8);color:#fff;border:0;border-radius:24px;padding:10px 18px;font:inherit;
+      font-weight:700;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.25);}
+    .fb-fab:hover{background:var(--dark-blue,#003078);}
+    .fb-fab svg{width:16px;height:16px;}
+    .fb-overlay{position:fixed;inset:0;z-index:50;background:rgba(11,12,12,.45);display:flex;
+      align-items:flex-end;justify-content:center;padding:16px;}
+    @media (min-width:600px){.fb-overlay{align-items:center;}}
+    .fb-card{background:var(--white,#fff);color:var(--black,#0b0c0c);border-radius:12px;padding:20px 22px;
+      width:100%;max-width:460px;box-shadow:0 12px 40px rgba(0,0,0,.3);}
+    .fb-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;}
+    .fb-top strong{font-size:18px;}
+    .fb-close{background:none;border:0;font-size:26px;line-height:1;cursor:pointer;color:var(--grey-text,#505a5f);}
+    .fb-pid{margin:0 0 14px;font-size:13px;}
+    .fb-q{margin:0 0 12px;}
+    .fb-qlabel{font-weight:600;font-size:15px;margin-bottom:4px;}
+    .fb-stars{display:inline-flex;gap:2px;}
+    .fb-star{background:none;border:0;padding:0 2px;font-size:26px;line-height:1;cursor:pointer;color:#c9ccce;}
+    .fb-star.on{color:#ffb400;}
+    .fb-label{display:block;font-weight:600;margin:6px 0 4px;}
+    .fb-text{width:100%;box-sizing:border-box;border:2px solid var(--black,#0b0c0c);border-radius:8px;
+      padding:8px 10px;font:inherit;resize:vertical;}
+    .fb-actions{display:flex;align-items:center;gap:12px;margin-top:14px;}
+    @media print{.fb-fab{display:none;}}
+  </style>
+  <button type="button" id="fb-open" class="fb-fab" aria-haspopup="dialog">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    Feedback
+  </button>
+  <div id="fb-modal" class="fb-overlay" hidden>
+    <div class="fb-card" role="dialog" aria-modal="true" aria-labelledby="fb-h">
+      <div class="fb-top">
+        <strong id="fb-h">Feedback on this page</strong>
+        <button type="button" id="fb-close" class="fb-close" aria-label="Close">&times;</button>
+      </div>
+      <p class="secondary fb-pid" id="fb-pid"></p>
+      <div id="fb-questions"></div>
+      <label class="fb-label" for="fb-text">Any comments? (optional)</label>
+      <textarea id="fb-text" class="fb-text" rows="4" placeholder="What worked, what didn't, what's missing…"></textarea>
+      <div class="fb-actions">
+        <button type="button" id="fb-send" class="btn">Send feedback</button>
+        <span id="fb-status" class="secondary"></span>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const QUESTIONS = [
+        ["q_functionality", "Does this page do what you need?"],
+        ["q_ease", "Is it easy to use?"],
+        ["q_quality", "Quality of the results / output?"]
+      ];
+      const modal = document.getElementById("fb-modal");
+      const qWrap = document.getElementById("fb-questions");
+      const textEl = document.getElementById("fb-text");
+      const statusEl = document.getElementById("fb-status");
+      const sendBtn = document.getElementById("fb-send");
+      const stars = {};
+
+      function paint(group, n) { [...group.children].forEach(s => s.classList.toggle("on", Number(s.dataset.v) <= n)); }
+      QUESTIONS.forEach(([field, label]) => {
+        stars[field] = 0;
+        const row = document.createElement("div"); row.className = "fb-q";
+        const l = document.createElement("div"); l.className = "fb-qlabel"; l.textContent = label;
+        const group = document.createElement("div"); group.className = "fb-stars";
+        group.setAttribute("role", "radiogroup"); group.setAttribute("aria-label", label);
+        for (let i = 1; i <= 5; i++) {
+          const s = document.createElement("button");
+          s.type = "button"; s.className = "fb-star"; s.dataset.v = i; s.textContent = "★";
+          s.setAttribute("aria-label", i + " of 5");
+          s.addEventListener("click", () => { stars[field] = i; paint(group, i); });
+          s.addEventListener("mouseenter", () => paint(group, i));
+          group.appendChild(s);
+        }
+        group.addEventListener("mouseleave", () => paint(group, stars[field]));
+        row.appendChild(l); row.appendChild(group); qWrap.appendChild(row);
+      });
+
+      function pageId() { const el = document.querySelector(".page-id"); return el ? el.textContent.trim() : ""; }
+      function pageTitle() { const h = document.querySelector("h1"); return (h ? h.textContent : document.title).trim().slice(0, 200); }
+      function show(on) {
+        modal.hidden = !on;
+        if (on) { document.getElementById("fb-pid").textContent = "Page " + (pageId() || "—"); statusEl.textContent = ""; }
+      }
+      document.getElementById("fb-open").addEventListener("click", () => show(true));
+      document.getElementById("fb-close").addEventListener("click", () => show(false));
+      modal.addEventListener("click", e => { if (e.target === modal) show(false); });
+      document.addEventListener("keydown", e => { if (e.key === "Escape" && !modal.hidden) show(false); });
+
+      sendBtn.addEventListener("click", async () => {
+        const hasStar = Object.values(stars).some(v => v > 0);
+        if (!hasStar && !textEl.value.trim()) { statusEl.textContent = "Add a rating or a comment first."; return; }
+        sendBtn.disabled = true; statusEl.innerHTML = '<span class="spinner"></span> Sending…';
+        try {
+          const r = await fetch("/feedback", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              page_id: pageId(), page_title: pageTitle(), feedback_text: textEl.value,
+              q_functionality: stars.q_functionality || null, q_ease: stars.q_ease || null,
+              q_quality: stars.q_quality || null
+            })
+          });
+          const j = await r.json();
+          if (j.ok) {
+            statusEl.textContent = "Thanks — your feedback was sent.";
+            textEl.value = "";
+            Object.keys(stars).forEach(k => stars[k] = 0);
+            [...qWrap.querySelectorAll(".fb-stars")].forEach(g => paint(g, 0));
+            setTimeout(() => show(false), 1000);
+          } else { statusEl.textContent = "Error: " + (j.error || "could not send"); }
+        } catch (e) { statusEl.textContent = "Could not send feedback."; }
+        finally { sendBtn.disabled = false; }
+      });
+    })();
+  </script>
 </body>
 </html>

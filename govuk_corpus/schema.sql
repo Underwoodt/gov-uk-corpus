@@ -246,3 +246,17 @@ CREATE TABLE IF NOT EXISTS category_page_counts (
     pages_kept   INTEGER,
     computed_at  TEXT
 );
+
+-- Per-page feedback (guc-0019): a rating + comment left from the feedback widget on any page.
+CREATE TABLE IF NOT EXISTS page_feedback (
+    id               INTEGER PRIMARY KEY,
+    page_id          TEXT,
+    page_title       TEXT,
+    feedback_text    TEXT,
+    q_functionality  INTEGER,   -- "does this page do what you need?"  (1-5)
+    q_ease           INTEGER,   -- "is it easy to use?"                (1-5)
+    q_quality        INTEGER,   -- "quality of the results / output?"  (1-5)
+    created_at       TEXT,
+    created_by       TEXT,
+    created_by_email TEXT
+);

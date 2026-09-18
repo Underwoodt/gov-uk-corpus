@@ -36,7 +36,7 @@ from starlette.concurrency import run_in_threadpool
 
 from govuk_corpus import accounts, ai_models, audit
 from govuk_corpus import categories as cat
-from govuk_corpus import category_counts, guardrails, sessions
+from govuk_corpus import category_counts, feedback, guardrails, sessions
 from govuk_corpus import (audit_stats, category_interview, evaluate, orgs,
                           peak_schedule, pricing, readability, roles, settings, shortlist)
 from govuk_corpus.backend import db
@@ -1563,6 +1563,31 @@ async def save_url_checklist(request: Request, cid: int):
         if not cat.get_category(conn, cid):
             return JSONResponse({"error": "not found"}, status_code=404)
         cat.set_url_checklist(conn, cid, include, exclude)
+        return JSONResponse({"ok": True})
+    finally:
+        conn.close()
+
+
+@app.post("/feedback")
+async def submit_feedback(request: Request):
+    """Store feedback left from the per-page widget: the page id + title, a comment, and the
+    star questions. Records who left it (accounts mode) and when."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    body = await request.json()
+    text = str(body.get("feedback_text") or "").strip()
+    stars = {f: body.get(f) for f in feedback._STAR_FIELDS}
+    if not text and not any(feedback._star(v) for v in stars.values()):
+        return JSONResponse({"error": "Please give at least one rating or a comment."},
+                            status_code=400)
+    u = current_user(request)
+    conn = connect()
+    try:
+        feedback.add_feedback(
+            conn, page_id=str(body.get("page_id") or ""),
+            page_title=str(body.get("page_title") or ""), feedback_text=text, stars=stars,
+            created_by=(u.get("id") if u else None),
+            created_by_email=(u.get("email") if u else None))
         return JSONResponse({"ok": True})
     finally:
         conn.close()
