@@ -14,8 +14,10 @@
     .uc-pill { display:inline-block; font-size:12px; font-weight:700; padding:2px 9px; border-radius:999px; }
     .uc-exp { background:#e0ecff; color:#0b3d91; }         /* Expected */
     .uc-unexp { background:#fde7e4; color:#942012; }       /* Unexpected */
-    .uc-in { color:var(--green,#00703c); font-weight:700; }
-    .uc-out { color:var(--grey-text,#505a5f); font-weight:700; }
+    /* Final result reads as pass/fail against the URL's expectation:
+       Expected should be In; Unexpected should be Out. */
+    .uc-pass { color:var(--green,#00703c); font-weight:700; }
+    .uc-fail { color:var(--red,#d4351c); font-weight:700; }
   </style>
 
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
@@ -147,7 +149,11 @@
           const kind = x.kind === "Unexpected"
             ? '<span class="uc-pill uc-unexp">Unexpected</span>'
             : '<span class="uc-pill uc-exp">Expected</span>';
-          const fin = x.final ? '<span class="uc-in">In</span>' : '<span class="uc-out">Out</span>';
+          // In/Out label, coloured green when it matches expectation, red when it doesn't:
+          // Expected passes if it's In; Unexpected passes if it's Out.
+          const pass = (x.kind === "Unexpected") ? !x.final : x.final;
+          const fin = `<span class="${pass ? 'uc-pass' : 'uc-fail'}" title="${pass ? 'as expected' : 'not as expected'}">`
+            + (x.final ? 'In' : 'Out') + '</span>';
           return `<tr><td class="uc-url"><a href="${ucEsc(x.url)}" target="_blank" rel="noopener">${ucEsc(x.url)}</a></td>`
             + `<td>${kind}</td><td class="uc-c">${ucMark(x.corpus)}</td>`
             + `<td class="uc-c">${ucMark(x.active)}</td><td class="uc-c">${fin}</td></tr>`;
