@@ -14,10 +14,21 @@
     .msg { flex:1 1 auto; min-width:0; padding:12px 16px; border-radius:14px;
       white-space:pre-wrap; line-height:1.5; font-size:15px; }
     .msg.user { background:var(--user-bg); color:#fff; }
-    .msg.bot  { background:var(--bot-bg); color:var(--bot-ink); }
+    .msg.bot  { background:var(--bot-bg); color:var(--bot-ink); white-space:normal; }  /* markdown blocks */
     .msg.bot.intro { background:var(--bot-intro-bg); }
     .msg.bot strong { color:var(--accent-ink); }      /* blue facet titles, e.g. **Organisations** */
-    .msg.bot code, .msg.bot pre { display:none; }      /* hide the raw JSON block from the chat */
+    /* Rendered markdown inside an assistant bubble. */
+    .msg.bot > :first-child { margin-top:0; }
+    .msg.bot > :last-child { margin-bottom:0; }
+    .msg.bot p { margin:0 0 8px; }
+    .msg.bot ul, .msg.bot ol { margin:6px 0 8px; padding-left:22px; }
+    .msg.bot li { margin:2px 0; }
+    .msg.bot h1, .msg.bot h2, .msg.bot h3, .msg.bot h4 { font-size:1em; margin:10px 0 4px; color:var(--accent-ink); }
+    .msg.bot a { color:var(--accent-ink); }
+    .msg.bot code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.88em;
+      background:rgba(11,42,66,.08); padding:.05em .35em; border-radius:4px; }
+    .msg.bot pre { background:rgba(11,42,66,.08); padding:8px 10px; border-radius:6px; overflow-x:auto; }
+    .msg.bot pre code { background:none; padding:0; }
     #composer { max-width:760px; margin-top:8px; }
     .composer-box { position:relative; }
     .composer-box textarea { width:100%; box-sizing:border-box; padding:14px 58px 14px 16px;
@@ -144,13 +155,50 @@
     function esc(s){const d=document.createElement("div");d.textContent=s==null?"":s;return d.innerHTML;}
     // Strip the fenced json/suggest blocks so the user sees prose, not the payload.
     function display(text){ return text.replace(/```(?:json|suggest)[\s\S]*?```/g, "").trim(); }
-    // Assistant messages: escape first (safe), then render **bold** — used for the
-    // facet title the model leads each question with (e.g. **Organisations**).
+
+    // Inline markdown on an already HTML-escaped string: code, bold, italic, links.
+    function mdInline(t){
+      t = t.replace(/`([^`]+)`/g, "<code>$1</code>");
+      t = t.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+      t = t.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+      t = t.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+      return t;
+    }
+    // Small, XSS-safe markdown renderer: escape the whole reply first (so no raw HTML
+    // survives), then build known-safe blocks — headings, bullet/numbered lists,
+    // fenced code and paragraphs — with inline formatting inside each.
+    function mdToHtml(src){
+      const lines = String(src || "").replace(/\r/g, "").split("\n");
+      const out = []; let list = null, para = [], code = null;
+      const flushP = () => { if (para.length){ out.push("<p>" + mdInline(esc(para.join(" "))) + "</p>"); para = []; } };
+      const closeL = () => { if (list){ out.push("</" + list + ">"); list = null; } };
+      for (const raw of lines){
+        if (code !== null){
+          if (/^\s*```/.test(raw)){ out.push("<pre><code>" + esc(code.join("\n")) + "</code></pre>"); code = null; }
+          else code.push(raw);
+          continue;
+        }
+        if (/^\s*```/.test(raw)){ flushP(); closeL(); code = []; continue; }
+        if (!raw.trim()){ flushP(); closeL(); continue; }
+        let m;
+        if ((m = raw.match(/^\s*(#{1,6})\s+(.*)$/))){ flushP(); closeL();
+          const n = m[1].length; out.push("<h" + n + ">" + mdInline(esc(m[2])) + "</h" + n + ">"); continue; }
+        if ((m = raw.match(/^\s*[-*•]\s+(.*)$/))){ flushP(); if (list !== "ul"){ closeL(); out.push("<ul>"); list = "ul"; }
+          out.push("<li>" + mdInline(esc(m[1])) + "</li>"); continue; }
+        if ((m = raw.match(/^\s*\d+[.)]\s+(.*)$/))){ flushP(); if (list !== "ol"){ closeL(); out.push("<ol>"); list = "ol"; }
+          out.push("<li>" + mdInline(esc(m[1])) + "</li>"); continue; }
+        closeL(); para.push(raw.trim());
+      }
+      if (code !== null) out.push("<pre><code>" + esc(code.join("\n")) + "</code></pre>");
+      flushP(); closeL();
+      return out.join("\n");
+    }
+
+    // Assistant messages render as markdown (facet titles, bullets, code, links).
     // If the reply has no readable prose (e.g. only a suggest/json block), fall back to a
     // short note so we never render a blank bubble.
     function fmtBot(text){
-      const html = esc(display(text)).replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
-      return html || "<em>Here's my suggestion — review or edit it in the box below, then send.</em>";
+      return mdToHtml(display(text)) || "<em>Here's my suggestion — review or edit it in the box below, then send.</em>";
     }
 
     // Avatar glyphs: a robot for the assistant, a person for the user.
