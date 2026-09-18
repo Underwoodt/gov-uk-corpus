@@ -27,6 +27,15 @@
       transition:transform .15s ease; transform:rotate(0deg); }
     details[open] > summary.rolldown::before { transform:rotate(90deg); }
     summary.rolldown:hover { background:var(--surface-3); border-color:var(--muted); }
+    /* Per-row "links off this page" roll-down. */
+    .lx-h { width:22px; }
+    .lx-toggle { cursor:pointer; color:var(--blue); font-weight:700; text-align:center; user-select:none; width:22px; }
+    .lx-toggle:hover { color:var(--dark-blue,#003078); }
+    .lx-panel { padding:4px 4px 8px 4px; font-size:13px; }
+    .lx-panel ul { margin:6px 0 0; padding-left:18px; max-height:300px; overflow:auto; }
+    .lx-panel li { margin:2px 0; word-break:break-all; }
+    .lx-ext { font-size:11px; color:var(--muted); background:var(--surface-2); padding:1px 5px; border-radius:3px; margin-left:6px; }
+    tr.lx-row > td { background:var(--surface-2); }
   </style>
 
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
@@ -196,9 +205,10 @@
         const keys = (j.keys || []).filter(k => k !== "url" || urlOn), rows = j.rows || [];
         auditTotal = j.total;
         document.querySelector("#audit-table thead").innerHTML =
-          "<tr>" + keys.map(k => `<th>${esc(AUDIT_LABELS[k] || k)}</th>`).join("") + "</tr>";
+          "<tr><th class=\"lx-h\"></th>" + keys.map(k => `<th>${esc(AUDIT_LABELS[k] || k)}</th>`).join("") + "</tr>";
         document.querySelector("#audit-table tbody").innerHTML =
-          rows.map(r => "<tr>" + keys.map(k => `<td>${auditCell(k, r)}</td>`).join("") + "</tr>").join("");
+          rows.map(r => `<tr><td class="lx-toggle" data-url="${esc(r.url)}" title="Show the links off this page">▸</td>`
+            + keys.map(k => `<td>${auditCell(k, r)}</td>`).join("") + "</tr>").join("");
         table.hidden = rows.length === 0;
         document.getElementById("audit-empty").hidden = rows.length !== 0;
         const known = auditTotal != null;
@@ -213,6 +223,41 @@
         document.getElementById("audit-pager").hidden = auditOffset === 0 && rows.length < AUDIT_PAGE;
       } catch (e) { cnt.textContent = "Could not load."; }
     }
+    // Per-row roll-down: show every link off the page (from the stored corpus content).
+    document.getElementById("audit-table").addEventListener("click", async (e) => {
+      const tog = e.target.closest(".lx-toggle");
+      if (!tog) return;
+      const tr = tog.closest("tr");
+      const nxt = tr.nextElementSibling;
+      if (nxt && nxt.classList.contains("lx-row")) { nxt.remove(); tog.textContent = "▸"; return; }
+      tog.textContent = "▾";
+      const exp = document.createElement("tr"); exp.className = "lx-row";
+      const cell = document.createElement("td"); cell.colSpan = tr.children.length;
+      cell.innerHTML = '<span class="spinner"></span> Loading links…';
+      exp.appendChild(cell); tr.insertAdjacentElement("afterend", exp);
+      try {
+        const j = await (await fetch("/api/page-links?url=" + encodeURIComponent(tog.dataset.url))).json();
+        const links = j.links || [];
+        if (!links.length) {
+          cell.innerHTML = '<span class="secondary">' + (j.no_content ? "No stored content for this page." : "No links found on this page.") + '</span>';
+          return;
+        }
+        const panel = document.createElement("div"); panel.className = "lx-panel";
+        const h = document.createElement("strong");
+        h.textContent = links.length + " link" + (links.length === 1 ? "" : "s") + " off this page";
+        panel.appendChild(h);
+        const ul = document.createElement("ul");
+        links.forEach(l => {
+          const li = document.createElement("li");
+          const a = document.createElement("a"); a.href = l.href; a.target = "_blank"; a.rel = "noopener"; a.textContent = l.text;
+          li.appendChild(a);
+          if (l.external) { const x = document.createElement("span"); x.className = "lx-ext"; x.textContent = "external"; li.appendChild(x); }
+          ul.appendChild(li);
+        });
+        panel.appendChild(ul); cell.innerHTML = ""; cell.appendChild(panel);
+      } catch (e2) { cell.innerHTML = '<span class="secondary">Could not load links.</span>'; }
+    });
+
     function auditReload() { auditOffset = 0; loadAudit(); }
     document.getElementById("audit-stage").addEventListener("change", auditReload);
     document.getElementById("audit-search").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); auditReload(); } });

@@ -38,7 +38,7 @@ from starlette.concurrency import run_in_threadpool
 from govuk_corpus import accounts, ai_models, audit
 from govuk_corpus import categories as cat
 from govuk_corpus import category_counts, feedback, guardrails, sessions
-from govuk_corpus import (audit_stats, category_interview, evaluate, orgs,
+from govuk_corpus import (audit_stats, category_interview, evaluate, extract, orgs,
                           peak_schedule, pricing, readability, roles, settings, shortlist)
 from govuk_corpus.backend import db
 
@@ -1768,6 +1768,31 @@ async def api_org_options(request: Request):
         return JSONResponse({"options": options, "matched": matched})
     finally:
         conn.close()
+
+
+@app.get("/api/page-links")
+def api_page_links(request: Request, url: str = ""):
+    """All hyperlinks in a page's body, from the stored corpus content — for the per-row
+    "links off this page" roll-down on the audit shortlist."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    url = (url or "").strip()
+    if not url:
+        return JSONResponse({"links": []})
+    conn = connect()
+    try:
+        row = conn.execute(f"SELECT content FROM content WHERE url = {shortlist._P}", (url,)).fetchone()
+    finally:
+        conn.close()
+    raw = row["content"] if row else None
+    if not raw:
+        return JSONResponse({"links": [], "no_content": True})
+    try:
+        payload = json.loads(raw) if isinstance(raw, str) else raw   # sqlite TEXT vs PG JSONB
+        links = extract.page_body_links(payload)
+    except Exception:
+        return JSONResponse({"links": [], "no_content": True})
+    return JSONResponse({"links": links})
 
 
 @app.get("/api/categories/{cid}/runs")

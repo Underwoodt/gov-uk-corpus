@@ -6,9 +6,58 @@ writing SQLite-specific generated columns.
 """
 from __future__ import annotations
 
+import re as _re
 from typing import Any, Dict, List, Tuple
 
 from .canonical import canonicalise, path_of
+
+_A_HREF = _re.compile(r'<a\b[^>]*?href="([^"]+)"[^>]*>(.*?)</a>', _re.I | _re.S)
+_TAG = _re.compile(r"<[^>]+>")
+_GOVUK = _re.compile(r"^https?://(www\.)?gov\.uk", _re.I)
+
+
+def _html_blobs(details: Dict[str, Any]) -> List[str]:
+    """The HTML bodies of a content payload — top-level body, each part, and html attachments.
+    A body may be a plain HTML string or a list of {content_type, content} govspeak/html pairs."""
+    out: List[str] = []
+
+    def add(b):
+        if isinstance(b, str):
+            out.append(b)
+        elif isinstance(b, list):
+            for it in b:
+                if isinstance(it, dict) and str(it.get("content_type", "")).endswith("html"):
+                    out.append(it.get("content") or "")
+
+    details = details or {}
+    add(details.get("body"))
+    for part in details.get("parts") or []:
+        add(part.get("body"))
+    for att in details.get("attachments") or []:
+        if att.get("attachment_type") == "html":
+            add(att.get("body"))
+    return out
+
+
+def page_body_links(payload: Dict[str, Any], limit: int = 500) -> List[Dict[str, Any]]:
+    """Every hyperlink in a page's body/parts, de-duplicated: [{href, text, external}].
+    Relative gov.uk links are expanded to absolute; anchors/mailto/tel/js are skipped."""
+    out: List[Dict[str, Any]] = []
+    seen = set()
+    for blob in _html_blobs(payload.get("details") or {}):
+        for m in _A_HREF.finditer(blob or ""):
+            href = (m.group(1) or "").strip()
+            if not href or href[0] in "#?" or href.lower().startswith(("mailto:", "tel:", "javascript:")):
+                continue
+            full = "https://www.gov.uk" + href if href.startswith("/") else href
+            if full in seen:
+                continue
+            seen.add(full)
+            text = _TAG.sub("", m.group(2) or "").strip()
+            out.append({"href": full, "text": (text or full)[:200], "external": not _GOVUK.match(full)})
+            if len(out) >= limit:
+                return out
+    return out
 
 _ORG_BASE = "/government/organisations/"
 
