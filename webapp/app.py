@@ -1594,33 +1594,87 @@ async def submit_feedback(request: Request):
         conn.close()
 
 
-# ---- GOV.UK search (find gov.uk pages related to a query) ----------------
+# ---- GOV.UK search (find gov.uk pages related to a set of phrases) --------
 _GOVUK_SEARCH_URL = "https://www.gov.uk/api/search.json"
+_GOVUK_SEARCH_FIELDS = ("title", "link", "description", "content_store_document_type")
+_GOVUK_UA = {"User-Agent": "gov-uk-corpus-shortlist-builder", "Accept": "application/json"}
+_GOVUK_MAX_PHRASES = 12        # cap the number of phrase lines
+_GOVUK_PER_PHRASE = 300        # cap pages listed per phrase (the doc-type set is complete regardless)
 
 
-def _govuk_search(query: str, count: int = 20) -> dict:
-    """Query the official GOV.UK Search API and return {results:[{title,link,description}],
-    total}. Blocking (urllib) — call via run_in_threadpool. No API key needed."""
-    params = [("q", query), ("count", str(count))]
-    params += [("fields", f) for f in ("title", "link", "description")]
+def _govuk_get(params) -> tuple:
     url = _GOVUK_SEARCH_URL + "?" + urlencode(params)
-    req = urllib.request.Request(url, headers={"User-Agent": "gov-uk-corpus-shortlist-builder",
-                                               "Accept": "application/json"})
+    req = urllib.request.Request(url, headers=_GOVUK_UA)
     with urllib.request.urlopen(req, timeout=15) as r:
-        data = json.loads(r.read().decode("utf-8"))
-    out = []
-    for item in data.get("results", []):
-        link = str(item.get("link") or "")
-        if link.startswith("/"):
-            link = "https://www.gov.uk" + link
-        out.append({"title": (item.get("title") or link).strip(),
-                    "link": link, "description": (item.get("description") or "").strip()})
-    return {"results": out, "total": data.get("total"), "query_url": url}
+        return url, json.loads(r.read().decode("utf-8"))
+
+
+def _phrase_q(phrase: str) -> str:
+    """Quote a line so the GOV.UK Search API matches it as an exact phrase (e.g. "SPS
+    agreement" -> 162 pages, not 76,000 for the loose terms)."""
+    return '"' + phrase.strip().strip('"') + '"'
+
+
+def _govuk_doctypes(phrase: str) -> tuple:
+    """The complete document-type distribution for a phrase (via the API's aggregate), as
+    {slug: count}, plus the total number of matching pages."""
+    url, data = _govuk_get([("q", _phrase_q(phrase)), ("count", "0"),
+                            ("aggregate_content_store_document_type", "200")])
+    opts = data.get("aggregates", {}).get("content_store_document_type", {}).get("options", [])
+    out = {}
+    for o in opts:
+        v = o.get("value")
+        slug = (v.get("slug") if isinstance(v, dict) else v) or ""
+        if slug:
+            out[slug] = o.get("documents", 0)
+    return out, int(data.get("total") or 0), url
+
+
+def _govuk_search_multi(phrases) -> dict:
+    """Search GOV.UK for several phrases (one per line). Returns the combined page list
+    (title, link, document type, which phrases matched), the full document-type set with
+    counts, per-phrase totals, and the query URLs used."""
+    pages, doctypes, per_phrase, query_urls = {}, {}, [], []
+    for phrase in phrases[:_GOVUK_MAX_PHRASES]:
+        dt, total, agg_url = _govuk_doctypes(phrase)
+        query_urls.append(agg_url)
+        for slug, n in dt.items():
+            doctypes[slug] = doctypes.get(slug, 0) + n
+        per_phrase.append({"phrase": phrase, "total": total})
+        start = 0
+        while start < _GOVUK_PER_PHRASE:
+            count = min(100, _GOVUK_PER_PHRASE - start)
+            url, data = _govuk_get([("q", _phrase_q(phrase)), ("count", str(count)), ("start", str(start))]
+                                   + [("fields", f) for f in _GOVUK_SEARCH_FIELDS])
+            query_urls.append(url)
+            res = data.get("results", [])
+            if not res:
+                break
+            for item in res:
+                link = str(item.get("link") or "")
+                if link.startswith("/"):
+                    link = "https://www.gov.uk" + link
+                if link in pages:
+                    if phrase not in pages[link]["phrases"]:
+                        pages[link]["phrases"].append(phrase)
+                    continue
+                pages[link] = {"title": (item.get("title") or link).strip(), "link": link,
+                               "document_type": item.get("content_store_document_type") or "",
+                               "description": (item.get("description") or "").strip(),
+                               "phrases": [phrase]}
+            start += len(res)
+            if start >= total:
+                break
+    doctype_list = sorted(({"type": t, "count": c} for t, c in doctypes.items()),
+                          key=lambda x: (-x["count"], x["type"]))
+    return {"results": list(pages.values()), "doctypes": doctype_list,
+            "per_phrase": per_phrase, "query_urls": query_urls,
+            "per_phrase_cap": _GOVUK_PER_PHRASE}
 
 
 @app.get("/govuk-search", response_class=HTMLResponse)
 def govuk_search_page(request: Request):
-    """Search GOV.UK for pages related to a query (guc-0019). Uses the official Search API."""
+    """Search GOV.UK for pages matching a set of phrases (guc-0019). Uses the official Search API."""
     if not authed(request):
         return login_redirect(request)
     conn = connect()
@@ -1629,15 +1683,23 @@ def govuk_search_page(request: Request):
     return resp
 
 
-@app.get("/api/govuk-search")
-async def api_govuk_search(request: Request, q: str = "", count: int = 20):
+@app.post("/api/govuk-search")
+async def api_govuk_search(request: Request):
     if not authed(request):
         return JSONResponse({"error": "auth"}, status_code=401)
-    q = (q or "").strip()
-    if not q:
-        return JSONResponse({"results": [], "total": 0})
+    body = await request.json()
+    raw = body.get("phrases")
+    lines = raw.splitlines() if isinstance(raw, str) else (raw if isinstance(raw, list) else [])
+    phrases, seen = [], set()
+    for p in lines:
+        p = str(p or "").strip()
+        if p and p.lower() not in seen:
+            seen.add(p.lower())
+            phrases.append(p)
+    if not phrases:
+        return JSONResponse({"results": [], "doctypes": [], "per_phrase": [], "query_urls": []})
     try:
-        data = await run_in_threadpool(_govuk_search, q, max(1, min(count, 50)))
+        data = await run_in_threadpool(_govuk_search_multi, phrases)
     except Exception as e:
         logging.getLogger("govuk_search").warning("search failed: %s", e)
         return JSONResponse({"error": "Couldn't reach GOV.UK search — try again."}, status_code=502)

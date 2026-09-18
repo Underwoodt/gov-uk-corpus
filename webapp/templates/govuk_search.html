@@ -3,102 +3,144 @@
 {% block title %}GOV.UK search{% endblock %}
 {% block content %}
   <style>
-    #gs-form { display:flex; gap:10px; flex-wrap:wrap; align-items:center; max-width:760px; margin:6px 0 8px; }
-    #gs-q { flex:1 1 320px; min-width:0; padding:10px 12px; border:2px solid var(--black); border-radius:8px; font:inherit; }
-    .gs-result { padding:14px 0; border-bottom:1px solid var(--border,#e0e5ec); max-width:760px; }
-    .gs-result:last-child { border-bottom:0; }
-    .gs-title { font-size:17px; font-weight:700; margin:0 0 2px; }
-    .gs-title a { text-decoration:none; }
-    .gs-title a:hover { text-decoration:underline; }
-    .gs-link { font-size:13px; color:var(--green,#00703c); word-break:break-all; margin:0 0 4px; }
-    .gs-desc { font-size:14px; color:var(--ink); margin:0; max-width:70ch; }
-    /* Roll-down disclosure showing the exact API query. */
-    .gs-query-wrap { max-width:760px; margin:2px 0 10px; }
-    summary.rolldown { display:inline-flex; align-items:center; gap:10px; cursor:pointer;
-      list-style:none; font-weight:700; font-size:14px; color:var(--blue,#1d70b8);
-      padding:8px 12px; border:1px solid var(--border-mid,#b1b4b6); border-radius:var(--radius-sm,5px);
+    #gs-q { width:100%; max-width:760px; box-sizing:border-box; min-height:120px; padding:10px 12px;
+      border:2px solid var(--black); border-radius:8px; font:inherit; line-height:1.5; resize:vertical; }
+    .gs-bar { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin:12px 0 8px; }
+    .gs-section-h { font-size:15px; font-weight:700; margin:22px 0 8px; }
+    .gs-chips { display:flex; flex-wrap:wrap; gap:8px; max-width:900px; }
+    .gs-chip { display:inline-flex; align-items:center; gap:6px; font-size:13px;
+      background:var(--surface-2,#f3f2f1); border:1px solid var(--border-mid,#b1b4b6);
+      border-radius:999px; padding:4px 11px; }
+    .gs-chip .n { font-weight:700; color:var(--muted,#6b7477); font-variant-numeric:tabular-nums; }
+    .gs-phrase { font-size:14px; margin:2px 0; }
+    .gs-phrase b { font-weight:700; }
+    #gs-table { font-size:14px; margin-top:6px; }
+    #gs-table th, #gs-table td { padding:8px 12px; vertical-align:top; }
+    .gs-title { font-weight:700; }
+    .gs-title a { text-decoration:none; } .gs-title a:hover { text-decoration:underline; }
+    .gs-link { font-size:12px; color:var(--green,#00703c); word-break:break-all; }
+    .gs-desc { font-size:13px; color:var(--muted,#6b7477); margin:3px 0 0; max-width:60ch; }
+    .gs-dt { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px; white-space:nowrap; }
+    /* Roll-down disclosure showing the exact API queries. */
+    .gs-query-wrap { max-width:760px; margin:8px 0 4px; }
+    summary.rolldown { display:inline-flex; align-items:center; gap:10px; cursor:pointer; list-style:none;
+      font-weight:700; font-size:14px; color:var(--blue,#1d70b8); padding:8px 12px;
+      border:1px solid var(--border-mid,#b1b4b6); border-radius:var(--radius-sm,5px);
       background:var(--surface-2,#f3f2f1); width:max-content; max-width:100%; margin:0; }
     summary.rolldown::-webkit-details-marker { display:none; }
     summary.rolldown::before { content:"›"; font-size:18px; line-height:1; color:var(--muted,#6b7477);
       transition:transform .15s ease; }
     details[open] > summary.rolldown::before { transform:rotate(90deg); }
-    summary.rolldown:hover { background:var(--surface-3,#ebe9e8); border-color:var(--muted,#6b7477); }
     .gs-query { margin:10px 0 0; padding:10px 12px; background:#fbfbfb; border:1px solid var(--mid-grey,#b1b4b6);
-      border-radius:6px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px;
-      word-break:break-all; }
-    .gs-query a { color:var(--blue,#1d70b8); }
+      border-radius:6px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; word-break:break-all; }
+    .gs-query a { display:block; margin:2px 0; color:var(--blue,#1d70b8); }
   </style>
 
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
   <h1 style="margin:16px 0 6px;">GOV.UK search</h1>
-  <p class="hint" style="max-width:760px;">Ask a question or give a topic and get a list of related pages from
-    GOV.UK, via the official GOV.UK Search API. For example: <em>pages related to the EU reset</em>.</p>
+  <p class="hint" style="max-width:760px;">Enter one <strong>phrase per line</strong> — each line is matched as an
+    exact phrase against GOV.UK. The page retrieves the matching pages for every phrase and shows the full set of
+    document types found. For example, one phrase per line:<br><em>EU reset</em> · <em>SPS agreement</em> · <em>sanitary and phytosanitary</em></p>
 
-  <form id="gs-form" onsubmit="return false;">
-    <input id="gs-q" type="search" placeholder="e.g. EU reset" autofocus autocomplete="off">
-    <label class="secondary" style="font-size:14px;">Results
-      <select id="gs-count" style="font:inherit;padding:8px;border:2px solid var(--black);border-radius:6px;">
-        <option>10</option><option selected>20</option><option>50</option>
-      </select>
-    </label>
-    <button class="btn" id="gs-go" type="submit">Search</button>
-  </form>
-  <p id="gs-status" class="secondary" style="max-width:760px;"></p>
+  <textarea id="gs-q" placeholder="EU reset&#10;SPS agreement&#10;sanitary and phytosanitary"></textarea>
+  <div class="gs-bar">
+    <button class="btn" id="gs-go" type="button">Search GOV.UK</button>
+    <span id="gs-status" class="secondary"></span>
+  </div>
 
-  <p id="gs-govuk" style="max-width:760px;margin:2px 0 10px;" hidden></p>
+  <div id="gs-doctypes-wrap" hidden>
+    <p class="gs-section-h">Document types found <span class="secondary" id="gs-dt-note" style="font-weight:400;"></span></p>
+    <div class="gs-chips" id="gs-doctypes"></div>
+  </div>
+
+  <div id="gs-phrases-wrap" hidden>
+    <p class="gs-section-h">Phrases</p>
+    <div id="gs-phrases"></div>
+  </div>
 
   <details class="gs-query-wrap" id="gs-query-wrap" data-level="expert" hidden>
-    <summary class="rolldown">GOV.UK Search API query</summary>
+    <summary class="rolldown">GOV.UK Search API queries</summary>
     <div class="gs-query" id="gs-query"></div>
   </details>
 
-  <div id="gs-results"></div>
+  <div id="gs-results-wrap" hidden>
+    <p class="gs-section-h" id="gs-results-h">Pages</p>
+    <div style="overflow-x:auto;">
+      <table id="gs-table">
+        <thead><tr><th>Title</th><th>Document type</th><th>Matched</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
 
   <script>
     const gsQ = document.getElementById("gs-q");
-    const gsCount = document.getElementById("gs-count");
     const gsGo = document.getElementById("gs-go");
     const gsStatus = document.getElementById("gs-status");
-    const gsOut = document.getElementById("gs-results");
-    const gsQueryWrap = document.getElementById("gs-query-wrap");
-    const gsQuery = document.getElementById("gs-query");
-    const gsGovuk = document.getElementById("gs-govuk");
     function gsEsc(s){ const d = document.createElement("div"); d.textContent = s == null ? "" : s; return d.innerHTML; }
+    function govukUrl(p){ return "https://www.gov.uk/search/all?" + new URLSearchParams({ keywords: '"' + p + '"' }).toString(); }
 
     async function gsSearch() {
-      const q = gsQ.value.trim();
-      if (!q) { gsStatus.textContent = "Enter a question or topic."; return; }
-      // Link to the same keyword search on the public GOV.UK site.
-      const govukUrl = "https://www.gov.uk/search/all?" + new URLSearchParams({ keywords: q }).toString();
-      gsGovuk.innerHTML = `<a href="${gsEsc(govukUrl)}" target="_blank" rel="noopener">Open this search on GOV.UK &#8599;</a>`;
-      gsGovuk.hidden = false;
+      const phrases = gsQ.value.split("\n").map(s => s.trim()).filter(Boolean);
+      if (!phrases.length) { gsStatus.textContent = "Enter at least one phrase."; return; }
       gsGo.disabled = true;
-      gsStatus.innerHTML = '<span class="spinner"></span> Searching GOV.UK…';
-      gsOut.innerHTML = "";
+      gsStatus.innerHTML = '<span class="spinner"></span> Searching GOV.UK for ' + phrases.length
+        + ' phrase' + (phrases.length === 1 ? '' : 's') + '…';
       try {
-        const params = new URLSearchParams({ q, count: gsCount.value });
-        const j = await (await fetch(`/api/govuk-search?${params}`)).json();
-        if (j.query_url) {
-          gsQuery.innerHTML = `<a href="${gsEsc(j.query_url)}" target="_blank" rel="noopener">${gsEsc(j.query_url)}</a>`;
-          gsQueryWrap.hidden = false;
-        }
+        const r = await fetch("/api/govuk-search", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phrases })
+        });
+        const j = await r.json();
         if (j.error) { gsStatus.textContent = "Error: " + j.error; return; }
-        const rows = j.results || [];
-        if (!rows.length) { gsStatus.textContent = "No GOV.UK pages found for that."; return; }
-        gsStatus.textContent = rows.length + " of " + (j.total != null ? j.total.toLocaleString() : "many")
-          + " page" + (j.total === 1 ? "" : "s") + " matching “" + q + "”.";
-        gsOut.innerHTML = rows.map(r =>
-          `<div class="gs-result">
-             <p class="gs-title"><a href="${gsEsc(r.link)}" target="_blank" rel="noopener">${gsEsc(r.title)}</a></p>
-             <p class="gs-link">${gsEsc(r.link)}</p>
-             ${r.description ? `<p class="gs-desc">${gsEsc(r.description)}</p>` : ""}
-           </div>`).join("");
+        const results = j.results || [], doctypes = j.doctypes || [], perPhrase = j.per_phrase || [];
+
+        // Document types found (the complete set, via the API aggregate).
+        const dtWrap = document.getElementById("gs-doctypes-wrap");
+        document.getElementById("gs-doctypes").innerHTML = doctypes.map(d =>
+          `<span class="gs-chip"><span class="gs-dt">${gsEsc(d.type)}</span><span class="n">${d.count.toLocaleString()}</span></span>`).join("");
+        document.getElementById("gs-dt-note").textContent = doctypes.length
+          ? "(" + doctypes.length + " type" + (doctypes.length === 1 ? "" : "s") + ", across all matches)" : "";
+        dtWrap.hidden = doctypes.length === 0;
+
+        // Per-phrase totals + link to the same search on GOV.UK.
+        document.getElementById("gs-phrases").innerHTML = perPhrase.map(p =>
+          `<p class="gs-phrase"><b>${gsEsc(p.phrase)}</b> — ${p.total.toLocaleString()} page${p.total === 1 ? "" : "s"}
+             · <a href="${gsEsc(govukUrl(p.phrase))}" target="_blank" rel="noopener">open on GOV.UK &#8599;</a></p>`).join("");
+        document.getElementById("gs-phrases-wrap").hidden = perPhrase.length === 0;
+
+        // Query rolldown (Expert+).
+        if ((j.query_urls || []).length) {
+          document.getElementById("gs-query").innerHTML = j.query_urls.map(u =>
+            `<a href="${gsEsc(u)}" target="_blank" rel="noopener">${gsEsc(u)}</a>`).join("");
+          document.getElementById("gs-query-wrap").hidden = false;
+        }
+
+        // Pages: title linked to url, document type, which phrase(s) matched.
+        document.querySelector("#gs-table tbody").innerHTML = results.map(x =>
+          `<tr>
+             <td><div class="gs-title"><a href="${gsEsc(x.link)}" target="_blank" rel="noopener">${gsEsc(x.title)}</a></div>
+               <div class="gs-link">${gsEsc(x.link)}</div>
+               ${x.description ? `<div class="gs-desc">${gsEsc(x.description)}</div>` : ""}</td>
+             <td class="gs-dt">${gsEsc(x.document_type || "—")}</td>
+             <td>${x.phrases.map(gsEsc).join("<br>")}</td>
+           </tr>`).join("");
+        document.getElementById("gs-results-wrap").hidden = results.length === 0;
+        const cap = j.per_phrase_cap || 0;
+        const anyCapped = perPhrase.some(p => p.total > cap);
+        document.getElementById("gs-results-h").textContent = "Pages (" + results.length.toLocaleString() + ")";
+        gsStatus.innerHTML = results.length
+          ? (results.length.toLocaleString() + " unique page" + (results.length === 1 ? "" : "s") + " listed."
+             + (anyCapped ? " Listing is capped at " + cap.toLocaleString() + " per phrase; document types cover all matches." : ""))
+          : "No GOV.UK pages found.";
       } catch (e) {
         gsStatus.textContent = "Could not run the search.";
       } finally {
         gsGo.disabled = false;
       }
     }
-    document.getElementById("gs-form").addEventListener("submit", gsSearch);
+    gsGo.addEventListener("click", gsSearch);
+    // Ctrl/Cmd+Enter to search from the textarea.
+    gsQ.addEventListener("keydown", e => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); gsSearch(); } });
   </script>
 {% endblock %}
