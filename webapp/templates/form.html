@@ -21,6 +21,11 @@
     .sel-x { background:none; border:0; color:#fff; font-size:16px; line-height:1; cursor:pointer;
       padding:0 3px; border-radius:3px; }
     .sel-x:hover { background:rgba(255,255,255,.25); }
+    /* Page Types is disabled until an organisation is chosen (counts are org-scoped). */
+    .dt-disabled .checklist, .dt-disabled .chk-search, .dt-disabled .sel-box {
+      opacity:.55; background:var(--surface-2,#f3f2f1); pointer-events:none; }
+    .dt-disabled .chk-search { cursor:not-allowed; }
+    .dt-hint-locked { color:var(--muted,#6b7477); }
   </style>
 
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
@@ -122,10 +127,11 @@
         also searches Environment Agency, Natural England, Rural Payments Agency, and the rest).</p>
     </div>
 
-    <div class="field">
+    <div class="field" id="dt-field">
       <label class="q" for="dt-filter">Page Types <span class="secondary" style="font-weight:400;">(Pre-Inference Filtering: 2)</span></label>
-      <p class="hint">The document types the selected organisations publish, with a page count — tick the ones
-        to include. Search to filter. The list updates when you change the organisations above; tick none to include every type.</p>
+      <p class="hint">Choose one or more organisations above to see the document types they publish, each
+        with its page count (for example <code>Guidance (8,829)</code>), largest first. Tick the ones to
+        include, or tick none to include every type. This is locked until an organisation is chosen.</p>
       <details><summary>How this narrows your search</summary>
         <div class="detail"><p>A page has to match both an organisation (if you set any) and one of these
           types. The counts come from the corpus for the chosen organisations.</p></div></details>
@@ -141,7 +147,7 @@
 
     <div class="field">
       <label class="q" for="keywords">Inclusion Keyword(s) <span class="secondary" style="font-weight:400;">(Pre-Inference Filtering: 3)</span></label>
-      <p class="hint">One term per line. A term is a single word, or a pair of words that sit next to each other.</p>
+      <p class="hint">One term per line, or separated by commas. A term is a single word, or a pair of words that sit next to each other.</p>
       <details><summary>How your terms are matched</summary>
         <div class="detail">
           <p>This is a word match, not a search for a phrase or an idea. We look through the title and text
@@ -154,7 +160,8 @@
             <li>Prefer the specific term: slurry, lagoon, catch certificate.</li>
           </ul>
         </div></details>
-      <textarea id="keywords" name="keywords" rows="4">{{ v.keywords or '' }}</textarea>
+      <textarea id="keywords" name="keywords" rows="4" class="auto-grow"
+        style="overflow:hidden;resize:vertical;min-height:96px;">{{ v.keywords or '' }}</textarea>
     </div>
 
     <div class="field">
@@ -283,8 +290,13 @@
       var dtBox = document.getElementById("dt-selected");
       var childCb = document.querySelector('[name="include_child_orgs"]');
       var note = document.getElementById("dt-note");
+      var dtField = document.getElementById("dt-field");
       if (!dtList) return;
       var DT_EMPTY = "No document types selected — includes every type.";
+      function setLocked(on) {
+        if (dtField) dtField.classList.toggle("dt-disabled", on);
+        if (dtFilter) dtFilter.disabled = on;
+      }
       function titleCase(s){ return String(s).replace(/_/g, " ").replace(/\b\w/g, function (c) { return c.toUpperCase(); }); }
       function selectedOrgs(){ return orgList ? [].map.call(orgList.querySelectorAll('input:checked'), function (b) { return b.value; }) : []; }
       function currentTypes(){ return [].map.call(dtList.querySelectorAll('input:checked'), function (b) { return b.value; }); }
@@ -297,6 +309,15 @@
       var seq = 0;
       async function refresh() {
         var keep = currentTypes().filter(Boolean), orgs = selectedOrgs();
+        if (!orgs.length) {
+          // No organisation chosen — page-type counts are org-scoped, so lock the widget.
+          setLocked(true);
+          dtList.innerHTML = "";
+          renderSelected(dtList, dtBox, DT_EMPTY);
+          if (note) note.textContent = "Pick one or more organisations above to choose page types.";
+          return;
+        }
+        setLocked(false);
         var params = new URLSearchParams();
         if (orgs.length) params.set("orgs", orgs.join(","));
         if (childCb && childCb.checked) params.set("children", "1");
@@ -323,6 +344,19 @@
       dtList.addEventListener("change", function () { renderSelected(dtList, dtBox, DT_EMPTY); });
       renderSelected(dtList, dtBox, DT_EMPTY);   // show the saved selection immediately
       refresh();
+    })();
+
+    // Keywords box grows to fit every term, so a long list is fully visible without
+    // an inner scrollbar. The user can still drag the handle to shrink it.
+    (function () {
+      var ta = document.getElementById("keywords");
+      if (!ta) return;
+      function grow() {
+        ta.style.height = "auto";
+        ta.style.height = ta.scrollHeight + "px";
+      }
+      ta.addEventListener("input", grow);
+      grow();   // size to the saved value on load
     })();
   </script>
 {% endblock %}

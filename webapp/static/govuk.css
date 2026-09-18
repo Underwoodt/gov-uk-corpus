@@ -169,7 +169,11 @@ tbody tr { transition:background .1s; }
 tbody tr:hover { background:var(--surface-2); }
 .name-link { font-weight:700; }
 .sub { display:block; color:var(--muted); font-size:13px; margin-top:2px; }
-.actions { display:inline-flex; gap:16px; }
+.actions { display:inline-flex; gap:16px; align-items:baseline; }
+/* A <button> that reads as an inline text link (for POST actions inside a row). */
+.linkish { background:none; border:0; padding:0; margin:0; font:inherit; cursor:pointer;
+  color:var(--blue); text-decoration:underline; text-underline-offset:2px; }
+.linkish:hover { color:var(--dark-blue); }
 .pill { display:inline-block; font-size:12px; font-weight:700; padding:3px 10px; border-radius:999px; }
 .pill.draft { background:#fdf3d8; color:#7a5b00; }
 .pill.published { background:#d9f2e4; color:var(--green-dark); }

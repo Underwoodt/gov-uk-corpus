@@ -846,6 +846,23 @@ async def create_category(request: Request):
     return RedirectResponse(url=str(request.url_for("edit_category_page", cid=cid)), status_code=303)
 
 
+@app.post("/categories/{cid}/copy")
+async def copy_category_route(request: Request, cid: int):
+    """Duplicate a category into a new draft and open it for editing."""
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    cu = current_user(request)
+    owner = cu.get("email") if cu else None
+    new_id = cat.copy_category(conn, cid, owner_email=owner)
+    if new_id is None:
+        conn.close()
+        return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
+    category_counts.refresh_one(conn, new_id)  # give the copy its own stored count
+    conn.close()
+    return RedirectResponse(url=str(request.url_for("edit_category_page", cid=new_id)), status_code=303)
+
+
 # ---- edit ---------------------------------------------------------------
 @app.get("/categories/{cid}/edit", response_class=HTMLResponse)
 def edit_category_page(request: Request, cid: int):

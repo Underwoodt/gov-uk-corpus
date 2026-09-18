@@ -84,11 +84,10 @@ def validate(data: Dict[str, Any]) -> List[str]:
         v = data.get(f)
         if v and len(str(v)) > limit:
             errors.append(f"{label(f)} must be {limit} characters or less.")
-    # keywords: one rule per line, no line more than 2 words
-    kw = str(data.get("keywords") or "").strip()
-    for line in kw.splitlines():
-        if len(line.split()) > 2:
-            errors.append(f"Keyword line '{line.strip()}' has more than 2 words.")
+    # keywords: one term per line or comma-separated, no term more than 2 words
+    for term in parse_list(data.get("keywords")):
+        if len(term.split()) > 2:
+            errors.append(f"Keyword '{term}' has more than 2 words.")
             break
     return errors
 
@@ -103,6 +102,10 @@ def _coerce(data: Dict[str, Any]) -> Dict[str, Any]:
 def create_category(conn, data: Dict[str, Any], status: str = "draft") -> int:
     d = _coerce(data)
     cid = int(time.time() * 1000)
+    # Guard against PK collisions when two categories are created in the same
+    # millisecond (e.g. copying a category twice in quick succession).
+    while conn.execute(f"SELECT 1 FROM categories WHERE id={_P}", (cid,)).fetchone():
+        cid += 1
     ts = now_iso()
     cols = ["id", "created_at", "updated_at", "status"] + USER_FIELDS
     vals = [cid, ts, ts, status] + [d.get(f) for f in USER_FIELDS]
@@ -138,6 +141,41 @@ def set_url_checklist(conn, cid: int, should_include_urls: str, should_exclude_u
 def delete_category(conn, cid: int) -> None:
     conn.execute(f"DELETE FROM categories WHERE id={_P}", (cid,))
     conn.commit()
+
+
+def _copy_slug(conn, base: str) -> str:
+    """A distinct slug for a duplicate: `<base>-copy`, then `-copy-2`, `-copy-3`…
+    Category slugs aren't DB-unique, but keeping copies distinct keeps the list readable."""
+    base = (base or "category").strip()[:56]  # leave room for the "-copy-N" suffix (≤64)
+    rows = conn.execute("SELECT slug FROM categories").fetchall()
+    taken = {(dict(r).get("slug") or "").strip() for r in rows}
+    cand = f"{base}-copy"
+    if cand not in taken:
+        return cand
+    i = 2
+    while f"{base}-copy-{i}" in taken:
+        i += 1
+    return f"{base}-copy-{i}"
+
+
+def copy_category(conn, cid: int, owner_email: Optional[str] = None) -> Optional[int]:
+    """Duplicate a category's rules into a new draft. Returns the new id, or None if
+    the source is missing. The copy gets a fresh, distinct slug (`<slug>-copy`), starts
+    as a draft, and carries over every rule field — including the URL-check lists, which
+    live outside USER_FIELDS. Pass owner_email to reassign the copy to the current user."""
+    src = get_category(conn, cid)
+    if not src:
+        return None
+    data = {f: src.get(f) for f in USER_FIELDS}
+    data["slug"] = _copy_slug(conn, src.get("slug") or "")
+    if owner_email:
+        data["owner_email"] = owner_email
+    new_id = create_category(conn, data, status="draft")
+    inc = (src.get("should_include_urls") or "").strip()
+    exc = (src.get("should_exclude_urls") or "").strip()
+    if inc or exc:
+        set_url_checklist(conn, new_id, inc, exc)
+    return new_id
 
 
 def get_category(conn, cid: int) -> Optional[Dict[str, Any]]:
