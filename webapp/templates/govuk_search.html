@@ -45,6 +45,8 @@
   </form>
   <p id="gs-status" class="secondary" style="max-width:760px;"></p>
 
+  <p id="gs-govuk" style="max-width:760px;margin:2px 0 10px;" hidden></p>
+
   <details class="gs-query-wrap" id="gs-query-wrap" data-level="expert" hidden>
     <summary class="rolldown">GOV.UK Search API query</summary>
     <div class="gs-query" id="gs-query"></div>
@@ -60,11 +62,16 @@
     const gsOut = document.getElementById("gs-results");
     const gsQueryWrap = document.getElementById("gs-query-wrap");
     const gsQuery = document.getElementById("gs-query");
+    const gsGovuk = document.getElementById("gs-govuk");
     function gsEsc(s){ const d = document.createElement("div"); d.textContent = s == null ? "" : s; return d.innerHTML; }
 
     async function gsSearch() {
       const q = gsQ.value.trim();
       if (!q) { gsStatus.textContent = "Enter a question or topic."; return; }
+      // Link to the same keyword search on the public GOV.UK site.
+      const govukUrl = "https://www.gov.uk/search/all?" + new URLSearchParams({ keywords: q }).toString();
+      gsGovuk.innerHTML = `<a href="${gsEsc(govukUrl)}" target="_blank" rel="noopener">Open this search on GOV.UK &#8599;</a>`;
+      gsGovuk.hidden = false;
       gsGo.disabled = true;
       gsStatus.innerHTML = '<span class="spinner"></span> Searching GOV.UK…';
       gsOut.innerHTML = "";
