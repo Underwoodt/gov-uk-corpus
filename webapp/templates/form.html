@@ -2,6 +2,16 @@
 {% block page_id %}guc-0002{% endblock %}
 {% block title %}{{ 'Change' if is_edit else 'Create' }} category{% endblock %}
 {% block content %}
+  <style>
+    .chk-search { width:100%; max-width:520px; box-sizing:border-box; padding:8px 10px;
+      border:2px solid var(--black); border-radius:6px; margin-bottom:6px; font:inherit; }
+    .checklist { max-width:520px; max-height:260px; overflow-y:auto; border:2px solid var(--black);
+      border-radius:6px; padding:6px 8px; background:var(--white,#fff); }
+    .chk-item { display:flex; align-items:center; gap:9px; padding:4px 4px; font-size:15px;
+      cursor:pointer; border-radius:4px; }
+    .chk-item:hover { background:var(--surface-2,#f3f2f1); }
+    .chk-item input { width:18px; height:18px; flex:0 0 auto; margin:0; }
+  </style>
 
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
 
@@ -67,24 +77,24 @@
     </div>
 
     <div class="field">
-      <label class="q" for="dept_slugs">Organisations <span class="secondary" style="font-weight:400;">(Pre-Inference Filtering: 1)</span></label>
-      <p class="hint">Pick the organisations whose pages to include — the title is shown, the slug is stored.
-        Type to filter, and Ctrl/Cmd-click (or Shift-click) to choose several. Leave none selected to search all organisations.</p>
+      <label class="q" for="org-filter">Organisations <span class="secondary" style="font-weight:400;">(Pre-Inference Filtering: 1)</span></label>
+      <p class="hint">Tick the organisations whose pages to include — the title is shown, the slug is stored.
+        Search to filter the list. Leave none ticked to search all organisations.</p>
       <details><summary>How this narrows your search</summary>
         <div class="detail"><p>A page is kept if one of these organisations published it or is named on it.
           Everything after this point looks only at those pages, so a tighter choice means a faster, cheaper
           run and fewer irrelevant results.</p></div></details>
-      <input type="search" id="org-filter" placeholder="Filter organisations…" autocomplete="off"
-        style="width:100%;max-width:520px;box-sizing:border-box;padding:8px 10px;border:2px solid var(--black);border-radius:6px;margin-bottom:6px;">
-      <select id="dept_slugs" name="dept_slugs" multiple size="12"
-        style="width:100%;max-width:520px;box-sizing:border-box;border:2px solid var(--black);border-radius:6px;padding:4px;font:inherit;">
+      <input type="search" id="org-filter" class="chk-search" placeholder="Search organisations…" autocomplete="off">
+      <div class="checklist" id="org-list">
         {% for o in org_options %}
-        <option value="{{ o.slug }}" data-t="{{ (o.title ~ ' ' ~ o.slug)|lower }}" {{ 'selected' if o.slug in selected_orgs }}>{{ o.title }}</option>
+        <label class="chk-item" data-t="{{ (o.title ~ ' ' ~ o.slug)|lower }}">
+          <input type="checkbox" name="dept_slugs" value="{{ o.slug }}" {{ 'checked' if o.slug in selected_orgs }}><span>{{ o.title }}</span></label>
         {% endfor %}
         {% for s in selected_orgs %}{% if s not in org_option_slugs %}
-        <option value="{{ s }}" data-t="{{ s|lower }}" selected>{{ s }} (not in the org list)</option>
+        <label class="chk-item" data-t="{{ s|lower }}">
+          <input type="checkbox" name="dept_slugs" value="{{ s }}" checked><span>{{ s }} (not in the org list)</span></label>
         {% endif %}{% endfor %}
-      </select>
+      </div>
       <p class="secondary" id="org-count" style="font-size:13px;margin:6px 0 0;"></p>
       <label class="check" style="margin-top:12px;">
         <input type="checkbox" name="include_child_orgs" value="1" {{ 'checked' if v.include_child_orgs }}>
@@ -96,17 +106,18 @@
     </div>
 
     <div class="field">
-      <label class="q" for="document_type_slugs">Page Types <span class="secondary" style="font-weight:400;">(Pre-Inference Filtering: 2)</span></label>
-      <p class="hint">The document types the selected organisations publish, with a page count — pick the ones
-        to include (Ctrl/Cmd-click for several). The list updates when you change the organisations above.
-        Select none to include every type.</p>
+      <label class="q" for="dt-filter">Page Types <span class="secondary" style="font-weight:400;">(Pre-Inference Filtering: 2)</span></label>
+      <p class="hint">The document types the selected organisations publish, with a page count — tick the ones
+        to include. Search to filter. The list updates when you change the organisations above; tick none to include every type.</p>
       <details><summary>How this narrows your search</summary>
         <div class="detail"><p>A page has to match both an organisation (if you set any) and one of these
           types. The counts come from the corpus for the chosen organisations.</p></div></details>
-      <select id="document_type_slugs" name="document_type_slugs" multiple size="10"
-        style="width:100%;max-width:520px;box-sizing:border-box;border:2px solid var(--black);border-radius:6px;padding:4px;font:inherit;">
-        {% for s in selected_doc_types %}<option value="{{ s }}" selected>{{ s|replace('_',' ')|title }}</option>{% endfor %}
-      </select>
+      <input type="search" id="dt-filter" class="chk-search" placeholder="Search document types…" autocomplete="off">
+      <div class="checklist" id="dt-list">
+        {% for s in selected_doc_types %}
+        <label class="chk-item" data-t="{{ s|lower }}"><input type="checkbox" name="document_type_slugs" value="{{ s }}" checked><span>{{ s|replace('_',' ')|title }}</span></label>
+        {% endfor %}
+      </div>
       <p class="secondary" id="dt-note" style="font-size:13px;margin:6px 0 0;"></p>
     </div>
 
@@ -178,15 +189,15 @@
       if (!raw) return;
       var f; try { f = JSON.parse(raw); } catch (e) { return; }
       function setByName(name, val) {
-        var el = document.getElementById(name) || document.querySelector('[name="' + name + '"]');
-        if (!el || el.readOnly) return;
-        if (el.tagName === "SELECT" && el.multiple) {   // e.g. Organisations
+        var boxes = document.querySelectorAll('input[type="checkbox"][name="' + name + '"]');
+        if (boxes.length) {                              // checkbox group (Organisations / Page Types)
           var want = String(val == null ? "" : val).split(/[\n,]/).map(function (s) { return s.trim().toLowerCase(); }).filter(Boolean);
-          [].forEach.call(el.options, function (o) { o.selected = want.indexOf(o.value.toLowerCase()) !== -1; });
-          el.dispatchEvent(new Event("change"));
+          [].forEach.call(boxes, function (b) { b.checked = want.indexOf(b.value.toLowerCase()) !== -1; });
+          if (boxes[0]) boxes[0].dispatchEvent(new Event("change", { bubbles: true }));
           return;
         }
-        el.value = val;
+        var el = document.getElementById(name) || document.querySelector('[name="' + name + '"]');
+        if (el && !el.readOnly) el.value = val;
       }
       ["slug","owner_email","dept_slugs","document_type_slugs","keywords","inclusion_context",
        "exclusion_context","adjudication_hints_keep","adjudication_hints_drop"].forEach(function (k) {
@@ -199,42 +210,51 @@
       try { sessionStorage.removeItem("category_prefill"); } catch (e) {}
     })();
 
-    // Organisations multi-select: type-to-filter and a live selected-count line.
+    // Filter a checkbox list by each item's data-t; used by Organisations and Page Types.
+    function filterChecklist(listEl, query) {
+      var q = (query || "").trim().toLowerCase();
+      [].forEach.call(listEl.querySelectorAll(".chk-item"), function (it) {
+        it.hidden = !!q && (it.dataset.t || it.textContent.toLowerCase()).indexOf(q) === -1;
+      });
+    }
+
+    // Organisations checkbox list: search + a live ticked-count line.
     (function () {
-      var sel = document.getElementById("dept_slugs");
-      if (!sel) return;
-      var filter = document.getElementById("org-filter");
-      var count = document.getElementById("org-count");
+      var list = document.getElementById("org-list");
+      if (!list) return;
+      var filter = document.getElementById("org-filter"), count = document.getElementById("org-count");
       function updateCount() {
-        var n = sel.selectedOptions.length;
+        var n = list.querySelectorAll('input:checked').length;
         if (count) count.textContent = n
           ? (n + " organisation" + (n === 1 ? "" : "s") + " selected")
           : "None selected — searches all organisations.";
       }
-      if (filter) filter.addEventListener("input", function () {
-        var q = filter.value.trim().toLowerCase();
-        [].forEach.call(sel.options, function (o) {
-          o.hidden = !!q && (o.dataset.t || o.textContent.toLowerCase()).indexOf(q) === -1;
-        });
-      });
-      sel.addEventListener("change", updateCount);
+      if (filter) filter.addEventListener("input", function () { filterChecklist(list, filter.value); });
+      list.addEventListener("change", updateCount);
       updateCount();
     })();
 
-    // Page Types: fetch the document types (with counts) the selected organisations publish,
-    // rebuild the multi-select "Guidance (345)" sorted by count, preserving any selection.
+    // Page Types checkbox list: fetch the document types (with counts) the ticked organisations
+    // publish, rebuild "Guidance (345)" sorted by count, preserving ticks; search filters the list.
     (function () {
-      var orgSel = document.getElementById("dept_slugs");
-      var dtSel = document.getElementById("document_type_slugs");
+      var orgList = document.getElementById("org-list");
+      var dtList = document.getElementById("dt-list");
+      var dtFilter = document.getElementById("dt-filter");
       var childCb = document.querySelector('[name="include_child_orgs"]');
       var note = document.getElementById("dt-note");
-      if (!dtSel) return;
+      if (!dtList) return;
       function titleCase(s){ return String(s).replace(/_/g, " ").replace(/\b\w/g, function (c) { return c.toUpperCase(); }); }
-      function selectedOrgs(){ return orgSel ? [].map.call(orgSel.selectedOptions, function (o) { return o.value; }) : []; }
-      function currentTypes(){ return [].filter.call(dtSel.options, function (o) { return o.selected; }).map(function (o) { return o.value; }); }
+      function selectedOrgs(){ return orgList ? [].map.call(orgList.querySelectorAll('input:checked'), function (b) { return b.value; }) : []; }
+      function currentTypes(){ return [].map.call(dtList.querySelectorAll('input:checked'), function (b) { return b.value; }); }
+      function addItem(slug, label, checked) {
+        var lab = document.createElement("label"); lab.className = "chk-item"; lab.dataset.t = (label + " " + slug).toLowerCase();
+        var box = document.createElement("input"); box.type = "checkbox"; box.name = "document_type_slugs"; box.value = slug; box.checked = !!checked;
+        var sp = document.createElement("span"); sp.textContent = label;
+        lab.appendChild(box); lab.appendChild(sp); dtList.appendChild(lab);
+      }
       var seq = 0;
       async function refresh() {
-        var keep = currentTypes(), orgs = selectedOrgs();
+        var keep = currentTypes().filter(Boolean), orgs = selectedOrgs();
         var params = new URLSearchParams();
         if (orgs.length) params.set("orgs", orgs.join(","));
         if (childCb && childCb.checked) params.set("children", "1");
@@ -245,25 +265,18 @@
           if (mine !== seq) return;               // a newer request superseded this one
           var types = j.types || [], keepSet = {}, present = {};
           keep.forEach(function (k) { keepSet[k] = true; });
-          dtSel.innerHTML = "";
-          types.forEach(function (t) {
-            present[t.type] = true;
-            var o = document.createElement("option");
-            o.value = t.type;
-            o.textContent = titleCase(t.type) + " (" + Number(t.count).toLocaleString() + ")";
-            if (keepSet[t.type]) o.selected = true;
-            dtSel.appendChild(o);
-          });
-          keep.forEach(function (k) {             // keep a selected type even if it has no pages now
-            if (!present[k]) { var o = document.createElement("option"); o.value = k; o.textContent = titleCase(k) + " (0)"; o.selected = true; dtSel.appendChild(o); }
-          });
+          dtList.innerHTML = "";
+          types.forEach(function (t) { present[t.type] = true; addItem(t.type, titleCase(t.type) + " (" + Number(t.count).toLocaleString() + ")", keepSet[t.type]); });
+          keep.forEach(function (k) { if (!present[k]) addItem(k, titleCase(k) + " (0)", true); });
+          filterChecklist(dtList, dtFilter ? dtFilter.value : "");
           if (note) note.textContent = types.length
             ? (types.length + " document type" + (types.length === 1 ? "" : "s") + (orgs.length ? " for the selected organisations." : " across the corpus."))
             : "No document types found.";
         } catch (e) { if (note) note.textContent = "Could not load document types."; }
       }
-      if (orgSel) orgSel.addEventListener("change", refresh);
+      if (orgList) orgList.addEventListener("change", refresh);
       if (childCb) childCb.addEventListener("change", refresh);
+      if (dtFilter) dtFilter.addEventListener("input", function () { filterChecklist(dtList, dtFilter.value); });
       refresh();
     })();
   </script>
