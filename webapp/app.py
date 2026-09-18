@@ -24,8 +24,9 @@ import re
 import threading
 import secrets
 import time
+import urllib.request
 from typing import Dict, List, Optional
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request
 from fastapi.responses import (HTMLResponse, JSONResponse, PlainTextResponse,
@@ -1591,6 +1592,56 @@ async def submit_feedback(request: Request):
         return JSONResponse({"ok": True})
     finally:
         conn.close()
+
+
+# ---- GOV.UK search (find gov.uk pages related to a query) ----------------
+_GOVUK_SEARCH_URL = "https://www.gov.uk/api/search.json"
+
+
+def _govuk_search(query: str, count: int = 20) -> dict:
+    """Query the official GOV.UK Search API and return {results:[{title,link,description}],
+    total}. Blocking (urllib) — call via run_in_threadpool. No API key needed."""
+    params = [("q", query), ("count", str(count))]
+    params += [("fields", f) for f in ("title", "link", "description")]
+    url = _GOVUK_SEARCH_URL + "?" + urlencode(params)
+    req = urllib.request.Request(url, headers={"User-Agent": "gov-uk-corpus-shortlist-builder",
+                                               "Accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        data = json.loads(r.read().decode("utf-8"))
+    out = []
+    for item in data.get("results", []):
+        link = str(item.get("link") or "")
+        if link.startswith("/"):
+            link = "https://www.gov.uk" + link
+        out.append({"title": (item.get("title") or link).strip(),
+                    "link": link, "description": (item.get("description") or "").strip()})
+    return {"results": out, "total": data.get("total")}
+
+
+@app.get("/govuk-search", response_class=HTMLResponse)
+def govuk_search_page(request: Request):
+    """Search GOV.UK for pages related to a query (guc-0019). Uses the official Search API."""
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    resp = templates.TemplateResponse("govuk_search.html", ctx(conn, request))
+    conn.close()
+    return resp
+
+
+@app.get("/api/govuk-search")
+async def api_govuk_search(request: Request, q: str = "", count: int = 20):
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    q = (q or "").strip()
+    if not q:
+        return JSONResponse({"results": [], "total": 0})
+    try:
+        data = await run_in_threadpool(_govuk_search, q, max(1, min(count, 50)))
+    except Exception as e:
+        logging.getLogger("govuk_search").warning("search failed: %s", e)
+        return JSONResponse({"error": "Couldn't reach GOV.UK search — try again."}, status_code=502)
+    return JSONResponse(data)
 
 
 @app.get("/api/categories/{cid}/runs")

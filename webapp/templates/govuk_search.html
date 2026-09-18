@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block page_id %}guc-0019{% endblock %}
+{% block title %}GOV.UK search{% endblock %}
+{% block content %}
+  <style>
+    #gs-form { display:flex; gap:10px; flex-wrap:wrap; align-items:center; max-width:760px; margin:6px 0 8px; }
+    #gs-q { flex:1 1 320px; min-width:0; padding:10px 12px; border:2px solid var(--black); border-radius:8px; font:inherit; }
+    .gs-result { padding:14px 0; border-bottom:1px solid var(--border,#e0e5ec); max-width:760px; }
+    .gs-result:last-child { border-bottom:0; }
+    .gs-title { font-size:17px; font-weight:700; margin:0 0 2px; }
+    .gs-title a { text-decoration:none; }
+    .gs-title a:hover { text-decoration:underline; }
+    .gs-link { font-size:13px; color:var(--green,#00703c); word-break:break-all; margin:0 0 4px; }
+    .gs-desc { font-size:14px; color:var(--ink); margin:0; max-width:70ch; }
+  </style>
+
+  <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
+  <h1 style="margin:16px 0 6px;">GOV.UK search</h1>
+  <p class="hint" style="max-width:760px;">Ask a question or give a topic and get a list of related pages from
+    GOV.UK, via the official GOV.UK Search API. For example: <em>pages related to the EU reset</em>.</p>
+
+  <form id="gs-form" onsubmit="return false;">
+    <input id="gs-q" type="search" placeholder="e.g. EU reset" autofocus autocomplete="off">
+    <label class="secondary" style="font-size:14px;">Results
+      <select id="gs-count" style="font:inherit;padding:8px;border:2px solid var(--black);border-radius:6px;">
+        <option>10</option><option selected>20</option><option>50</option>
+      </select>
+    </label>
+    <button class="btn" id="gs-go" type="submit">Search</button>
+  </form>
+  <p id="gs-status" class="secondary" style="max-width:760px;"></p>
+
+  <div id="gs-results"></div>
+
+  <script>
+    const gsQ = document.getElementById("gs-q");
+    const gsCount = document.getElementById("gs-count");
+    const gsGo = document.getElementById("gs-go");
+    const gsStatus = document.getElementById("gs-status");
+    const gsOut = document.getElementById("gs-results");
+    function gsEsc(s){ const d = document.createElement("div"); d.textContent = s == null ? "" : s; return d.innerHTML; }
+
+    async function gsSearch() {
+      const q = gsQ.value.trim();
+      if (!q) { gsStatus.textContent = "Enter a question or topic."; return; }
+      gsGo.disabled = true;
+      gsStatus.innerHTML = '<span class="spinner"></span> Searching GOV.UK…';
+      gsOut.innerHTML = "";
+      try {
+        const params = new URLSearchParams({ q, count: gsCount.value });
+        const j = await (await fetch(`/api/govuk-search?${params}`)).json();
+        if (j.error) { gsStatus.textContent = "Error: " + j.error; return; }
+        const rows = j.results || [];
+        if (!rows.length) { gsStatus.textContent = "No GOV.UK pages found for that."; return; }
+        gsStatus.textContent = rows.length + " of " + (j.total != null ? j.total.toLocaleString() : "many")
+          + " page" + (j.total === 1 ? "" : "s") + " matching “" + q + "”.";
+        gsOut.innerHTML = rows.map(r =>
+          `<div class="gs-result">
+             <p class="gs-title"><a href="${gsEsc(r.link)}" target="_blank" rel="noopener">${gsEsc(r.title)}</a></p>
+             <p class="gs-link">${gsEsc(r.link)}</p>
+             ${r.description ? `<p class="gs-desc">${gsEsc(r.description)}</p>` : ""}
+           </div>`).join("");
+      } catch (e) {
+        gsStatus.textContent = "Could not run the search.";
+      } finally {
+        gsGo.disabled = false;
+      }
+    }
+    document.getElementById("gs-form").addEventListener("submit", gsSearch);
+  </script>
+{% endblock %}
