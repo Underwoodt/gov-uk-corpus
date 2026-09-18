@@ -87,6 +87,15 @@ def get_org(conn, slug: str) -> Optional[Dict[str, Any]]:
     return dict(row) if row else None
 
 
+def all_orgs(conn) -> List[Dict[str, Any]]:
+    """Every organisation as {slug, title}, ordered by title — for the org multi-select
+    (the UI shows the title, the category stores the slug)."""
+    rows = conn.execute(
+        "SELECT slug, COALESCE(title, slug) AS title FROM organisations "
+        "ORDER BY LOWER(COALESCE(title, slug))").fetchall()
+    return [dict(r) for r in rows]
+
+
 import re as _re
 
 # Function/noise words that would over-match (generic org words match nearly everything).

@@ -68,14 +68,24 @@
 
     <div class="field">
       <label class="q" for="dept_slugs">Organisations <span class="secondary" style="font-weight:400;">(Pre-Inference Filtering: 1)</span></label>
-      <p class="hint">Organisation slugs, comma-separated or one per line (e.g. <code>environment-agency</code>).
-        Leave blank to search all organisations.</p>
+      <p class="hint">Pick the organisations whose pages to include — the title is shown, the slug is stored.
+        Type to filter, and Ctrl/Cmd-click (or Shift-click) to choose several. Leave none selected to search all organisations.</p>
       <details><summary>How this narrows your search</summary>
         <div class="detail"><p>A page is kept if one of these organisations published it or is named on it.
           Everything after this point looks only at those pages, so a tighter choice means a faster, cheaper
-          run and fewer irrelevant results. Use the exact slug (the last part of the org's gov.uk path).</p></div></details>
-      <textarea id="dept_slugs" name="dept_slugs" rows="3"
-        placeholder="environment-agency&#10;rural-payments-agency">{{ v.dept_slugs or '' }}</textarea>
+          run and fewer irrelevant results.</p></div></details>
+      <input type="search" id="org-filter" placeholder="Filter organisations…" autocomplete="off"
+        style="width:100%;max-width:520px;box-sizing:border-box;padding:8px 10px;border:2px solid var(--black);border-radius:6px;margin-bottom:6px;">
+      <select id="dept_slugs" name="dept_slugs" multiple size="12"
+        style="width:100%;max-width:520px;box-sizing:border-box;border:2px solid var(--black);border-radius:6px;padding:4px;font:inherit;">
+        {% for o in org_options %}
+        <option value="{{ o.slug }}" data-t="{{ (o.title ~ ' ' ~ o.slug)|lower }}" {{ 'selected' if o.slug in selected_orgs }}>{{ o.title }}</option>
+        {% endfor %}
+        {% for s in selected_orgs %}{% if s not in org_option_slugs %}
+        <option value="{{ s }}" data-t="{{ s|lower }}" selected>{{ s }} (not in the org list)</option>
+        {% endif %}{% endfor %}
+      </select>
+      <p class="secondary" id="org-count" style="font-size:13px;margin:6px 0 0;"></p>
       <label class="check" style="margin-top:12px;">
         <input type="checkbox" name="include_child_orgs" value="1" {{ 'checked' if v.include_child_orgs }}>
         Include child organisations
@@ -164,7 +174,14 @@
       var f; try { f = JSON.parse(raw); } catch (e) { return; }
       function setByName(name, val) {
         var el = document.getElementById(name) || document.querySelector('[name="' + name + '"]');
-        if (el && !el.readOnly) el.value = val;
+        if (!el || el.readOnly) return;
+        if (el.tagName === "SELECT" && el.multiple) {   // e.g. Organisations
+          var want = String(val == null ? "" : val).split(/[\n,]/).map(function (s) { return s.trim().toLowerCase(); }).filter(Boolean);
+          [].forEach.call(el.options, function (o) { o.selected = want.indexOf(o.value.toLowerCase()) !== -1; });
+          el.dispatchEvent(new Event("change"));
+          return;
+        }
+        el.value = val;
       }
       ["slug","owner_email","dept_slugs","document_type_slugs","keywords","inclusion_context",
        "exclusion_context","adjudication_hints_keep","adjudication_hints_drop"].forEach(function (k) {
@@ -175,6 +192,28 @@
       var banner = document.getElementById("prefill-banner");
       if (banner) banner.hidden = false;
       try { sessionStorage.removeItem("category_prefill"); } catch (e) {}
+    })();
+
+    // Organisations multi-select: type-to-filter and a live selected-count line.
+    (function () {
+      var sel = document.getElementById("dept_slugs");
+      if (!sel) return;
+      var filter = document.getElementById("org-filter");
+      var count = document.getElementById("org-count");
+      function updateCount() {
+        var n = sel.selectedOptions.length;
+        if (count) count.textContent = n
+          ? (n + " organisation" + (n === 1 ? "" : "s") + " selected")
+          : "None selected — searches all organisations.";
+      }
+      if (filter) filter.addEventListener("input", function () {
+        var q = filter.value.trim().toLowerCase();
+        [].forEach.call(sel.options, function (o) {
+          o.hidden = !!q && (o.dataset.t || o.textContent.toLowerCase()).indexOf(q) === -1;
+        });
+      });
+      sel.addEventListener("change", updateCount);
+      updateCount();
     })();
   </script>
 {% endblock %}

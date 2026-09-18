@@ -485,9 +485,11 @@ def login_redirect(request: Request) -> RedirectResponse:
 def form_values(form) -> dict:
     """Flatten a submitted form into a category data dict."""
     d = {k: (form.get(k) or "").strip() for k in
-         ("slug", "owner_email", "dept_slugs", "document_type_slugs", "keywords",
+         ("slug", "owner_email", "document_type_slugs", "keywords",
           "inclusion_context", "exclusion_context",
           "adjudication_hints_keep", "adjudication_hints_drop")}
+    # Organisations is a multi-select — collect every selected slug (stored newline-separated).
+    d["dept_slugs"] = "\n".join(s.strip() for s in form.getlist("dept_slugs") if s.strip())
     d["include_child_orgs"] = form.get("include_child_orgs")  # checkbox: "on" or absent
     d["description"] = cat.prettify(d.get("slug"))  # keep the Streamlit list name sensible
     return d
@@ -878,6 +880,8 @@ async def update_category(request: Request, cid: int):
 
 
 def _form_ctx(conn, request, category, values, errors) -> dict:
+    org_options = orgs.all_orgs(conn)
+    selected_orgs = cat.parse_list((values or {}).get("dept_slugs"))
     return ctx(
         conn, request,
         is_edit=category is not None,
@@ -886,6 +890,9 @@ def _form_ctx(conn, request, category, values, errors) -> dict:
                 else str(request.url_for("create_category"))),
         v=values or {},
         default_doc_types=DEFAULT_DOC_TYPES,
+        org_options=org_options,
+        org_option_slugs=[o["slug"] for o in org_options],
+        selected_orgs=selected_orgs,
         errors=errors,
     )
 
