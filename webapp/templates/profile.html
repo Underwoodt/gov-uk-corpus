@@ -8,10 +8,11 @@
   {% if accounts_mode and me %}
   <div class="tabs" role="tablist" style="margin:0 0 22px;">
     <a href="#" class="stab current" data-tab="details">Your details</a>
+    <a href="#" class="stab" data-tab="password">Password</a>
     <a href="#" class="stab" data-tab="interface">Interface complexity</a>
   </div>
 
-  <!-- Section 1: Your details (name, email, password) -->
+  <!-- Section 1: Your details (name, email) -->
   <section class="stabpanel" data-tab="details" id="details" style="max-width:660px;margin:0 0 40px;">
     <h2 style="margin:0 0 12px;">Your details</h2>
 
@@ -31,8 +32,11 @@
         <span class="hint" style="display:block;margin-top:6px;">This is your sign-in and can't be changed here.</span></div>
       <button class="btn" type="submit">Save details</button>
     </form>
+  </section>
 
-    <h3 style="margin:34px 0 10px;">Change your password</h3>
+  <!-- Section 2: Password -->
+  <section class="stabpanel" data-tab="password" id="password" style="max-width:660px;margin:0 0 40px;" hidden>
+    <h2 style="margin:0 0 12px;">Change your password</h2>
     {% if pw_ok %}<div class="success">Your password was changed.</div>{% endif %}
     {% if pw_error %}<div class="error-summary"><h2>There is a problem</h2>
       <ul><li>{{ pw_error }}</li></ul></div>{% endif %}
@@ -105,8 +109,9 @@
         panels.forEach(p => p.hidden = p.dataset.tab !== t);
       }
       tabs.forEach(a => a.addEventListener("click", e => { e.preventDefault(); show(a.dataset.tab); }));
-      // If a save redirect targeted the interface anchor, open that tab; otherwise details.
-      show(location.hash === "#interface" ? "interface" : "details");
+      // Open the tab a save redirect targeted (#password / #interface), else Your details.
+      const h = location.hash;
+      show(h === "#interface" ? "interface" : (h === "#password" ? "password" : "details"));
     })();
   </script>
 {% endblock %}
