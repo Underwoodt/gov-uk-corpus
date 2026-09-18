@@ -195,6 +195,13 @@ tbody tr:hover { background:var(--surface-2); }
 .metric-label { font-size:15px; color:var(--muted); }
 
 /* ---- spinner + timings ---- */
+/* "Show SQL" disclosures under lists (advanced users only). */
+.sql-details { margin:8px 0 0; }
+.sql-details > summary { cursor:pointer; font-size:13px; color:var(--blue); font-weight:600; }
+.sql-pre { white-space:pre-wrap; font-size:13px; line-height:1.45; overflow-x:auto;
+  background:var(--surface-2); border:1px solid var(--border); border-radius:6px;
+  padding:10px 12px; margin:6px 0 0; }
+
 .spinner { display:inline-block; width:16px; height:16px; vertical-align:-3px;
   border:3px solid var(--border-mid); border-top-color:var(--blue); border-radius:50%;
   animation:spin .7s linear infinite; }

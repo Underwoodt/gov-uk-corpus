@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_sql.html" import sql_details %}
 {% block page_id %}guc-0010{% endblock %}
 {% block title %}Settings{% endblock %}
 {% block content %}
@@ -76,6 +77,7 @@
         </tbody>
       </table>
       </div>
+      {{ sql_details(models_sql) }}
       <button class="btn" type="submit">Save settings</button>
     </form>
 

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_sql.html" import sql_panel %}
 {% block page_id %}guc-0007{% endblock %}
 {% block title %}{{ category.display_name }} — results{% endblock %}
 {% block content %}
@@ -44,6 +45,7 @@
     <button class="btn secondary-btn" id="next" type="button">Next ›</button>
   </div>
   <p id="status" class="secondary"></p>
+  {{ sql_panel("results-sql") }}
 
   <script>
     const CID = {{ category.id }};
@@ -80,6 +82,7 @@
           + (query ? `&q=${encodeURIComponent(query)}` : "");
         const j = await (await fetch(url)).json();
         if (j.error) { document.getElementById("status").textContent = "Error: " + j.error; return; }
+        if (window.setSqlPanel) setSqlPanel("results-sql", j.sql);
         total = j.total; rows = j.rows || [];   // total may be null if the count was slow
         const known = total != null;
         document.getElementById("total").textContent = known ? fmtInt(total) : "?";

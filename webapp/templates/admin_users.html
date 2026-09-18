@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_sql.html" import sql_details %}
 {% block page_id %}guc-0020{% endblock %}
 {% block title %}User administration{% endblock %}
 {% block content %}
@@ -29,6 +30,7 @@
       {% endfor %}
     </tbody>
   </table></div>
+  {{ sql_details(list_sql) }}
   {% else %}<p class="secondary">No users yet.</p>{% endif %}
 
   <h2 style="margin:36px 0 8px;">Add a user</h2>

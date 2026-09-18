@@ -692,7 +692,9 @@ def list_categories_page(request: Request, flash: str = ""):
         hit = counts.get(int(r["id"]))
         r["pages_kept"] = "{:,}".format(hit["pages_kept"]) if hit and hit["pages_kept"] is not None else "—"
         r["pages_kept_at"] = (hit["computed_at"] or "")[:10] if hit else ""
-    return templates.TemplateResponse("list.html", ctx(conn, request, categories=rows, flash=flash))
+    lsql, lparams = cat.list_categories_query()
+    return templates.TemplateResponse("list.html", ctx(
+        conn, request, categories=rows, flash=flash, list_sql=_display_sql(lsql, lparams)))
 
 
 # ---- create -------------------------------------------------------------
@@ -1136,6 +1138,12 @@ def api_audit_stats(request: Request, cid: int, stage: str = "keyword"):
     return JSONResponse(out)
 
 
+def _display_sql(sql: str, params) -> str:
+    """Pretty, parameter-inlined SQL for the advanced-only 'Show SQL' links under lists.
+    Display only — the executed query still uses safe parameter binding."""
+    return shortlist.pretty_sql(shortlist.interpolate_sql(sql, list(params or [])))
+
+
 @app.get("/api/categories/{cid}/org-breakdown")
 def api_org_breakdown(request: Request, cid: int):
     """Pages contributed by EACH organisation, within the document-type + keyword filters
@@ -1157,7 +1165,11 @@ def api_org_breakdown(request: Request, cid: int):
         conn.close()
         return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=500)
     conn.close()
-    return JSONResponse({"orgs": orgs_out})
+    osql, oparams = shortlist.org_breakdown_query(
+        organisations=filters["organisations"], document_types=filters["document_types"],
+        keywords=filters["keywords"], match="any")
+    sql = _display_sql(osql, oparams) if osql else "-- No organisations set for this category."
+    return JSONResponse({"orgs": orgs_out, "sql": sql})
 
 
 @app.get("/api/categories/{cid}/keyword-breakdown")
@@ -1175,16 +1187,20 @@ def api_keyword_breakdown(request: Request, cid: int):
     filters = _effective_filters(conn, category)
     base = {"organisations": filters["organisations"], "document_types": filters["document_types"]}
     terms = []
+    blocks = []
     for kw in filters["keywords"]:
         try:
             n = cached_count(conn, keywords=[kw], match="any", **base)
         except Exception:
             n = None            # a single slow/failed term shouldn't sink the whole panel
         terms.append({"keyword": kw, "count": n})
+        cs, cp = shortlist.build_query(count_only=True, keywords=[kw], match="any", **base)
+        blocks.append(f"-- Count for keyword: {kw}\n{_display_sql(cs, cp)};")
     conn.close()
     # Sort by count desc (None last), preserving order for ties.
     terms.sort(key=lambda t: (t["count"] is None, -(t["count"] or 0)))
-    return JSONResponse({"terms": terms})
+    sql = "\n\n".join(blocks) if blocks else "-- No keywords set for this category."
+    return JSONResponse({"terms": terms, "sql": sql})
 
 
 @app.get("/api/categories/{cid}/results")
@@ -1839,7 +1855,8 @@ def api_list_runs(request: Request, cid: int):
             r["target"] = src.get("kept") if src else None   # exclusion re-checks the inclusion's keeps
         else:
             r["target"] = shortlist_total()
-    out = {"runs": runs, "active": _active_run(conn, cid)}
+    rsql, rparams = evaluate.list_runs_query(cid)
+    out = {"runs": runs, "active": _active_run(conn, cid), "sql": _display_sql(rsql, rparams)}
     conn.close()
     return JSONResponse(out)
 
@@ -2036,8 +2053,10 @@ def api_run_results(request: Request, cid: int, run_id: str, keep: str = ""):
         return JSONResponse({"error": "auth"}, status_code=401)
     k = int(keep) if keep in ("0", "1") else None
     conn = connect()
+    rsql, rparams = evaluate.run_results_query(run_id, keep=k, limit=500)
     out = {"run": evaluate.get_run(conn, run_id),
-           "rows": evaluate.run_results(conn, run_id, keep=k, limit=500)}
+           "rows": evaluate.run_results(conn, run_id, keep=k, limit=500),
+           "sql": _display_sql(rsql, rparams)}
     conn.close()
     return JSONResponse(out)
 
@@ -2167,8 +2186,9 @@ def api_results_table(request: Request, cid: int, limit: int = 50, offset: int =
     try:
         # Fetch the page of rows first — the important part. A single page is cheap even
         # when the whole-shortlist count is slow.
-        _keys, rows = shortlist.export_rows(conn, _RESULTS_FIELDS, limit=limit, offset=offset,
-                                            **filters, **extra)
+        _keys, esql, eparams = shortlist.export_query(_RESULTS_FIELDS, limit=limit, offset=offset,
+                                                      **filters, **extra)
+        rows = [dict(r) for r in conn.execute(esql, tuple(eparams)).fetchall()]
     except Exception as e:
         conn.close()
         return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=500)
@@ -2178,7 +2198,8 @@ def api_results_table(request: Request, cid: int, limit: int = 50, offset: int =
     except Exception:
         total = None
     conn.close()
-    return JSONResponse({"total": total, "rows": rows, "limit": limit, "offset": offset, "q": q})
+    return JSONResponse({"total": total, "rows": rows, "limit": limit, "offset": offset, "q": q,
+                         "sql": _display_sql(esql, eparams)})
 
 
 # ---- audit shortlist (browse/extract the pages at any funnel stage) -----
@@ -2259,7 +2280,8 @@ def api_audit_shortlist(request: Request, cid: int, stage: str = "keyword",
     keys_wanted = [f for f in fields if f in shortlist.EXPORT_FIELDS] or list(_AUDIT_DEFAULT_FIELDS)
     filters = _merge_extra(sq, (q or "").strip())
     try:
-        keys, rows = shortlist.export_rows(conn, keys_wanted, limit=limit, offset=offset, **filters)
+        keys, esql, eparams = shortlist.export_query(keys_wanted, limit=limit, offset=offset, **filters)
+        rows = [dict(r) for r in conn.execute(esql, tuple(eparams)).fetchall()]
     except Exception as e:
         conn.close()
         return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=500)
@@ -2269,7 +2291,8 @@ def api_audit_shortlist(request: Request, cid: int, stage: str = "keyword",
         total = None
     conn.close()
     return JSONResponse({"stage": stage, "keys": keys, "rows": rows, "total": total,
-                         "limit": limit, "offset": offset, "q": (q or "").strip()})
+                         "limit": limit, "offset": offset, "q": (q or "").strip(),
+                         "sql": _display_sql(esql, eparams)})
 
 
 @app.get("/categories/{cid}/download", response_class=HTMLResponse)
@@ -2556,9 +2579,11 @@ def admin_users_page(request: Request, user_ok: int = 0, user_error: str = ""):
     if not _require_admin(request):
         conn.close()
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
+    usql, uparams = accounts.list_users_query()
     resp = templates.TemplateResponse("admin_users.html", ctx(
         conn, request, active_nav="users", users=accounts.list_users(conn),
-        account_roles=accounts.ROLES, user_ok=user_ok, user_error=user_error))
+        account_roles=accounts.ROLES, user_ok=user_ok, user_error=user_error,
+        list_sql=_display_sql(usql, uparams)))
     conn.close()
     return resp
 
@@ -2644,8 +2669,10 @@ def settings_page(request: Request, saved: int = 0, user_ok: int = 0, user_error
         for ph in (evaluate.PHASE_INCLUSION, evaluate.PHASE_EXCLUSION, evaluate.PHASE_ADJUDICATION)]
     accounts_mode = AUTH_MODE == "accounts"
     users = accounts.list_users(conn) if accounts_mode else None
+    _msql, _mparams = ai_models.list_models_query()
     resp = templates.TemplateResponse("settings.html", ctx(
         conn, request, active_nav="settings", models=models,
+        models_sql=_display_sql(_msql, _mparams),
         accounts_mode=accounts_mode, users=users, account_roles=accounts.ROLES,
         user_ok=user_ok, user_error=user_error,
         providers=list(PROVIDERS.keys()), phase_models=phase_models,

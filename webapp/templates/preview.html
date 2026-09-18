@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_sql.html" import sql_panel %}
 {% set page_ref = "guc-0003" %}
 {% block page_id %}{{ page_ref }}{% endblock %}
 {% block title %}{{ category.display_name }} — preview{% endblock %}
@@ -98,6 +99,7 @@
           and keyword filters). Organisations overlap, so these don't sum to the total.</p>
         <table style="width:100%;"><tbody id="org-rows"><tr><td class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr></tbody></table>
         <p id="org-empty" class="secondary" hidden>No organisations set for this category.</p>
+        {{ sql_panel("org-sql") }}
       </div>
 
       <div id="kw-breakdown">
@@ -109,6 +111,7 @@
           document-type filters). Terms overlap, so these don't sum to the keyword total.</p>
         <table style="width:100%;"><tbody id="kw-rows"><tr><td class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr></tbody></table>
         <p id="kw-empty" class="secondary" hidden>No keywords set for this category.</p>
+        {{ sql_panel("kw-sql") }}
       </div>
     </div>
 
@@ -135,6 +138,7 @@
         <button class="btn secondary-btn" id="kwp-next" type="button">Next ›</button>
       </div>
       <p id="kw-pages-status" class="secondary" style="margin:6px 0 0;"></p>
+      {{ sql_panel("kw-pages-sql") }}
     </div>
 
     <details style="margin-top:30px;" data-level="advanced"><summary>SQL queries that were run (per funnel stage)</summary>
@@ -213,6 +217,7 @@
         <tbody></tbody>
       </table>
       <p id="runs-empty" class="secondary" hidden>No runs yet. Start one on the <em>Active Run</em> tab.</p>
+      {{ sql_panel("runs-sql") }}
     </div>
     </section>
 
@@ -237,6 +242,7 @@
           <thead><tr><th>Page</th><th>Decision</th><th>Confidence</th><th class="num">Score</th><th>Reason</th></tr></thead>
           <tbody></tbody>
         </table>
+        {{ sql_panel("run-results-sql") }}
       </div>
       <p id="rr-empty" class="secondary" hidden>No runs yet — evaluate a category first on the Semantic Match tab.</p>
     </section>
@@ -305,6 +311,7 @@
       try {
         const j = await (await fetch(`/api/categories/${CID}/results-table?limit=${KWP_PAGE}&offset=${kwpOffset}`)).json();
         if (j.error) { tbody.innerHTML = ""; status.textContent = "Error: " + j.error; return; }
+        if (window.setSqlPanel) setSqlPanel("kw-pages-sql", j.sql);
         const rows = j.rows || [], total = j.total, known = total != null;
         document.getElementById("kw-pages-total").textContent = known ? (fmtInt(total) + " pages.") : "";
         document.getElementById("kw-pages-empty").hidden = rows.length !== 0 || (known && total !== 0);
@@ -337,6 +344,7 @@
       try {
         const j = await (await fetch(`/api/categories/${CID}/org-breakdown`)).json();
         orgRows = j.orgs || [];
+        if (window.setSqlPanel) setSqlPanel("org-sql", j.sql);
       } catch (e) {
         document.getElementById("org-rows").innerHTML =
           `<tr><td class="secondary" style="padding:10px 6px;">Could not load this breakdown.</td></tr>`;
@@ -376,6 +384,7 @@
       try {
         const j = await (await fetch(`/api/categories/${CID}/keyword-breakdown`)).json();
         kwTerms = j.terms || [];
+        if (window.setSqlPanel) setSqlPanel("kw-sql", j.sql);
       } catch (e) {
         document.getElementById("kw-rows").innerHTML =
           `<tr><td class="secondary" style="padding:10px 6px;">Could not load this breakdown.</td></tr>`;
@@ -529,6 +538,7 @@
 
     async function loadRuns() {
       const j = await (await fetch(`/api/categories/${CID}/runs`)).json();
+      if (window.setSqlPanel) setSqlPanel("runs-sql", j.sql);
       activeRun = j.active || null;
       document.getElementById("active-run-line").textContent =
         activeRun ? `Active run: ${activeRun} (Execute Active Run adds to it; “Create New Run” to compare a different model).`
@@ -667,6 +677,7 @@
       if (rrSel && [...rrSel.options].some(o => o.value === runId)) rrSel.value = runId;
       const j = await (await fetch(`/api/categories/${CID}/runs/${runId}/results?keep=${keep}`)).json();
       document.getElementById("run-results-wrap").hidden = false;
+      if (window.setSqlPanel) setSqlPanel("run-results-sql", j.sql);
       const run = j.run || {};
       document.getElementById("run-results-title").textContent =
         `Run ${runId} · ${run.provider || ""} / ${run.actual_model || run.model || ""} · `

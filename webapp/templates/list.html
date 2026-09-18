@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_sql.html" import sql_details %}
 {% block page_id %}guc-0001{% endblock %}
 {% block title %}Categories{% endblock %}
 {% block content %}
@@ -53,6 +54,7 @@
     </tbody>
   </table>
   </div>
+  {{ sql_details(list_sql) }}
   {% else %}
   <p style="margin:20px 0 40px;">No categories yet. Create one to get started.</p>
   {% endif %}

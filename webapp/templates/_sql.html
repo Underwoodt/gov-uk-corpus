@@ -1,0 +1,20 @@
+{# Reusable "Show SQL" disclosure for the list under which it sits. Advanced users only.
+   - sql_details(sql): server-rendered lists (SQL known at render time).
+   - sql_panel(id): JSON-fed lists — render empty + hidden, fill later with
+     window.setSqlPanel(id, sql) once the list's data (and its .sql) arrives. #}
+
+{% macro sql_details(sql, label="Show SQL") %}
+{% if sql %}
+<details class="sql-details" data-level="advanced">
+  <summary>{{ label }}</summary>
+  <pre class="mono sql-pre">{{ sql }}</pre>
+</details>
+{% endif %}
+{% endmacro %}
+
+{% macro sql_panel(pre_id, label="Show SQL") %}
+<details class="sql-details" data-level="advanced" hidden>
+  <summary>{{ label }}</summary>
+  <pre class="mono sql-pre" id="{{ pre_id }}"></pre>
+</details>
+{% endmacro %}

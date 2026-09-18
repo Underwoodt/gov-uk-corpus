@@ -286,10 +286,15 @@ def delete_run(conn, run_id: str) -> None:
     conn.commit()
 
 
+def list_runs_query(category_id: int):
+    """(sql, params) for a category's runs list — so the page can show the SQL it ran."""
+    return (f"SELECT * FROM evaluation_runs WHERE category_id = {_P} ORDER BY started_at DESC",
+            [category_id])
+
+
 def list_runs(conn, category_id: int) -> List[dict]:
-    rows = conn.execute(
-        f"SELECT * FROM evaluation_runs WHERE category_id = {_P} ORDER BY started_at DESC",
-        (category_id,)).fetchall()
+    sql, params = list_runs_query(category_id)
+    rows = conn.execute(sql, tuple(params)).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -500,8 +505,8 @@ def compare(conn, base_run: str, other_run: str) -> Dict[str, int]:
             "dropped": row["dropped"] or 0, "disagree": row["disagree"] or 0}
 
 
-def run_results(conn, run_id: str, keep: Optional[int] = None,
-                limit: Optional[int] = None) -> List[dict]:
+def run_results_query(run_id: str, keep: Optional[int] = None, limit: Optional[int] = None):
+    """(sql, params) for a run's per-page results — so the page can show the SQL it ran."""
     sql = f"SELECT url, keep, score, reason FROM evaluation_results WHERE run_id = {_P}"
     params: list = [run_id]
     if keep is not None:
@@ -510,4 +515,10 @@ def run_results(conn, run_id: str, keep: Optional[int] = None,
     sql += " ORDER BY score DESC NULLS LAST, url" if _IS_PG else " ORDER BY score DESC, url"
     if limit:
         sql += f" LIMIT {int(limit)}"
+    return sql, params
+
+
+def run_results(conn, run_id: str, keep: Optional[int] = None,
+                limit: Optional[int] = None) -> List[dict]:
+    sql, params = run_results_query(run_id, keep=keep, limit=limit)
     return [dict(r) for r in conn.execute(sql, tuple(params)).fetchall()]

@@ -183,12 +183,16 @@ def get_category(conn, cid: int) -> Optional[Dict[str, Any]]:
     return dict(row) if row else None
 
 
+def list_categories_query():
+    """(sql, params) for the categories list — so the page can show the SQL it ran."""
+    return ("SELECT id, slug, description, owner_email, dept_slugs, document_type_slugs, "
+            "status, created_at, updated_at "
+            "FROM categories ORDER BY created_at DESC", [])
+
+
 def list_categories(conn) -> List[Dict[str, Any]]:
-    rows = conn.execute(
-        "SELECT id, slug, description, owner_email, dept_slugs, document_type_slugs, "
-        "status, created_at, updated_at "
-        "FROM categories ORDER BY created_at DESC"
-    ).fetchall()
+    sql, params = list_categories_query()
+    rows = conn.execute(sql, tuple(params)).fetchall()
     return [dict(r) for r in rows]
 
 

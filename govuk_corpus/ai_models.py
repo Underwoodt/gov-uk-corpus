@@ -68,9 +68,14 @@ def normalise_prices(prices: Optional[Dict], input_per_m: float = 0.0,
     return d
 
 
+def list_models_query():
+    """(sql, params) for the models list — so Settings can show the SQL it ran."""
+    return (f"SELECT {_COLS} FROM ai_models ORDER BY provider, model_id", [])
+
+
 def list_models(conn) -> List[Dict]:
-    rows = conn.execute(
-        f"SELECT {_COLS} FROM ai_models ORDER BY provider, model_id").fetchall()
+    sql, params = list_models_query()
+    rows = conn.execute(sql, tuple(params)).fetchall()
     return [dict(r) for r in rows]
 
 

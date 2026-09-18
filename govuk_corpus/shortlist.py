@@ -274,13 +274,21 @@ EXPORT_FIELDS = {
 }
 
 
-def export_rows(conn, fields: Sequence[str], *, limit: Optional[int] = 100000,
-                offset: Optional[int] = None, **filters) -> Tuple[List[str], List[dict]]:
-    """(ordered field keys, rows) for the chosen fields. 'url' is always included first."""
+def export_query(fields: Sequence[str], *, limit: Optional[int] = 100000,
+                 offset: Optional[int] = None, **filters) -> Tuple[List[str], str, list]:
+    """(ordered field keys, sql, params) for the chosen fields — build without executing,
+    so callers can both run it and show the SQL. 'url' is always included first."""
     keys = [f for f in fields if f in EXPORT_FIELDS and f != "url"]
     keys = ["url"] + keys
     select_expr = ", ".join(f"{EXPORT_FIELDS[k][0]} AS {k}" for k in keys)
     sql, params = build_query(select_expr=select_expr, limit=limit, offset=offset, **filters)
+    return keys, sql, params
+
+
+def export_rows(conn, fields: Sequence[str], *, limit: Optional[int] = 100000,
+                offset: Optional[int] = None, **filters) -> Tuple[List[str], List[dict]]:
+    """(ordered field keys, rows) for the chosen fields. 'url' is always included first."""
+    keys, sql, params = export_query(fields, limit=limit, offset=offset, **filters)
     rows = [dict(r) for r in conn.execute(sql, tuple(params)).fetchall()]
     return keys, rows
 
@@ -312,13 +320,12 @@ def count(conn, **kwargs) -> int:
     return conn.execute(sql, tuple(params)).fetchone()["n"]
 
 
-def org_breakdown(conn, *, organisations: Sequence[str], document_types: Sequence[str] = (),
-                  keywords: Sequence[str] = (), match: str = "any", limit: int = 300) -> List[dict]:
-    """Pages contributed by EACH organisation, within the document-type + keyword filters.
-    One GROUP BY over the filtered set. Organisations overlap (a page can have several),
-    so the per-org counts don't sum to the shortlist total."""
+def org_breakdown_query(*, organisations: Sequence[str], document_types: Sequence[str] = (),
+                        keywords: Sequence[str] = (), match: str = "any",
+                        limit: int = 300) -> Tuple[Optional[str], list]:
+    """(sql, params) for the per-organisation breakdown, or (None, []) with no orgs."""
     if not organisations:
-        return []
+        return None, []
     where = []
     params: list = []
     ph = ",".join([_P] * len(organisations))
@@ -337,6 +344,18 @@ def org_breakdown(conn, *, organisations: Sequence[str], document_types: Sequenc
            f"FROM content c JOIN page_organisations po ON po.page_url = c.url "
            f"WHERE {' AND '.join(where)} "
            f"GROUP BY po.organisation_slug ORDER BY n DESC, po.organisation_slug LIMIT {int(limit)}")
+    return sql, params
+
+
+def org_breakdown(conn, *, organisations: Sequence[str], document_types: Sequence[str] = (),
+                  keywords: Sequence[str] = (), match: str = "any", limit: int = 300) -> List[dict]:
+    """Pages contributed by EACH organisation, within the document-type + keyword filters.
+    One GROUP BY over the filtered set. Organisations overlap (a page can have several),
+    so the per-org counts don't sum to the shortlist total."""
+    sql, params = org_breakdown_query(organisations=organisations, document_types=document_types,
+                                      keywords=keywords, match=match, limit=limit)
+    if sql is None:
+        return []
     return [{"organisation": r["org"], "count": r["n"]}
             for r in conn.execute(sql, tuple(params)).fetchall()]
 

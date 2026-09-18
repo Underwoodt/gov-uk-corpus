@@ -199,6 +199,19 @@
   </script>
 
   <script>
+    // Fill an advanced-only "Show SQL" panel (from _sql.html's sql_panel macro) once a
+    // JSON-fed list has loaded and returned its .sql. Reveals the disclosure only when
+    // there is SQL to show; advanced-gating still hides it for non-advanced users.
+    window.setSqlPanel = function (preId, sql) {
+      var pre = document.getElementById(preId);
+      if (!pre) return;
+      pre.textContent = sql || "-- (no SQL)";
+      var det = pre.closest("details");
+      if (det) det.hidden = false;
+    };
+  </script>
+
+  <script>
     // Policy: every textarea grows to fit its content. Native CSS field-sizing:content
     // (in govuk.css) handles this where supported; this is the fallback for browsers
     // that lack it — it grows to the CSS max-height, then lets the box scroll.

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_sql.html" import sql_panel %}
 {% set page_ref = "guc-0004" %}
 {% block page_id %}{{ page_ref }}{% endblock %}
 {% block title %}{{ category.display_name }} — audit results{% endblock %}
@@ -87,6 +88,7 @@
       <p class="secondary" id="audit-count" style="margin:0 0 8px;"></p>
       <div style="overflow-x:auto;"><table id="audit-table" style="font-size:14px;"><thead></thead><tbody></tbody></table></div>
       <p id="audit-empty" class="secondary" hidden>No pages at this stage.</p>
+      {{ sql_panel("audit-sql") }}
       <div id="audit-pager" class="controls" style="margin-top:12px;align-items:center;" hidden>
         <button class="btn secondary-btn" id="audit-prev" type="button">‹ Prev</button>
         <span id="audit-range" class="secondary"></span>
@@ -194,6 +196,7 @@
       try {
         const j = await (await fetch(`/api/categories/${CID}/audit-shortlist?${params}`)).json();
         if (j.error) { cnt.textContent = "Error: " + j.error; return; }
+        if (window.setSqlPanel) setSqlPanel("audit-sql", j.sql);
         if (j.no_data) {
           cnt.textContent = j.message || "No data at this stage yet.";
           table.hidden = true; document.getElementById("audit-empty").hidden = true;

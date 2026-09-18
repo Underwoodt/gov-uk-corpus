@@ -198,10 +198,16 @@ def get_user(conn, user_id: str, *, with_hash: bool = False) -> Optional[dict]:
     return dict(row) if row else None
 
 
+def list_users_query():
+    """(sql, params) for the admin user list — so the page can show the SQL it ran."""
+    return (f"SELECT {_PUBLIC_COLS} FROM auth.users ORDER BY created_at DESC", [])
+
+
 def list_users(conn) -> List[dict]:
     """All accounts (public columns, no hashes), newest first — for the admin user list."""
     _require_pg()
-    rows = conn.execute(f"SELECT {_PUBLIC_COLS} FROM auth.users ORDER BY created_at DESC").fetchall()
+    sql, params = list_users_query()
+    rows = conn.execute(sql, tuple(params)).fetchall()
     return [dict(r) for r in rows]
 
 
