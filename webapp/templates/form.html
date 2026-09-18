@@ -26,6 +26,8 @@
       opacity:.55; background:var(--surface-2,#f3f2f1); pointer-events:none; }
     .dt-disabled .chk-search { cursor:not-allowed; }
     .dt-hint-locked { color:var(--muted,#6b7477); }
+    /* Keywords box shows every term: native auto-size where supported, JS fallback otherwise. */
+    #keywords { box-sizing:border-box; min-height:96px; overflow:hidden; resize:vertical; field-sizing:content; }
   </style>
 
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
@@ -160,8 +162,7 @@
             <li>Prefer the specific term: slurry, lagoon, catch certificate.</li>
           </ul>
         </div></details>
-      <textarea id="keywords" name="keywords" rows="4" class="auto-grow"
-        style="overflow:hidden;resize:vertical;min-height:96px;">{{ v.keywords or '' }}</textarea>
+      <textarea id="keywords" name="keywords" rows="4">{{ v.keywords or '' }}</textarea>
     </div>
 
     <div class="field">
@@ -345,18 +346,24 @@
       renderSelected(dtList, dtBox, DT_EMPTY);   // show the saved selection immediately
       refresh();
     })();
+  </script>
 
-    // Keywords box grows to fit every term, so a long list is fully visible without
-    // an inner scrollbar. The user can still drag the handle to shrink it.
+  <!-- Keywords box auto-grow. In its own <script> so an error in the block above can't
+       stop it from running; native field-sizing handles browsers that support it. -->
+  <script>
     (function () {
       var ta = document.getElementById("keywords");
       if (!ta) return;
+      if ("fieldSizing" in ta.style) return;   // native field-sizing:content already sizes it
       function grow() {
+        if (ta.offsetParent === null) return;   // hidden — measuring gives the wrong height
         ta.style.height = "auto";
-        ta.style.height = ta.scrollHeight + "px";
+        ta.style.height = (ta.scrollHeight + 2) + "px";
       }
       ta.addEventListener("input", grow);
-      grow();   // size to the saved value on load
+      grow();                                    // size to the saved value now
+      window.addEventListener("load", grow);     // and again once fonts/layout settle
+      if (window.requestAnimationFrame) requestAnimationFrame(grow);
     })();
   </script>
 {% endblock %}
