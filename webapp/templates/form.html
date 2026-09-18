@@ -30,9 +30,15 @@
     about one topic. These rules build a shortlist of pages, which you can then run.</p>
 
   {% if not is_edit %}
-  <p style="margin:0 0 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-    <a class="btn secondary-btn" href="{{ url_for('category_assistant_page') }}">Let AI Help</a>
-    <span class="secondary">Not sure where to start? Let the assistant interview you.</span></p>
+  <div style="margin:0 0 24px;padding:14px 16px;border:1px solid var(--border-mid,#b1b4b6);
+    border-radius:8px;background:var(--surface-2,#f3f2f1);display:flex;align-items:center;
+    gap:14px;flex-wrap:wrap;">
+    <span aria-hidden="true" style="font-size:22px;line-height:1;">🤖</span>
+    <span class="secondary" style="flex:1 1 260px;min-width:240px;">Prefer to be interviewed?
+      Let the assistant ask a few questions and fill this form in for you.</span>
+    <a class="btn secondary-btn" href="{{ url_for('category_assistant_page') }}"
+      style="margin:0;">Complete with the assistant</a>
+  </div>
   <div id="prefill-banner" class="success" hidden>Pre-filled by the assistant — review the fields and save.</div>
   {% endif %}
 
