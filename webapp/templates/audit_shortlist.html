@@ -67,7 +67,7 @@
             <div class="secondary" style="font-weight:700;font-size:13px;margin-bottom:4px;">{{ section }}</div>
             {% for key, label, default_on, disabled, warning in section_fields %}{% if key != 'content' %}
             <label class="check" style="display:block;font-size:14px;">
-              <input type="checkbox" class="audit-col" value="{{ key }}" checked> {{ label }}
+              <input type="checkbox" class="audit-col" value="{{ key }}" {{ '' if key == 'url' else 'checked' }}> {{ label }}
             </label>
             {% endif %}{% endfor %}
           </div>
@@ -189,7 +189,10 @@
           table.hidden = true; document.getElementById("audit-empty").hidden = true;
           document.getElementById("audit-pager").hidden = true; return;
         }
-        const keys = j.keys || [], rows = j.rows || [];
+        // export_rows always returns url first (needed for the title link); only *show* the
+        // url column when it's ticked, so it defaults off in the table but downloads still key on it.
+        const urlOn = !!document.querySelector('.audit-col[value="url"]:checked');
+        const keys = (j.keys || []).filter(k => k !== "url" || urlOn), rows = j.rows || [];
         auditTotal = j.total;
         document.querySelector("#audit-table thead").innerHTML =
           "<tr>" + keys.map(k => `<th>${esc(AUDIT_LABELS[k] || k)}</th>`).join("") + "</tr>";
