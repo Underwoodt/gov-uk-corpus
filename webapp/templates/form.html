@@ -97,12 +97,17 @@
 
     <div class="field">
       <label class="q" for="document_type_slugs">Page Types <span class="secondary" style="font-weight:400;">(Pre-Inference Filtering: 2)</span></label>
-      <p class="hint">Document type slugs, comma-separated or one per line. Prefilled with the common
-        guidance types below — edit or clear as needed.</p>
+      <p class="hint">The document types the selected organisations publish, with a page count — pick the ones
+        to include (Ctrl/Cmd-click for several). The list updates when you change the organisations above.
+        Select none to include every type.</p>
       <details><summary>How this narrows your search</summary>
         <div class="detail"><p>A page has to match both an organisation (if you set any) and one of these
-          types. Clear the box to search every kind.</p></div></details>
-      <textarea id="document_type_slugs" name="document_type_slugs" rows="5">{{ v.document_type_slugs or default_doc_types }}</textarea>
+          types. The counts come from the corpus for the chosen organisations.</p></div></details>
+      <select id="document_type_slugs" name="document_type_slugs" multiple size="10"
+        style="width:100%;max-width:520px;box-sizing:border-box;border:2px solid var(--black);border-radius:6px;padding:4px;font:inherit;">
+        {% for s in selected_doc_types %}<option value="{{ s }}" selected>{{ s|replace('_',' ')|title }}</option>{% endfor %}
+      </select>
+      <p class="secondary" id="dt-note" style="font-size:13px;margin:6px 0 0;"></p>
     </div>
 
     <div class="field">
@@ -214,6 +219,52 @@
       });
       sel.addEventListener("change", updateCount);
       updateCount();
+    })();
+
+    // Page Types: fetch the document types (with counts) the selected organisations publish,
+    // rebuild the multi-select "Guidance (345)" sorted by count, preserving any selection.
+    (function () {
+      var orgSel = document.getElementById("dept_slugs");
+      var dtSel = document.getElementById("document_type_slugs");
+      var childCb = document.querySelector('[name="include_child_orgs"]');
+      var note = document.getElementById("dt-note");
+      if (!dtSel) return;
+      function titleCase(s){ return String(s).replace(/_/g, " ").replace(/\b\w/g, function (c) { return c.toUpperCase(); }); }
+      function selectedOrgs(){ return orgSel ? [].map.call(orgSel.selectedOptions, function (o) { return o.value; }) : []; }
+      function currentTypes(){ return [].filter.call(dtSel.options, function (o) { return o.selected; }).map(function (o) { return o.value; }); }
+      var seq = 0;
+      async function refresh() {
+        var keep = currentTypes(), orgs = selectedOrgs();
+        var params = new URLSearchParams();
+        if (orgs.length) params.set("orgs", orgs.join(","));
+        if (childCb && childCb.checked) params.set("children", "1");
+        var mine = ++seq;
+        if (note) note.textContent = "Loading document types…";
+        try {
+          var j = await (await fetch("/api/doc-type-counts?" + params.toString())).json();
+          if (mine !== seq) return;               // a newer request superseded this one
+          var types = j.types || [], keepSet = {}, present = {};
+          keep.forEach(function (k) { keepSet[k] = true; });
+          dtSel.innerHTML = "";
+          types.forEach(function (t) {
+            present[t.type] = true;
+            var o = document.createElement("option");
+            o.value = t.type;
+            o.textContent = titleCase(t.type) + " (" + Number(t.count).toLocaleString() + ")";
+            if (keepSet[t.type]) o.selected = true;
+            dtSel.appendChild(o);
+          });
+          keep.forEach(function (k) {             // keep a selected type even if it has no pages now
+            if (!present[k]) { var o = document.createElement("option"); o.value = k; o.textContent = titleCase(k) + " (0)"; o.selected = true; dtSel.appendChild(o); }
+          });
+          if (note) note.textContent = types.length
+            ? (types.length + " document type" + (types.length === 1 ? "" : "s") + (orgs.length ? " for the selected organisations." : " across the corpus."))
+            : "No document types found.";
+        } catch (e) { if (note) note.textContent = "Could not load document types."; }
+      }
+      if (orgSel) orgSel.addEventListener("change", refresh);
+      if (childCb) childCb.addEventListener("change", refresh);
+      refresh();
     })();
   </script>
 {% endblock %}

@@ -485,11 +485,11 @@ def login_redirect(request: Request) -> RedirectResponse:
 def form_values(form) -> dict:
     """Flatten a submitted form into a category data dict."""
     d = {k: (form.get(k) or "").strip() for k in
-         ("slug", "owner_email", "document_type_slugs", "keywords",
-          "inclusion_context", "exclusion_context",
+         ("slug", "owner_email", "keywords", "inclusion_context", "exclusion_context",
           "adjudication_hints_keep", "adjudication_hints_drop")}
-    # Organisations is a multi-select — collect every selected slug (stored newline-separated).
+    # Organisations and Page Types are multi-selects — collect every selected slug.
     d["dept_slugs"] = "\n".join(s.strip() for s in form.getlist("dept_slugs") if s.strip())
+    d["document_type_slugs"] = "\n".join(s.strip() for s in form.getlist("document_type_slugs") if s.strip())
     d["include_child_orgs"] = form.get("include_child_orgs")  # checkbox: "on" or absent
     d["description"] = cat.prettify(d.get("slug"))  # keep the Streamlit list name sensible
     return d
@@ -889,10 +889,10 @@ def _form_ctx(conn, request, category, values, errors) -> dict:
         action=(str(request.url_for("update_category", cid=category["id"])) if category
                 else str(request.url_for("create_category"))),
         v=values or {},
-        default_doc_types=DEFAULT_DOC_TYPES,
         org_options=org_options,
         org_option_slugs=[o["slug"] for o in org_options],
         selected_orgs=selected_orgs,
+        selected_doc_types=cat.parse_list((values or {}).get("document_type_slugs")),
         errors=errors,
     )
 
@@ -1711,6 +1711,43 @@ async def api_govuk_search(request: Request):
         logging.getLogger("govuk_search").warning("search failed: %s", e)
         return JSONResponse({"error": "Couldn't reach GOV.UK search — try again."}, status_code=502)
     return JSONResponse(data)
+
+
+def _doc_type_counts(conn, org_slugs) -> list:
+    """Corpus document types (effective type) with page counts, restricted to the given
+    organisations, newest-largest first. Empty org list = the whole corpus."""
+    where = ["c.is_redirect = 0", "c.content_hash IS NOT NULL"]
+    params = []
+    if org_slugs:
+        ph = ",".join([shortlist._P] * len(org_slugs))
+        where.append("EXISTS (SELECT 1 FROM page_organisations po WHERE po.page_url = c.url "
+                     f"AND po.organisation_slug IN ({ph}))")
+        params += list(org_slugs)
+        # Effective type (html_publication -> parent) matches the funnel; the org subset is small.
+        eff = shortlist.EFFECTIVE_DOCTYPE_EXPR
+    else:
+        # Whole corpus: use the raw type so the grouping stays fast.
+        eff = "c.document_type"
+    sql = (f"SELECT {eff} AS dt, COUNT(*) AS n FROM content c "
+           f"WHERE {' AND '.join(where)} GROUP BY {eff} ORDER BY n DESC")
+    rows = conn.execute(sql, tuple(params)).fetchall()
+    return [{"type": r["dt"], "count": r["n"]} for r in rows if r["dt"]]
+
+
+@app.get("/api/doc-type-counts")
+def api_doc_type_counts(request: Request, orgs: str = "", children: str = "0"):
+    """Document types (with counts) available in the corpus for the given organisation slugs
+    — feeds the Page Types multi-select on the category form."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    slugs = cat.parse_list(orgs)
+    conn = connect()
+    try:
+        if slugs and str(children) in ("1", "true", "on"):
+            slugs = orgs.expand_with_children(conn, slugs)
+        return JSONResponse({"types": _doc_type_counts(conn, slugs)})
+    finally:
+        conn.close()
 
 
 @app.get("/api/categories/{cid}/runs")
