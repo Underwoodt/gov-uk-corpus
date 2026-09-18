@@ -42,12 +42,12 @@
     <span class="service">Content Relevance Filters</span>
     <a href="{{ url_for('list_categories_page') }}" class="{{ 'active' if active_nav not in ['assistant','settings'] }}">Categories</a>
     <a href="{{ url_for('assistant_page') }}" class="{{ 'active' if active_nav == 'assistant' }}" data-level="admin">AI Assistant</a>
-    <a href="{{ url_for('profile_page') }}" class="{{ 'active' if active_nav == 'profile' }}">Profile</a>
     <a href="{{ url_for('settings_page') }}" class="{{ 'active' if active_nav == 'settings' }}" data-level="admin">Settings</a>
     {% if user %}
     <form method="post" action="{{ url_for('do_logout') }}" style="margin-left:auto;display:flex;align-items:center;gap:12px;">
       <input type="hidden" name="csrf" value="{{ csrf_token }}">
-      <span class="service" title="{{ user.email }}">{{ user.first_name }} {{ user.last_name }}</span>
+      <a href="{{ url_for('profile_page') }}" class="service {{ 'active' if active_nav == 'profile' }}"
+        title="{{ user.email }} — your profile">{{ user.first_name }} {{ user.last_name }}</a>
       <button type="submit" style="background:none;border:0;padding:14px 2px;font:inherit;color:var(--grey-text);cursor:pointer;">Sign out</button>
     </form>
     {% endif %}
