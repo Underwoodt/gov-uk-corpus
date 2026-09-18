@@ -92,6 +92,7 @@ def all_orgs(conn) -> List[Dict[str, Any]]:
     (the UI shows the title, the category stores the slug)."""
     rows = conn.execute(
         "SELECT slug, COALESCE(title, slug) AS title FROM organisations "
+        "WHERE slug NOT LIKE '/world%' "          # drop worldwide/embassy orgs (title-less URLs)
         "ORDER BY LOWER(COALESCE(title, slug))").fetchall()
     return [dict(r) for r in rows]
 

@@ -11,6 +11,16 @@
       cursor:pointer; border-radius:4px; }
     .chk-item:hover { background:var(--surface-2,#f3f2f1); }
     .chk-item input { width:18px; height:18px; flex:0 0 auto; margin:0; }
+    /* Selected-items summary box (GDS-style removable tags). */
+    .sel-box { max-width:520px; box-sizing:border-box; display:flex; flex-wrap:wrap; gap:6px;
+      align-items:center; min-height:38px; border:1px solid var(--border-mid,#b1b4b6); border-radius:6px;
+      padding:6px 8px; background:var(--surface-2,#f3f2f1); margin-bottom:6px; }
+    .sel-empty { color:var(--muted,#6b7477); font-size:14px; padding:0 2px; }
+    .sel-chip { display:inline-flex; align-items:center; gap:6px; background:var(--blue,#1d70b8); color:#fff;
+      border-radius:4px; padding:3px 4px 3px 10px; font-size:13px; font-weight:600; }
+    .sel-x { background:none; border:0; color:#fff; font-size:16px; line-height:1; cursor:pointer;
+      padding:0 3px; border-radius:3px; }
+    .sel-x:hover { background:rgba(255,255,255,.25); }
   </style>
 
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
@@ -84,6 +94,7 @@
         <div class="detail"><p>A page is kept if one of these organisations published it or is named on it.
           Everything after this point looks only at those pages, so a tighter choice means a faster, cheaper
           run and fewer irrelevant results.</p></div></details>
+      <div class="sel-box" id="org-selected" aria-live="polite"></div>
       <input type="search" id="org-filter" class="chk-search" placeholder="Search organisations…" autocomplete="off">
       <div class="checklist" id="org-list">
         {% for o in org_options %}
@@ -112,6 +123,7 @@
       <details><summary>How this narrows your search</summary>
         <div class="detail"><p>A page has to match both an organisation (if you set any) and one of these
           types. The counts come from the corpus for the chosen organisations.</p></div></details>
+      <div class="sel-box" id="dt-selected" aria-live="polite"></div>
       <input type="search" id="dt-filter" class="chk-search" placeholder="Search document types…" autocomplete="off">
       <div class="checklist" id="dt-list">
         {% for s in selected_doc_types %}
@@ -218,20 +230,42 @@
       });
     }
 
+    // Render the ticked items of a checklist as removable tags in a summary box.
+    function renderSelected(listEl, boxEl, emptyText) {
+      if (!listEl || !boxEl) return;
+      var checked = [].slice.call(listEl.querySelectorAll('input:checked'));
+      boxEl.innerHTML = "";
+      if (!checked.length) {
+        var e = document.createElement("span"); e.className = "sel-empty"; e.textContent = emptyText; boxEl.appendChild(e); return;
+      }
+      checked.forEach(function (b) {
+        var span = b.parentNode.querySelector("span");
+        var label = (span ? span.textContent : b.value).replace(/\s*\(\d[\d,]*\)\s*$/, "");   // drop trailing "(345)"
+        var chip = document.createElement("span"); chip.className = "sel-chip";
+        var t = document.createElement("span"); t.textContent = label;
+        var x = document.createElement("button");
+        x.type = "button"; x.className = "sel-x"; x.setAttribute("aria-label", "Remove " + label); x.textContent = "×";
+        x.addEventListener("click", function () { b.checked = false; b.dispatchEvent(new Event("change", { bubbles: true })); });
+        chip.appendChild(t); chip.appendChild(x); boxEl.appendChild(chip);
+      });
+    }
+
     // Organisations checkbox list: search + a live ticked-count line.
     (function () {
       var list = document.getElementById("org-list");
       if (!list) return;
       var filter = document.getElementById("org-filter"), count = document.getElementById("org-count");
-      function updateCount() {
+      var box = document.getElementById("org-selected");
+      function refreshUI() {
         var n = list.querySelectorAll('input:checked').length;
         if (count) count.textContent = n
           ? (n + " organisation" + (n === 1 ? "" : "s") + " selected")
           : "None selected — searches all organisations.";
+        renderSelected(list, box, "No organisations selected — searches all organisations.");
       }
       if (filter) filter.addEventListener("input", function () { filterChecklist(list, filter.value); });
-      list.addEventListener("change", updateCount);
-      updateCount();
+      list.addEventListener("change", refreshUI);
+      refreshUI();
     })();
 
     // Page Types checkbox list: fetch the document types (with counts) the ticked organisations
@@ -240,9 +274,11 @@
       var orgList = document.getElementById("org-list");
       var dtList = document.getElementById("dt-list");
       var dtFilter = document.getElementById("dt-filter");
+      var dtBox = document.getElementById("dt-selected");
       var childCb = document.querySelector('[name="include_child_orgs"]');
       var note = document.getElementById("dt-note");
       if (!dtList) return;
+      var DT_EMPTY = "No document types selected — includes every type.";
       function titleCase(s){ return String(s).replace(/_/g, " ").replace(/\b\w/g, function (c) { return c.toUpperCase(); }); }
       function selectedOrgs(){ return orgList ? [].map.call(orgList.querySelectorAll('input:checked'), function (b) { return b.value; }) : []; }
       function currentTypes(){ return [].map.call(dtList.querySelectorAll('input:checked'), function (b) { return b.value; }); }
@@ -269,6 +305,7 @@
           types.forEach(function (t) { present[t.type] = true; addItem(t.type, titleCase(t.type) + " (" + Number(t.count).toLocaleString() + ")", keepSet[t.type]); });
           keep.forEach(function (k) { if (!present[k]) addItem(k, titleCase(k) + " (0)", true); });
           filterChecklist(dtList, dtFilter ? dtFilter.value : "");
+          renderSelected(dtList, dtBox, DT_EMPTY);
           if (note) note.textContent = types.length
             ? (types.length + " document type" + (types.length === 1 ? "" : "s") + (orgs.length ? " for the selected organisations." : " across the corpus."))
             : "No document types found.";
@@ -277,6 +314,8 @@
       if (orgList) orgList.addEventListener("change", refresh);
       if (childCb) childCb.addEventListener("change", refresh);
       if (dtFilter) dtFilter.addEventListener("input", function () { filterChecklist(dtList, dtFilter.value); });
+      dtList.addEventListener("change", function () { renderSelected(dtList, dtBox, DT_EMPTY); });
+      renderSelected(dtList, dtBox, DT_EMPTY);   // show the saved selection immediately
       refresh();
     })();
   </script>
