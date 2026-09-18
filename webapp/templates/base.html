@@ -197,5 +197,33 @@
       });
     })();
   </script>
+
+  <script>
+    // Policy: every textarea grows to fit its content. Native CSS field-sizing:content
+    // (in govuk.css) handles this where supported; this is the fallback for browsers
+    // that lack it — it grows to the CSS max-height, then lets the box scroll.
+    (function () {
+      if ("fieldSizing" in document.createElement("textarea").style) return;  // native
+      function grow(ta) {
+        if (ta.offsetParent === null) return;   // hidden: measuring gives a wrong height
+        var max = Math.round(window.innerHeight * 0.6);
+        ta.style.height = "auto";
+        var h = Math.min(ta.scrollHeight + 2, max);
+        ta.style.height = h + "px";
+        ta.style.overflowY = (ta.scrollHeight + 2) > max ? "auto" : "hidden";
+      }
+      function wire() {
+        [].forEach.call(document.querySelectorAll("textarea"), function (ta) {
+          if (ta.__autogrow) return;
+          ta.__autogrow = true;
+          ta.addEventListener("input", function () { grow(ta); });
+          grow(ta);
+        });
+      }
+      if (document.readyState !== "loading") wire();
+      else document.addEventListener("DOMContentLoaded", wire);
+      window.addEventListener("load", wire);   // re-measure once fonts/layout settle
+    })();
+  </script>
 </body>
 </html>

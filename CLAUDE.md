@@ -32,6 +32,17 @@ Project conventions that must be followed for every change. This file is the hom
   (`th { white-space: normal; overflow-wrap: break-word }` in `govuk.css`); don't set
   `white-space: nowrap` on a `th` to force a single line.
 
+## Forms & inputs
+
+- **Textareas auto-size to their content.** A multi-line box grows to fit what it holds
+  so nothing is hidden behind an inner scrollbar — on first display *and* as the user
+  types. This is the global default in `govuk.css` (`textarea { field-sizing: content;
+  min-height; max-height: 60vh; overflow-y: auto; resize: vertical }`), with a JS
+  fallback in `base.html` for browsers without `field-sizing`. Don't give a `textarea` a
+  fixed height or `overflow:hidden` that defeats this; adjust `min-height`/`max-height`
+  if a specific box needs a different floor or ceiling. New textareas need no per-field
+  code — the default applies everywhere.
+
 ## App structure
 
 - Web app: FastAPI + Jinja in [webapp/app.py](webapp/app.py); domain logic in the
