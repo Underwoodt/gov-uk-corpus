@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block page_id %}guc-0018{% endblock %}
+{% block title %}{{ category.display_name }} — URL check{% endblock %}
+{% block content %}
+  <style>
+    #uc-urls { width:100%; max-width:760px; box-sizing:border-box; min-height:160px; padding:12px 14px;
+      border:2px solid var(--black); border-radius:10px; font:inherit; line-height:1.45; resize:vertical; }
+    #uc-table { font-size:14px; margin-top:8px; }
+    #uc-table th, #uc-table td { padding:8px 12px; }
+    .uc-c { text-align:center; white-space:nowrap; }
+    .uc-ok { color:var(--green,#00703c); font-weight:700; font-size:16px; }
+    .uc-no { color:var(--red,#d4351c); font-weight:700; font-size:16px; }
+    .uc-url { word-break:break-all; max-width:520px; }
+  </style>
+
+  <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
+
+  <div class="tabs">
+    <a href="{{ url_for('edit_category_page', cid=category.id) }}">Definition</a>
+    <a href="{{ url_for('preview_category_page', cid=category.id) }}">Preview and run</a>
+    <a href="{{ url_for('shortlist_page', cid=category.id) }}">Audit Results</a>
+    <a href="{{ url_for('performance_page', cid=category.id) }}" data-level="advanced">Run performance</a>
+    <span class="current">URL check</span>
+  </div>
+
+  <h1 style="margin:16px 0 6px;">URL check <span class="secondary" style="font-weight:400;font-size:18px;">— {{ category.display_name }}</span></h1>
+  <p class="hint" style="max-width:760px;">Paste gov.uk URLs (one per line) to check each one against this category:
+    whether it's <strong>in the corpus</strong>, whether it's an <strong>active</strong> page
+    (a live, fetched page — not withdrawn or a redirect), and whether it's <strong>in the final shortlist</strong>
+    (kept after the AI inclusion and exclusion passes).</p>
+
+  <label class="q" for="uc-urls" style="display:block;font-weight:700;margin-bottom:6px;">URLs</label>
+  <textarea id="uc-urls" placeholder="https://www.gov.uk/guidance/...&#10;https://www.gov.uk/government/publications/..."></textarea>
+  <div class="controls" style="margin:12px 0;align-items:center;gap:14px;">
+    <button class="btn" id="uc-check" type="button">Check URLs</button>
+    <span id="uc-status" class="secondary"></span>
+  </div>
+
+  <div style="overflow-x:auto;">
+    <table id="uc-table" hidden>
+      <thead><tr>
+        <th>URL</th>
+        <th class="uc-c">In the corpus</th>
+        <th class="uc-c">Active</th>
+        <th class="uc-c">In the final shortlist</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <script>
+    const UC_CID = {{ category.id }};
+    const ucBtn = document.getElementById("uc-check");
+    const ucBox = document.getElementById("uc-urls");
+    const ucStatus = document.getElementById("uc-status");
+    function ucEsc(s){ const d = document.createElement("div"); d.textContent = s == null ? "" : s; return d.innerHTML; }
+    function ucMark(ok){ return ok
+      ? '<span class="uc-ok" title="Yes" aria-label="yes">&#10004;</span>'
+      : '<span class="uc-no" title="No" aria-label="no">&#10008;</span>'; }
+
+    async function ucRun() {
+      const urls = ucBox.value.split("\n").map(s => s.trim()).filter(Boolean);
+      if (!urls.length) { ucStatus.textContent = "Enter at least one URL."; return; }
+      ucBtn.disabled = true;
+      ucStatus.innerHTML = '<span class="spinner"></span> Checking ' + urls.length + ' URL' + (urls.length === 1 ? '' : 's') + '…';
+      try {
+        const r = await fetch(`/api/categories/${UC_CID}/url-check`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ urls })
+        });
+        const j = await r.json();
+        if (j.error) { ucStatus.textContent = "Error: " + j.error; return; }
+        const rows = j.results || [];
+        document.querySelector("#uc-table tbody").innerHTML = rows.map(x =>
+          `<tr><td class="uc-url"><a href="${ucEsc(x.url)}" target="_blank" rel="noopener">${ucEsc(x.url)}</a></td>`
+          + `<td class="uc-c">${ucMark(x.corpus)}</td>`
+          + `<td class="uc-c">${ucMark(x.active)}</td>`
+          + `<td class="uc-c">${ucMark(x.final)}</td></tr>`).join("");
+        document.getElementById("uc-table").hidden = rows.length === 0;
+        ucStatus.innerHTML = j.has_run ? "" :
+          '<em>No AI run yet for this category — “In the final shortlist” stays ✗ for every URL until the pipeline has run.</em>';
+      } catch (e) {
+        ucStatus.textContent = "Could not run the check.";
+      } finally {
+        ucBtn.disabled = false;
+      }
+    }
+    ucBtn.addEventListener("click", ucRun);
+  </script>
+{% endblock %}

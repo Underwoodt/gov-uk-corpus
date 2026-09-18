@@ -1465,6 +1465,75 @@ def performance_page(request: Request, cid: int):
     return resp
 
 
+@app.get("/categories/{cid}/url-check", response_class=HTMLResponse)
+def url_check_page(request: Request, cid: int):
+    """Check a set of pasted URLs against this category: in the corpus, active, and in the
+    final shortlist. An Advanced-level diagnostic page (guc-0018)."""
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    category = cat.get_category(conn, cid)
+    if not category:
+        conn.close()
+        return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
+    category["display_name"] = cat.prettify(category.get("slug")) or (category.get("description") or "Untitled")
+    resp = templates.TemplateResponse("url_check.html", ctx(conn, request, category=category))
+    conn.close()
+    return resp
+
+
+@app.post("/api/categories/{cid}/url-check")
+async def api_url_check(request: Request, cid: int):
+    """For each pasted URL return three checks against this category:
+    `corpus` (a row exists in content), `active` (a live, fetched page — not a redirect or
+    withdrawn), and `final` (kept in this category's final shortlist, after inclusion +
+    exclusion). URLs are de-duplicated and capped."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    body = await request.json()
+    raw = body.get("urls")
+    lines = raw.splitlines() if isinstance(raw, str) else (raw if isinstance(raw, list) else [])
+    urls, seen = [], set()
+    for u in lines:
+        u = str(u or "").strip()
+        if u and u not in seen:
+            seen.add(u)
+            urls.append(u)
+    urls = urls[:500]
+    if not urls:
+        return JSONResponse({"results": [], "has_run": False})
+    conn = connect()
+    try:
+        category = cat.get_category(conn, cid)
+        if not category:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        ph = ",".join([shortlist._P] * len(urls))
+        # 1 + 2 — in the corpus, and active (live/fetched, not a redirect or withdrawn).
+        info = {dict(r)["url"]: dict(r) for r in conn.execute(
+            f"SELECT url, is_redirect, withdrawn, content_hash FROM content WHERE url IN ({ph})",
+            tuple(urls)).fetchall()}
+        # 3 — in this category's final shortlist (the exclusion run's keeps, else inclusion's).
+        final, inc = set(), evaluate.latest_inclusion_run(conn, category["id"])
+        if inc:
+            run_id = evaluate.latest_exclusion_run(conn, inc) or inc
+            final = {dict(r)["url"] for r in conn.execute(
+                f"SELECT url FROM evaluation_results WHERE run_id = {shortlist._P} AND keep = 1 "
+                f"AND url IN ({ph})", tuple([run_id, *urls])).fetchall()}
+        results = []
+        for u in urls:
+            row = info.get(u)
+            results.append({
+                "url": u,
+                "corpus": row is not None,
+                "active": bool(row and not row.get("is_redirect") and not row.get("withdrawn")
+                               and row.get("content_hash")),
+                "final": u in final,
+            })
+        return JSONResponse({"results": results, "has_run": bool(inc)})
+    finally:
+        conn.close()
+
+
 @app.get("/api/categories/{cid}/runs")
 def api_list_runs(request: Request, cid: int):
     if not authed(request):
