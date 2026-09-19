@@ -321,10 +321,12 @@
         if (orgs.length) params.set("orgs", orgs.join(","));
         if (childCb && childCb.checked) params.set("children", "1");
         var mine = ++seq;
-        if (note) note.textContent = "Loading document types…";
+        if (note) { note.style.color = ""; note.textContent = "Loading document types…"; }
         try {
-          var j = await (await fetch("/api/doc-type-counts?" + params.toString())).json();
+          var res = await fetch("/api/doc-type-counts?" + params.toString());
+          var j = await res.json().catch(function () { return {}; });
           if (mine !== seq) return;               // a newer request superseded this one
+          if (!res.ok || j.error) throw new Error(j.error || ("HTTP " + res.status));
           var types = j.types || [], keepSet = {}, present = {};
           keep.forEach(function (k) { keepSet[k] = true; });
           dtList.innerHTML = "";
@@ -332,10 +334,13 @@
           keep.forEach(function (k) { if (!present[k]) addItem(k, titleCase(k) + " (0)", true); });
           filterChecklist(dtList, dtFilter ? dtFilter.value : "");
           renderSelected(dtList, dtBox, DT_EMPTY);
-          if (note) note.textContent = types.length
+          if (note) { note.style.color = ""; note.textContent = types.length
             ? (types.length + " document type" + (types.length === 1 ? "" : "s") + (orgs.length ? " for the selected organisations." : " across the corpus."))
-            : "No document types found.";
-        } catch (e) { if (note) note.textContent = "Could not load document types."; }
+            : "No document types found."; }
+        } catch (e) {
+          if (note) { note.style.color = "var(--red,#d4351c)";
+            note.textContent = "Error: " + (e && e.message ? e.message : e); }
+        }
       }
       if (orgList) orgList.addEventListener("change", refresh);
       if (childCb) childCb.addEventListener("change", refresh);
