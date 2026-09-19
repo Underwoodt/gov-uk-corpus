@@ -116,8 +116,13 @@ def refresh_all(conn) -> Dict[str, int]:
     updated = 0
     for r in rows:
         try:
-            _store(conn, int(r["id"]), _count_for(conn, r))
-            _refresh_membership(conn, r)   # persist the full org+dept+keyword shortlist
+            cid = int(r["id"])
+            # list_categories omits keywords/include_child_orgs; re-fetch the full row so the
+            # membership is the same keyword- and child-org-narrowed set that a save builds
+            # (otherwise the nightly would overwrite it with a broader org+doctype-only set).
+            full = cat.get_category(conn, cid) or r
+            _store(conn, cid, _count_for(conn, full))
+            _refresh_membership(conn, full)   # persist the full org+dept+keyword shortlist
             conn.commit()                  # commit per category so one big set can't lose the rest
             updated += 1
         except Exception:

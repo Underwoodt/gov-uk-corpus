@@ -76,6 +76,15 @@ class TestKeywordHits(unittest.TestCase):
         self.assertEqual(regions.get(3), 1)   # both         (b)
         self.assertIsInstance(data["sql"], str)   # stored-derivation display SQL
 
+    def test_refresh_all_keeps_keyword_narrowing_and_hits(self):
+        # The nightly path (refresh_all) must build the SAME keyword-narrowed membership as a
+        # save (refresh_one), with matched_keywords populated — not a broader org+doctype set.
+        category_counts.refresh_all(self.conn)
+        m = self._matched()
+        self.assertNotIn("https://www.gov.uk/d", m)              # keyword filter still applied
+        self.assertEqual(m["https://www.gov.uk/b"], ["nitrate", "slurry"])
+        self.assertEqual(len(m), 3)                              # a, b, c only
+
     def test_charts_fall_back_when_unstored(self):
         # Simulate pre-upgrade rows (matched_keywords never populated).
         self.conn.execute(
