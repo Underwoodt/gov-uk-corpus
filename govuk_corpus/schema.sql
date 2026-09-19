@@ -262,6 +262,22 @@ CREATE TABLE IF NOT EXISTS category_shortlist_pages (
 );
 CREATE INDEX IF NOT EXISTS idx_csp_category ON category_shortlist_pages(category_id);
 
+-- On-demand GOV.UK Search coverage: augmented shortlist with provenance vs GOV.UK Search.
+-- source is 'shortlister' | 'both' | 'search' (search-only may not be in our corpus, so
+-- content_id may be NULL). Separate from category_shortlist_pages so save-rebuild won't wipe it.
+CREATE TABLE IF NOT EXISTS category_search_pages (
+    category_id    INTEGER NOT NULL,
+    url            TEXT    NOT NULL,
+    content_id     TEXT,
+    title          TEXT,
+    document_type  TEXT,
+    source         TEXT,
+    phrases        TEXT,
+    computed_at    TEXT,
+    PRIMARY KEY (category_id, url)
+);
+CREATE INDEX IF NOT EXISTS idx_csrch_category ON category_search_pages(category_id, source);
+
 -- Reporting view: each category's materialised shortlist joined to page attributes.
 CREATE VIEW IF NOT EXISTS category_shortlist_report AS
 SELECT m.category_id, m.content_id, m.url, m.computed_at,

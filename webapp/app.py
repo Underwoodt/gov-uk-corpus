@@ -40,7 +40,8 @@ from govuk_corpus import accounts, ai_models, audit
 from govuk_corpus import categories as cat
 from govuk_corpus import category_counts, category_transfer, feedback, guardrails, sessions
 from govuk_corpus import (audit_stats, category_interview, evaluate, extract, orgs,
-                          peak_schedule, pricing, readability, reporting, roles, settings, shortlist)
+                          peak_schedule, pricing, readability, reporting, roles,
+                          search_augment, settings, shortlist)
 from govuk_corpus import orgs as orgs_mod   # stable module handle (some routes take an `orgs` param)
 from govuk_corpus.backend import db
 
@@ -1240,6 +1241,68 @@ def api_reporting_summary(request: Request, cid: int):
         conn.close()
 
 
+# ---- GOV.UK Search coverage (augment the shortlist with provenance) ------
+@app.post("/api/categories/{cid}/govuk-compare")
+async def api_govuk_compare(request: Request, cid: int):
+    """Run an org-scoped GOV.UK Search of the category's keywords, compare with its stored
+    shortlist, and persist the tagged union (Shortlister / Both / GOV.UK Search only)."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    conn = connect()
+    category = cat.get_category(conn, cid)
+    if not category:
+        conn.close()
+        return JSONResponse({"error": "not found"}, status_code=404)
+    filters = _effective_filters(conn, category)   # orgs (expanded) + keywords
+
+    def work():
+        return search_augment.compare(
+            conn, cid, filters["keywords"], filters["organisations"],
+            lambda phrases, org_slugs: _govuk_search_multi(phrases, org_slugs))
+    try:
+        out = await run_in_threadpool(work)
+    except Exception as e:
+        conn.close()
+        logging.getLogger("govuk_compare").warning("compare failed for %s: %s", cid, e)
+        return JSONResponse({"error": "Couldn't reach GOV.UK Search — try again."}, status_code=502)
+    conn.close()
+    return JSONResponse(out)
+
+
+@app.get("/api/categories/{cid}/augmented-pages")
+def api_augmented_pages(request: Request, cid: int, source: str = "", limit: int = 100, offset: int = 0):
+    """The stored GOV.UK-coverage augmented shortlist, tagged by source, paginated."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    limit = max(1, min(limit, 500))
+    offset = max(0, offset)
+    conn = connect()
+    try:
+        out = search_augment.augmented_pages(conn, cid, source=source, limit=limit, offset=offset)
+        out["summary"] = search_augment.summary(conn, cid)
+        return JSONResponse(out)
+    finally:
+        conn.close()
+
+
+@app.get("/categories/{cid}/augmented/download")
+def download_augmented(request: Request, cid: int):
+    """CSV of the augmented shortlist with the provenance source column."""
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    rows = search_augment.export_rows(conn, cid)
+    conn.close()
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["source", "url", "content_id", "title", "document_type", "phrases"])
+    for r in rows:
+        w.writerow([r.get("source"), r.get("url"), r.get("content_id"),
+                    r.get("title"), r.get("document_type"), r.get("phrases")])
+    return Response(buf.getvalue(), media_type="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="govuk-coverage-{cid}-{_dl_stamp()}.csv"'})
+
+
 @app.get("/api/categories/{cid}/org-breakdown")
 def api_org_breakdown(request: Request, cid: int):
     """Pages contributed by EACH organisation, within the document-type + keyword filters
@@ -1810,11 +1873,18 @@ def _phrase_q(phrase: str) -> str:
     return '"' + phrase.strip().strip('"') + '"'
 
 
-def _govuk_doctypes(phrase: str) -> tuple:
+def _govuk_org_params(organisations) -> list:
+    """GOV.UK Search API org filter params (repeatable) — scopes results to these org slugs.
+    The corpus's organisation_slug values are the gov.uk slugs, so they pass straight through."""
+    return [("filter_organisations", s) for s in (organisations or [])]
+
+
+def _govuk_doctypes(phrase: str, organisations=()) -> tuple:
     """The complete document-type distribution for a phrase (via the API's aggregate), as
-    {slug: count}, plus the total number of matching pages."""
+    {slug: count}, plus the total number of matching pages. Optionally org-scoped."""
     url, data = _govuk_get([("q", _phrase_q(phrase)), ("count", "0"),
-                            ("aggregate_content_store_document_type", "200")])
+                            ("aggregate_content_store_document_type", "200")]
+                           + _govuk_org_params(organisations))
     opts = data.get("aggregates", {}).get("content_store_document_type", {}).get("options", [])
     out = {}
     for o in opts:
@@ -1825,13 +1895,14 @@ def _govuk_doctypes(phrase: str) -> tuple:
     return out, int(data.get("total") or 0), url
 
 
-def _govuk_search_multi(phrases) -> dict:
+def _govuk_search_multi(phrases, organisations=()) -> dict:
     """Search GOV.UK for several phrases (one per line). Returns the combined page list
     (title, link, document type, which phrases matched), the full document-type set with
-    counts, per-phrase totals, and the query URLs used."""
+    counts, per-phrase totals, and the query URLs used. Optionally scoped to org slugs."""
+    org_params = _govuk_org_params(organisations)
     pages, doctypes, per_phrase, query_urls = {}, {}, [], []
     for phrase in phrases[:_GOVUK_MAX_PHRASES]:
-        dt, total, agg_url = _govuk_doctypes(phrase)
+        dt, total, agg_url = _govuk_doctypes(phrase, organisations)
         query_urls.append(agg_url)
         for slug, n in dt.items():
             doctypes[slug] = doctypes.get(slug, 0) + n
@@ -1840,7 +1911,7 @@ def _govuk_search_multi(phrases) -> dict:
         while start < _GOVUK_PER_PHRASE:
             count = min(100, _GOVUK_PER_PHRASE - start)
             url, data = _govuk_get([("q", _phrase_q(phrase)), ("count", str(count)), ("start", str(start))]
-                                   + [("fields", f) for f in _GOVUK_SEARCH_FIELDS])
+                                   + [("fields", f) for f in _GOVUK_SEARCH_FIELDS] + org_params)
             query_urls.append(url)
             res = data.get("results", [])
             if not res:

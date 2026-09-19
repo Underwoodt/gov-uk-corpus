@@ -5,6 +5,11 @@
 {% block title %}{{ category.display_name }} — preview{% endblock %}
 {% block content %}
   <style>
+    /* Provenance lozenges for GOV.UK Search coverage. */
+    .prov { display:inline-block; font-size:12px; font-weight:700; padding:2px 9px; border-radius:999px; white-space:nowrap; }
+    .prov-search { background:#fbe5d6; color:#8a3b12; }        /* gap: GOV.UK Search only */
+    .prov-both { background:#d9f2e4; color:var(--green-dark,#00703c); }
+    .prov-shortlister { background:#e8f1fb; color:var(--dark-blue,#003078); }
     /* Side-by-side breakdown panels with compact bars. auto-fit lets a single
        visible panel (e.g. no keywords) expand to full width. */
     .breakdowns { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));
@@ -172,6 +177,42 @@
       {{ sql_panel("kw-pages-sql") }}
     </div>
 
+    <div id="govuk-coverage" style="margin-top:36px;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;">
+        <h2 style="margin:0;font-size:19px;">GOV.UK Search coverage</h2>
+        <span>
+          <a href="#" id="gc-download" style="font-size:14px;" hidden>Download CSV</a>
+          <button type="button" class="btn secondary-btn" id="gc-run" style="margin-left:12px;padding:4px 12px;font-size:14px;">Compare with GOV.UK Search</button>
+        </span>
+      </div>
+      <p class="hint" style="margin-top:2px;">Runs GOV.UK's own Search for this category's keywords (scoped to its
+        organisations) and tags every page: <strong>Shortlister only</strong>, <strong>Both</strong>, or
+        <strong>GOV.UK Search only</strong> — the last are pages our filters didn't find. Stored until you re-run it.</p>
+      <div class="controls" id="gc-controls" style="align-items:center;gap:8px;" hidden>
+        <span id="gc-summary" class="secondary"></span>
+        <label class="secondary" style="margin-left:auto;font-size:14px;">Show
+          <select id="gc-source" style="font:inherit;padding:3px 6px;border:2px solid var(--black);border-radius:4px;margin-left:4px;">
+            <option value="">All</option>
+            <option value="search">GOV.UK Search only</option>
+            <option value="both">Both</option>
+            <option value="shortlister">Shortlister only</option>
+          </select>
+        </label>
+      </div>
+      <div style="overflow-x:auto;margin-top:8px;">
+        <table id="gc-table" style="font-size:14px;width:100%;">
+          <thead><tr><th>Source</th><th>Title</th><th>Document type</th><th>URL</th></tr></thead>
+          <tbody id="gc-rows"></tbody>
+        </table>
+      </div>
+      <div id="gc-pager" class="controls" style="margin-top:12px;align-items:center;" hidden>
+        <button class="btn secondary-btn" id="gc-prev" type="button">‹ Prev</button>
+        <span id="gc-range" class="secondary"></span>
+        <button class="btn secondary-btn" id="gc-next" type="button">Next ›</button>
+      </div>
+      <p id="gc-status" class="secondary" style="margin:8px 0 0;"></p>
+    </div>
+
     <details style="margin-top:30px;" data-level="advanced"><summary>SQL queries that were run (per funnel stage)</summary>
       <div class="detail" style="max-width:none;"><pre class="mono" style="white-space:pre-wrap;font-size:14px;">{{ sql }}</pre>
         <p class="secondary">The COUNT(*) query behind each funnel row, then the shortlist SELECT — separated by
@@ -333,6 +374,7 @@
       loadKeywordBreakdown();   // 'which terms matched'
       loadVenn();               // keyword-overlap Venn
       loadKwPages();            // 'pages in this shortlist'
+      loadCoverage();           // GOV.UK Search coverage (if a comparison exists)
     }
 
     // ---- Keyword overlap (UpSet plot) ----
@@ -415,6 +457,66 @@
     }
     document.getElementById("kwp-prev").addEventListener("click", () => { kwpOffset = Math.max(0, kwpOffset - KWP_PAGE); loadKwPages(); });
     document.getElementById("kwp-next").addEventListener("click", () => { kwpOffset += KWP_PAGE; loadKwPages(); });
+
+    // GOV.UK Search coverage — provenance-tagged augmented shortlist.
+    const GC_PAGE = 50;
+    let gcOffset = 0;
+    const PROV = { search: ["prov-search","GOV.UK Search only"], both: ["prov-both","Both"],
+                   shortlister: ["prov-shortlister","Shortlister only"] };
+    function provLozenge(s){ const p = PROV[s] || ["prov-shortlister", s]; return `<span class="prov ${p[0]}">${esc(p[1])}</span>`; }
+    async function loadCoverage() {
+      const tbody = document.getElementById("gc-rows"), status = document.getElementById("gc-status");
+      const source = document.getElementById("gc-source").value;
+      tbody.innerHTML = `<tr><td colspan="4" class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr>`;
+      try {
+        const j = await (await fetch(`/api/categories/${CID}/augmented-pages?source=${encodeURIComponent(source)}&limit=${GC_PAGE}&offset=${gcOffset}`)).json();
+        const sum = j.summary || {counts:{}, total:0};
+        const c = sum.counts || {};
+        if (!sum.total) {
+          document.getElementById("gc-controls").hidden = true;
+          document.getElementById("gc-download").hidden = true;
+          document.getElementById("gc-pager").hidden = true;
+          tbody.innerHTML = `<tr><td colspan="4" class="secondary" style="padding:10px 6px;">Not run yet — click “Compare with GOV.UK Search”.</td></tr>`;
+          status.textContent = ""; return;
+        }
+        document.getElementById("gc-controls").hidden = false;
+        document.getElementById("gc-download").hidden = false;
+        document.getElementById("gc-summary").innerHTML =
+          `${provLozenge("shortlister")} ${fmtInt(c.shortlister||0)} · ${provLozenge("both")} ${fmtInt(c.both||0)} · `
+          + `${provLozenge("search")} ${fmtInt(c.search||0)}` + (sum.computed_at ? ` <span class="secondary">· as of ${esc(String(sum.computed_at).slice(0,16).replace("T"," "))}</span>` : "");
+        const rows = j.rows || [], total = j.total;
+        tbody.innerHTML = rows.length ? rows.map(r =>
+          `<tr>` +
+            `<td>${provLozenge(r.source)}</td>` +
+            `<td><a href="${esc(r.url)}">${esc(r.title || r.url)}</a></td>` +
+            `<td>${esc(r.document_type || "—")}</td>` +
+            `<td><a href="${esc(r.url)}" class="mono" style="font-size:13px;">${esc(r.url)}</a></td>` +
+          `</tr>`).join("") : `<tr><td colspan="4" class="secondary" style="padding:10px 6px;">No pages for this filter.</td></tr>`;
+        const from = rows.length ? gcOffset + 1 : 0, to = gcOffset + rows.length;
+        document.getElementById("gc-range").textContent = `${fmtInt(from)}–${fmtInt(to)} of ${fmtInt(total)}`;
+        document.getElementById("gc-prev").disabled = gcOffset <= 0;
+        document.getElementById("gc-next").disabled = gcOffset + GC_PAGE >= total;
+        document.getElementById("gc-pager").hidden = total <= GC_PAGE;
+        document.getElementById("gc-download").href = `/categories/${CID}/augmented/download`;
+        status.textContent = "";
+      } catch (e) { tbody.innerHTML = ""; status.textContent = "Could not load the coverage list."; }
+    }
+    document.getElementById("gc-run").addEventListener("click", async () => {
+      const btn = document.getElementById("gc-run"), status = document.getElementById("gc-status");
+      btn.disabled = true; const label = btn.textContent; btn.textContent = "Comparing…";
+      status.innerHTML = '<span class="spinner"></span> Searching GOV.UK…';
+      try {
+        const r = await fetch(`/api/categories/${CID}/govuk-compare`, { method: "POST" });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || j.error) throw new Error(j.error || ("HTTP " + r.status));
+        gcOffset = 0; document.getElementById("gc-source").value = "";
+        await loadCoverage();
+      } catch (e) { status.style.color = "var(--red,#d4351c)"; status.textContent = "Error: " + (e.message || e); }
+      finally { btn.disabled = false; btn.textContent = label; }
+    });
+    document.getElementById("gc-source").addEventListener("change", () => { gcOffset = 0; loadCoverage(); });
+    document.getElementById("gc-prev").addEventListener("click", () => { gcOffset = Math.max(0, gcOffset - GC_PAGE); loadCoverage(); });
+    document.getElementById("gc-next").addEventListener("click", () => { gcOffset += GC_PAGE; loadCoverage(); });
 
     // "Which organisations matched" — per-organisation page counts, rendered as bars.
     const ORG_TOP = 8;
