@@ -295,7 +295,7 @@
           </span>
         </div>
         <p class="hint" style="margin-top:2px;">Augments the shortlist using GOV.UK's own Search: it runs the
-          category's keywords through the GOV.UK Search API (scoped to this category's organisations) and tags every
+          category's keywords through the GOV.UK Search API (scoped to this category's organisations and document types) and tags every
           page <strong>Shortlister only</strong>, <strong>Both</strong>, or <strong>GOV.UK Search only</strong> — the
           last are pages our filters missed. <em>Fetch GOV.UK-only pages</em> pulls those into the corpus so the AI
           Pipeline evaluates them too. Stored until you re-run it.</p>
@@ -485,8 +485,11 @@
         // Expert-only: the exact GOV.UK Search API queries we sent.
         const qbox = document.getElementById("gc-queries-box"), qpre = document.getElementById("gc-queries");
         const queries = sum.query_urls || [];
-        if (queries.length) { qpre.textContent = queries.join("\n"); qbox.hidden = false; }
-        else { qbox.hidden = true; }
+        if (queries.length) {
+          qpre.textContent = queries.map(q => (q && q.url != null)
+            ? `-- ${q.comment || ""}\n${q.url}` : String(q)).join("\n\n");
+          qbox.hidden = false;
+        } else { qbox.hidden = true; }
         if (!sum.total) {
           document.getElementById("gc-controls").hidden = true;
           document.getElementById("gc-download").hidden = true;

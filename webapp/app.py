@@ -1258,7 +1258,8 @@ async def api_govuk_compare(request: Request, cid: int):
     def work():
         return search_augment.compare(
             conn, cid, filters["keywords"], filters["organisations"],
-            lambda phrases, org_slugs: _govuk_search_multi(phrases, org_slugs))
+            lambda phrases, org_slugs, doctypes: _govuk_search_multi(phrases, org_slugs, doctypes),
+            document_types=filters["document_types"])
     try:
         out = await run_in_threadpool(work)
     except Exception as e:
@@ -1913,18 +1914,20 @@ def _phrase_q(phrase: str) -> str:
     return '"' + phrase.strip().strip('"') + '"'
 
 
-def _govuk_org_params(organisations) -> list:
-    """GOV.UK Search API org filter params (repeatable) — scopes results to these org slugs.
-    The corpus's organisation_slug values are the gov.uk slugs, so they pass straight through."""
-    return [("filter_organisations", s) for s in (organisations or [])]
+def _govuk_filter_params(organisations, document_types=()) -> list:
+    """GOV.UK Search API filter params (repeatable): organisations + document types. Corpus
+    org/doc-type slugs are the gov.uk slugs (content_store_document_type), so they pass through.
+    An empty list means no filter on that facet."""
+    return ([("filter_organisations", s) for s in (organisations or [])]
+            + [("filter_content_store_document_type", s) for s in (document_types or [])])
 
 
-def _govuk_doctypes(phrase: str, organisations=()) -> tuple:
+def _govuk_doctypes(phrase: str, organisations=(), document_types=()) -> tuple:
     """The complete document-type distribution for a phrase (via the API's aggregate), as
-    {slug: count}, plus the total number of matching pages. Optionally org-scoped."""
+    {slug: count}, plus the total number of matching pages. Optionally org/doc-type scoped."""
     url, data = _govuk_get([("q", _phrase_q(phrase)), ("count", "0"),
                             ("aggregate_content_store_document_type", "200")]
-                           + _govuk_org_params(organisations))
+                           + _govuk_filter_params(organisations, document_types))
     opts = data.get("aggregates", {}).get("content_store_document_type", {}).get("options", [])
     out = {}
     for o in opts:
@@ -1935,15 +1938,20 @@ def _govuk_doctypes(phrase: str, organisations=()) -> tuple:
     return out, int(data.get("total") or 0), url
 
 
-def _govuk_search_multi(phrases, organisations=()) -> dict:
+def _govuk_search_multi(phrases, organisations=(), document_types=()) -> dict:
     """Search GOV.UK for several phrases (one per line). Returns the combined page list
     (title, link, document type, which phrases matched), the full document-type set with
-    counts, per-phrase totals, and the query URLs used. Optionally scoped to org slugs."""
-    org_params = _govuk_org_params(organisations)
+    counts, per-phrase totals, and the query URLs used. Optionally scoped to org + doc-type slugs."""
+    filter_params = _govuk_filter_params(organisations, document_types)
+    # Human-readable scope for the annotated query list (expert box / query rolldown).
+    scope = (f"{len(organisations)} organisation(s)" if organisations else "all organisations")
+    scope += (f", {len(document_types)} document type(s)" if document_types else ", all document types")
     pages, doctypes, per_phrase, query_urls = {}, {}, [], []
     for phrase in phrases[:_GOVUK_MAX_PHRASES]:
-        dt, total, agg_url = _govuk_doctypes(phrase, organisations)
-        query_urls.append(agg_url)
+        dt, total, agg_url = _govuk_doctypes(phrase, organisations, document_types)
+        query_urls.append({"comment": f'Phrase "{phrase}": total matches + the full document-type '
+                                      f'breakdown ({scope}); exact-phrase match, no rows fetched.',
+                           "url": agg_url})
         for slug, n in dt.items():
             doctypes[slug] = doctypes.get(slug, 0) + n
         per_phrase.append({"phrase": phrase, "total": total})
@@ -1951,8 +1959,10 @@ def _govuk_search_multi(phrases, organisations=()) -> dict:
         while start < _GOVUK_PER_PHRASE:
             count = min(100, _GOVUK_PER_PHRASE - start)
             url, data = _govuk_get([("q", _phrase_q(phrase)), ("count", str(count)), ("start", str(start))]
-                                   + [("fields", f) for f in _GOVUK_SEARCH_FIELDS] + org_params)
-            query_urls.append(url)
+                                   + [("fields", f) for f in _GOVUK_SEARCH_FIELDS] + filter_params)
+            query_urls.append({"comment": f'Phrase "{phrase}": fetch matching pages '
+                                          f'(rows {start + 1}–{start + count}, {scope}).',
+                               "url": url})
             res = data.get("results", [])
             if not res:
                 break

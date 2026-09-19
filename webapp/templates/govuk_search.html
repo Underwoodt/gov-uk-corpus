@@ -111,8 +111,11 @@
 
         // Query rolldown (Expert+).
         if ((j.query_urls || []).length) {
-          document.getElementById("gs-query").innerHTML = j.query_urls.map(u =>
-            `<a href="${gsEsc(u)}" target="_blank" rel="noopener">${gsEsc(u)}</a>`).join("");
+          document.getElementById("gs-query").innerHTML = j.query_urls.map(q => {
+            const u = (q && q.url != null) ? q.url : q;          // objects or (legacy) plain strings
+            const c = (q && q.comment) ? `<div class="secondary" style="margin:8px 0 2px;">— ${gsEsc(q.comment)}</div>` : "";
+            return c + `<a href="${gsEsc(u)}" target="_blank" rel="noopener">${gsEsc(u)}</a>`;
+          }).join("");
           document.getElementById("gs-query-wrap").hidden = false;
         }
 
