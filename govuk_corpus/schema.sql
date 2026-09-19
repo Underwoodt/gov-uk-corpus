@@ -261,6 +261,20 @@ CREATE TABLE IF NOT EXISTS category_shortlist_pages (
 );
 CREATE INDEX IF NOT EXISTS idx_csp_category ON category_shortlist_pages(category_id);
 
+-- Reporting view: each category's materialised shortlist joined to page attributes.
+CREATE VIEW IF NOT EXISTS category_shortlist_report AS
+SELECT m.category_id, m.content_id, m.url, m.computed_at,
+       c.title, c.document_type,
+       CASE WHEN c.document_type = 'html_publication'
+            THEN COALESCE(NULLIF(c.parent_document_type, ''), c.document_type)
+            ELSE c.document_type END AS effective_document_type,
+       c.public_updated_at, c.first_published_at,
+       c.reading_age, c.gds_stars, c.gds_english_score,
+       (SELECT po.organisation_slug FROM page_organisations po
+        WHERE po.page_url = c.url AND po.role = 'primary' LIMIT 1) AS primary_org
+FROM category_shortlist_pages m
+JOIN content c ON c.url = m.url;
+
 -- Per-page feedback (guc-0019): a rating + comment left from the feedback widget on any page.
 CREATE TABLE IF NOT EXISTS page_feedback (
     id               INTEGER PRIMARY KEY,

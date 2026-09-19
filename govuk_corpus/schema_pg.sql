@@ -281,6 +281,21 @@ CREATE TABLE IF NOT EXISTS category_shortlist_pages (
 );
 CREATE INDEX IF NOT EXISTS idx_csp_category ON category_shortlist_pages(category_id);
 
+-- Reporting view: each category's materialised shortlist joined to page attributes,
+-- so BI tools / dashboards can read the filtered result without re-running the filters.
+CREATE OR REPLACE VIEW category_shortlist_report AS
+SELECT m.category_id, m.content_id, m.url, m.computed_at,
+       c.title, c.document_type,
+       CASE WHEN c.document_type = 'html_publication'
+            THEN COALESCE(NULLIF(c.parent_document_type, ''), c.document_type)
+            ELSE c.document_type END AS effective_document_type,
+       c.public_updated_at, c.first_published_at,
+       c.reading_age, c.gds_stars, c.gds_english_score,
+       (SELECT po.organisation_slug FROM page_organisations po
+        WHERE po.page_url = c.url AND po.role = 'primary' LIMIT 1) AS primary_org
+FROM category_shortlist_pages m
+JOIN content c ON c.url = m.url;
+
 -- Partial indexes over the "usable page" guard (is_redirect=0 AND content_hash
 -- IS NOT NULL) that every shortlist count carries. Lets the total count do an
 -- index-only scan and the document-type count skip the dead rows.

@@ -40,7 +40,7 @@ from govuk_corpus import accounts, ai_models, audit
 from govuk_corpus import categories as cat
 from govuk_corpus import category_counts, category_transfer, feedback, guardrails, sessions
 from govuk_corpus import (audit_stats, category_interview, evaluate, extract, orgs,
-                          peak_schedule, pricing, readability, roles, settings, shortlist)
+                          peak_schedule, pricing, readability, reporting, roles, settings, shortlist)
 from govuk_corpus.backend import db
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -1143,6 +1143,46 @@ def _display_sql(sql: str, params) -> str:
     """Pretty, parameter-inlined SQL for the advanced-only 'Show SQL' links under lists.
     Display only — the executed query still uses safe parameter binding."""
     return shortlist.pretty_sql(shortlist.interpolate_sql(sql, list(params or [])))
+
+
+# ---- reporting (read-only, over the persisted shortlist membership) ------
+@app.get("/api/reporting/categories")
+def api_reporting_overview(request: Request):
+    """Every category with its stored input-count and materialised shortlist size."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    conn = connect()
+    try:
+        return JSONResponse({"categories": reporting.overview(conn)})
+    finally:
+        conn.close()
+
+
+@app.get("/api/reporting/categories/{cid}/pages")
+def api_reporting_pages(request: Request, cid: int, limit: int = 100, offset: int = 0):
+    """A category's materialised shortlist pages (joined to content), paginated —
+    no filter re-execution."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    limit = max(1, min(limit, 500))
+    offset = max(0, offset)
+    conn = connect()
+    try:
+        return JSONResponse(reporting.category_pages(conn, cid, limit=limit, offset=offset))
+    finally:
+        conn.close()
+
+
+@app.get("/api/reporting/categories/{cid}/summary")
+def api_reporting_summary(request: Request, cid: int):
+    """Aggregates over a category's materialised shortlist — for dashboard charts."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    conn = connect()
+    try:
+        return JSONResponse(reporting.category_summary(conn, cid))
+    finally:
+        conn.close()
 
 
 @app.get("/api/categories/{cid}/org-breakdown")
