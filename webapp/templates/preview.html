@@ -143,6 +143,13 @@
         <div id="venn-svg" style="flex:1 1 340px;max-width:440px;"></div>
         <div id="venn-detail" style="flex:1 1 300px;min-width:260px;"></div>
       </div>
+      <div id="upset-block" style="margin-top:24px;">
+        <h3 style="margin:0 0 2px;font-size:16px;">Intersections (UpSet)</h3>
+        <p class="hint" style="margin-top:0;">Every keyword combination as a bar (its page count), with the dots
+          showing which terms it covers — clearer than the Venn once there are 4+ terms, and it shows every
+          combination exactly.</p>
+        <div id="upset-svg" style="overflow-x:auto;"></div>
+      </div>
       <p id="venn-status" class="secondary" style="margin:8px 0 0;"></p>
       {{ sql_panel("venn-sql") }}
     </div>
@@ -343,15 +350,20 @@
       if (n === 3) return [{cx:160,cy:150,rx:95,ry:95,rot:0},{cx:240,cy:150,rx:95,ry:95,rot:0},{cx:200,cy:225,rx:95,ry:95,rot:0}];
       if (n === 4) return [{cx:170,cy:180,rx:150,ry:88,rot:45},{cx:150,cy:170,rx:150,ry:88,rot:45},
                            {cx:250,cy:170,rx:150,ry:88,rot:-45},{cx:230,cy:180,rx:150,ry:88,rot:-45}];
-      var out=[]; for (var i=0;i<5;i++){ var a=(90-i*72)*Math.PI/180;
-        out.push({cx:200+45*Math.cos(a), cy:185-45*Math.sin(a), rx:150, ry:75, rot:-(90-i*72)}); }
+      // Upright, 5-fold-symmetric star: position AND orientation both advance by 72° (no
+      // pinwheel tilt), so it reads clean rather than skewed. Congruent ellipses can't
+      // realise all 31 regions — the innermost slivers live in the detail list / UpSet.
+      var out=[], C=220, cyc=210, d=46, rx=158, ry=82;
+      for (var i=0;i<5;i++){ var deg=-90+i*72, a=deg*Math.PI/180;
+        out.push({cx:C+d*Math.cos(a), cy:cyc+d*Math.sin(a), rx:rx, ry:ry, rot:deg}); }
       return out;
     }
+    function vennBox(n){ return n>=5 ? {W:440,H:420} : (n===4 ? {W:420,H:360} : {W:400,H:360}); }
     function vennInShape(px,py,s){ var t=(-s.rot)*Math.PI/180, dx=px-s.cx, dy=py-s.cy;
       var x=dx*Math.cos(t)-dy*Math.sin(t), y=dx*Math.sin(t)+dy*Math.cos(t);
       return (x*x)/(s.rx*s.rx)+(y*y)/(s.ry*s.ry) <= 1; }
     function renderVennSvg(n, counts){
-      var shapes=vennGeometry(n), W=400, H=360;
+      var shapes=vennGeometry(n), box=vennBox(n), W=box.W, H=box.H;
       var s=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-height:340px;" xmlns="http://www.w3.org/2000/svg">`;
       shapes.forEach(function(sh,i){ s+=`<g transform="translate(${sh.cx} ${sh.cy}) rotate(${sh.rot})">`
         +`<ellipse rx="${sh.rx}" ry="${sh.ry}" fill="${VENN_COLORS[i]}" fill-opacity="0.28" `
@@ -386,20 +398,49 @@
         +`<div style="font-weight:700;font-size:14px;margin:14px 0 6px;">Overlap detail (pages per combination)</div>`
         +`<div style="max-height:260px;overflow:auto;"><table style="font-size:13px;width:100%;"><tbody>${rows}</tbody></table></div>`;
     }
+    // UpSet plot: sorted intersection bars + a dot-matrix of which keywords each covers.
+    function renderUpset(keywords, counts, cap){
+      var n=keywords.length, combos=[];
+      for (var m=1; m<(1<<n); m++){ if (counts[m]) combos.push({mask:m, count:counts[m]}); }
+      combos.sort(function(a,b){ return b.count-a.count; });
+      if (cap) combos=combos.slice(0, cap);
+      if (!combos.length) return "";
+      var max=Math.max.apply(null, combos.map(function(c){return c.count;}));
+      var leftW=180, colW=30, barH=110, padTop=16, rowH=24;
+      var matrixTop=padTop+barH+22, W=leftW+combos.length*colW+16, H=matrixTop+n*rowH+8;
+      var s=`<svg viewBox="0 0 ${W} ${H}" width="${W}" style="max-width:100%;" xmlns="http://www.w3.org/2000/svg">`;
+      for (var i=0;i<n;i++){ if (i%2===0) s+=`<rect x="0" y="${matrixTop+i*rowH}" width="${W}" height="${rowH}" fill="#f3f2f1"/>`; }
+      combos.forEach(function(c,j){ var x=leftW+j*colW+colW/2, h=Math.round(c.count/max*barH), y=padTop+barH-h;
+        s+=`<rect x="${x-9}" y="${y}" width="18" height="${Math.max(1,h)}" fill="var(--blue,#1d70b8)" rx="2"/>`
+          +`<text x="${x}" y="${y-4}" text-anchor="middle" font-size="11" font-weight="700" fill="#0b0c0c">${fmtInt(c.count)}</text>`; });
+      for (var i=0;i<n;i++){ var yr=matrixTop+i*rowH+rowH/2;
+        s+=`<rect x="8" y="${yr-6}" width="12" height="12" rx="3" fill="${VENN_COLORS[i]}"/>`
+          +`<text x="26" y="${yr}" dominant-baseline="central" font-size="13">${esc(keywords[i])}</text>`; }
+      combos.forEach(function(c,j){ var x=leftW+j*colW+colW/2, members=[];
+        for (var i=0;i<n;i++){ if (c.mask&(1<<i)) members.push(i); }
+        for (var i=0;i<n;i++){ var yr=matrixTop+i*rowH+rowH/2; s+=`<circle cx="${x}" cy="${yr}" r="5.5" fill="#cfd4d6"/>`; }
+        if (members.length>1){ s+=`<line x1="${x}" y1="${matrixTop+members[0]*rowH+rowH/2}" x2="${x}" y2="${matrixTop+members[members.length-1]*rowH+rowH/2}" stroke="#0b0c0c" stroke-width="2"/>`; }
+        members.forEach(function(i){ s+=`<circle cx="${x}" cy="${matrixTop+i*rowH+rowH/2}" r="5.5" fill="#0b0c0c"/>`; });
+      });
+      return s+`</svg>`;
+    }
     async function loadVenn(){
       var n = parseInt(document.getElementById("venn-n").value, 10) || 5;
       var status=document.getElementById("venn-status");
       document.getElementById("venn-svg").innerHTML = `<span class="spinner"></span>`;
       document.getElementById("venn-detail").innerHTML = "";
+      document.getElementById("upset-svg").innerHTML = "";
       try {
         var j = await (await fetch(`/api/categories/${CID}/keyword-overlap?n=${n}`)).json();
         if (window.setSqlPanel) setSqlPanel("venn-sql", j.sql);
-        if (j.pending){ document.getElementById("venn-svg").innerHTML=""; status.textContent="Shortlist not computed yet — it populates after the nightly refresh or when the category is saved."; return; }
+        if (j.pending){ document.getElementById("venn-svg").innerHTML=""; document.getElementById("upset-block").hidden=true; status.textContent="Shortlist not computed yet — it populates after the nightly refresh or when the category is saved."; return; }
         var kws = j.keywords || [];
-        if (kws.length < 2){ document.getElementById("venn-svg").innerHTML=""; status.textContent="Add at least two keywords to see their overlap."; return; }
+        if (kws.length < 2){ document.getElementById("venn-svg").innerHTML=""; document.getElementById("upset-block").hidden=true; status.textContent="Add at least two keywords to see their overlap."; return; }
         var counts={}; (j.regions||[]).forEach(function(r){ counts[r.mask]=r.count; });
         document.getElementById("venn-svg").innerHTML = renderVennSvg(kws.length, counts);
         document.getElementById("venn-detail").innerHTML = renderVennDetail(kws, counts);
+        document.getElementById("upset-block").hidden = false;
+        document.getElementById("upset-svg").innerHTML = renderUpset(kws, counts, 16);
         status.textContent = (kws.length < n) ? `Only ${kws.length} keywords available.` : "";
       } catch(e){ document.getElementById("venn-svg").innerHTML=""; status.textContent="Could not load the overlap diagram."; }
     }
