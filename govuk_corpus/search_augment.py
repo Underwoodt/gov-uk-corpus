@@ -13,13 +13,19 @@ supplies the search function (so the module needn't know about the web layer).
 """
 from __future__ import annotations
 
+import json
 from typing import Callable, List, Optional, Sequence
 
 from . import categories as cat
+from . import settings
 from .backend import db
 from .canonical import canonicalise
 
 _P = "%s" if db.__name__.endswith("db_pg") else "?"
+
+
+def _qkey(cid: int) -> str:
+    return f"govuk_queries_{cid}"
 
 # Effective document type without the JSON dig (parent_document_type is backfilled).
 _EFF = ("CASE WHEN c.document_type = 'html_publication' "
@@ -65,10 +71,13 @@ def compare(conn, cid: int, keywords: Sequence[str], organisations: Sequence[str
     deterministic shortlist, and persist the tagged union. `search_fn(phrases, orgs)` must
     return {"results": [{link, title, document_type, phrases}]}. Returns a summary dict."""
     keywords = [k for k in (keywords or []) if k]
-    results = []
+    results, query_urls = [], []
     if keywords:
-        data = search_fn(keywords, list(organisations or []))
-        results = (data or {}).get("results", []) or []
+        data = search_fn(keywords, list(organisations or [])) or {}
+        results = data.get("results", []) or []
+        query_urls = data.get("query_urls", []) or []
+    # Persist the exact GOV.UK API queries used, for the expert "queries sent" box.
+    settings.set_setting(conn, _qkey(cid), json.dumps(query_urls))
 
     # Canonicalise search links; keep first occurrence of each canonical url.
     search_urls: List[str] = []
@@ -132,7 +141,12 @@ def summary(conn, cid: int) -> dict:
         f"SELECT MAX(computed_at) AS t FROM category_search_pages WHERE category_id = {_P}",
         (cid,)).fetchone()
     total = sum(counts.values())
-    return {"counts": counts, "total": total,
+    q = settings.get_setting(conn, _qkey(cid))
+    try:
+        query_urls = json.loads(q) if q else []
+    except Exception:
+        query_urls = []
+    return {"counts": counts, "total": total, "query_urls": query_urls,
             "computed_at": (dict(computed_at)["t"] if computed_at else None)}
 
 
