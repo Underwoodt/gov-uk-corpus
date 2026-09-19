@@ -251,7 +251,11 @@
   </div>
 
   <p class="secondary" style="margin:22px 0 0;font-size:14px;" data-level="expert">
-    <a href="{{ url_for('download_audit', cid=category.id) }}">Download Audit File (Debugging only)</a></p>
+    <a href="{{ url_for('download_audit', cid=category.id) }}">Download Audit File (Debugging only)</a>
+    &nbsp;·&nbsp;
+    <a href="{{ url_for('download_category_bundle', cid=category.id) }}">Download category for a test environment</a>
+    <span class="secondary" style="display:block;margin-top:2px;">Definition, runs, results, membership and
+      metadata-only pages — import in a test system to reproduce and fix this category.</span></p>
 
   <script>
     const CID = {{ category.id }};

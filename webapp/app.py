@@ -16,6 +16,7 @@ import csv
 import hashlib
 import hmac
 import html
+import gzip
 import io
 import json
 import logging
@@ -37,7 +38,7 @@ from starlette.concurrency import run_in_threadpool
 
 from govuk_corpus import accounts, ai_models, audit
 from govuk_corpus import categories as cat
-from govuk_corpus import category_counts, feedback, guardrails, sessions
+from govuk_corpus import category_counts, category_transfer, feedback, guardrails, sessions
 from govuk_corpus import (audit_stats, category_interview, evaluate, extract, orgs,
                           peak_schedule, pricing, readability, roles, settings, shortlist)
 from govuk_corpus.backend import db
@@ -2439,6 +2440,63 @@ def download_audit(request: Request, cid: int, outcome: str = ""):
                     headers={"Content-Disposition": f'attachment; filename="audit-{cid}-{tag}.csv"'})
 
 
+# ---- category transfer (download here, import into a test env) -----------
+@app.get("/categories/{cid}/download-bundle")
+def download_category_bundle(request: Request, cid: int):
+    """Download a category + everything needed to reproduce it (definition, runs,
+    results, membership, audit, and metadata-only content/orgs) as a gzipped JSON
+    bundle. Import it into a test environment with `category_transfer import`."""
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    try:
+        bundle = category_transfer.export_bundle(conn, cid)
+    finally:
+        conn.close()
+    if bundle is None:
+        return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
+    slug = (bundle["meta"].get("slug") or f"cat-{cid}")
+    name = f"category-{slug}-{_dl_stamp()}.json.gz"
+    body = gzip.compress(category_transfer.dumps(bundle).encode("utf-8"))
+    return Response(body, media_type="application/gzip",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+@app.post("/admin/import-category")
+async def admin_import_category(request: Request):
+    """Admin-only: upload a category bundle and load it into THIS environment, reassigning
+    the category to the importing user. Intended for a test environment, to reproduce and
+    fix a live category."""
+    if not authed(request):
+        return login_redirect(request)
+    users_url = str(request.url_for("admin_users_page"))
+    if not _require_admin(request):
+        return RedirectResponse(url=users_url, status_code=303)
+    form = await request.form()
+    upload = form.get("bundle")
+    if upload is None or not hasattr(upload, "read"):
+        return RedirectResponse(url=users_url + "?import_error=No+file+chosen", status_code=303)
+    raw = await upload.read()
+    try:
+        if raw[:2] == b"\x1f\x8b":            # gzip magic
+            raw = gzip.decompress(raw)
+        bundle = category_transfer.loads(raw.decode("utf-8"))
+    except Exception:
+        return RedirectResponse(url=users_url + "?import_error=Could+not+read+the+bundle", status_code=303)
+    cu = current_user(request)
+    owner = cu.get("email") if cu else None
+    conn = connect()
+    try:
+        summary = category_transfer.import_bundle(conn, bundle, owner_email=owner)
+    except Exception as e:
+        conn.close()
+        return RedirectResponse(url=users_url + f"?import_error={quote(f'{type(e).__name__}: {e}')}",
+                                status_code=303)
+    conn.close()
+    msg = f"Imported category {summary['slug']} ({summary['content']} pages, {summary['runs']} runs)."
+    return RedirectResponse(url=users_url + f"?import_ok={quote(msg)}", status_code=303)
+
+
 @app.get("/assistant", response_class=HTMLResponse)
 def assistant_page(request: Request):
     if not authed(request):
@@ -2570,7 +2628,8 @@ def _require_admin(request: Request):
 
 
 @app.get("/admin/users", response_class=HTMLResponse)
-def admin_users_page(request: Request, user_ok: int = 0, user_error: str = ""):
+def admin_users_page(request: Request, user_ok: int = 0, user_error: str = "",
+                     import_ok: str = "", import_error: str = ""):
     """Admin: view every user and open each one to edit their profile (guc-0020).
     Accounts mode + admin only."""
     if not authed(request):
@@ -2583,6 +2642,7 @@ def admin_users_page(request: Request, user_ok: int = 0, user_error: str = ""):
     resp = templates.TemplateResponse("admin_users.html", ctx(
         conn, request, active_nav="users", users=accounts.list_users(conn),
         account_roles=accounts.ROLES, user_ok=user_ok, user_error=user_error,
+        import_ok=import_ok, import_error=import_error,
         list_sql=_display_sql(usql, uparams)))
     conn.close()
     return resp
