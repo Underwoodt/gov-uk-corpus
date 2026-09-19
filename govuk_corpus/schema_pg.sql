@@ -240,6 +240,15 @@ ALTER TABLE content ADD COLUMN IF NOT EXISTS gds_stars smallint;        -- 1–5
 ALTER TABLE content ADD COLUMN IF NOT EXISTS parent_document_type text; -- backfilled from links.parent[].document_type
 CREATE INDEX IF NOT EXISTS idx_content_parent_document_type ON content(parent_document_type);
 
+-- GOV.UK's real unique id: many urls (aliases/redirects) can map to one content_id.
+-- Populated on ingest (extract.extract_fields) and backfillable from the content JSON.
+-- Not unique — the whole point is that url rows share it — so it's a plain index.
+-- NB: built here without CONCURRENTLY (schema runs on startup), so it briefly locks
+-- `content` while it builds. To avoid the lock, create it by hand first:
+--   CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_content_content_id ON content(content_id);
+ALTER TABLE content ADD COLUMN IF NOT EXISTS content_id text;
+CREATE INDEX IF NOT EXISTS idx_content_content_id ON content(content_id);
+
 -- Category display name/identifier (added after initial deploy).
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS slug text;
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS include_child_orgs smallint DEFAULT 0;

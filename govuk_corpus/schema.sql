@@ -58,9 +58,11 @@ CREATE TABLE IF NOT EXISTS content (
     last_changed_run   TEXT,
     first_seen_at      TEXT,
     last_seen_at       TEXT,
-    last_changed_at    TEXT
+    last_changed_at    TEXT,
+    content_id         TEXT                  -- GOV.UK's real unique id (many urls -> one content_id)
 );
 CREATE INDEX IF NOT EXISTS idx_content_document_type ON content(document_type);
+CREATE INDEX IF NOT EXISTS idx_content_content_id ON content(content_id);
 CREATE INDEX IF NOT EXISTS idx_content_parent_document_type ON content(parent_document_type);
 CREATE INDEX IF NOT EXISTS idx_content_source ON content(source);
 -- Partial indexes over the "usable page" guard every shortlist count carries.

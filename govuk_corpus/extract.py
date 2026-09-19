@@ -89,6 +89,7 @@ def extract_fields(payload: Dict[str, Any]) -> Dict[str, Any]:
     withdrawn = 1 if payload.get("withdrawn_notice") else 0
 
     return {
+        "content_id": payload.get("content_id") or None,   # GOV.UK's real unique id (many urls -> one)
         "document_type": document_type,
         "schema_name": schema_name,
         "title": payload.get("title") or "",
