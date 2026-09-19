@@ -42,9 +42,10 @@ class TestValidation(unittest.TestCase):
         errs = cat.validate(_valid_data(description="x" * 101))
         self.assertTrue(any("Description must be 100" in e for e in errs))
 
-    def test_keyword_line_too_many_words(self):
-        errs = cat.validate(_valid_data(keywords="slurry storage rules"))
-        self.assertTrue(any("more than 2 words" in e for e in errs))
+    def test_multi_word_keyword_phrase_allowed(self):
+        # No word-count limit: multi-word terms are valid (they match as an adjacent phrase).
+        errs = cat.validate(_valid_data(keywords="slurry storage rules\ncatch certificate"))
+        self.assertFalse(any("word" in e.lower() for e in errs))
 
     def test_parse_list(self):
         self.assertEqual(cat.parse_list("a, b\n c ,,"), ["a", "b", "c"])

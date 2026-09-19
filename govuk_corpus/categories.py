@@ -85,11 +85,8 @@ def validate(data: Dict[str, Any]) -> List[str]:
         v = data.get(f)
         if v and len(str(v)) > limit:
             errors.append(f"{label(f)} must be {limit} characters or less.")
-    # keywords: one term per line or comma-separated, no term more than 2 words
-    for term in parse_list(data.get("keywords")):
-        if len(term.split()) > 2:
-            errors.append(f"Keyword '{term}' has more than 2 words.")
-            break
+    # Keywords: one term per line or comma-separated. Multi-word terms match as an adjacent
+    # phrase (phraseto_tsquery), so terms of any length are allowed — no word-count limit.
     return errors
 
 
