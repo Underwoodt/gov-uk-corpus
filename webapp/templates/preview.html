@@ -137,19 +137,11 @@
           </select>
         </label>
       </div>
-      <p class="hint" style="margin-top:2px;">How the top keywords co-occur across the shortlist pages. Each region is the
-        number of pages matching exactly that combination of terms; overlaps show terms that tend to appear together.</p>
-      <div id="venn-wrap" style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start;">
-        <div id="venn-svg" style="flex:1 1 340px;max-width:440px;"></div>
-        <div id="venn-detail" style="flex:1 1 300px;min-width:260px;"></div>
-      </div>
-      <div id="upset-block" style="margin-top:24px;">
-        <h3 style="margin:0 0 2px;font-size:16px;">Intersections (UpSet)</h3>
-        <p class="hint" style="margin-top:0;">Every keyword combination as a bar (its page count), with the dots
-          showing which terms it covers — clearer than the Venn once there are 4+ terms, and it shows every
-          combination exactly.</p>
-        <div id="upset-svg" style="overflow-x:auto;"></div>
-      </div>
+      <p class="hint" style="margin-top:2px;">How the top keywords co-occur across the shortlist pages. Each bar is a
+        combination of terms and the number of pages matching exactly that set; the dots show which terms it covers.
+        Taller bars are terms that tend to appear together.</p>
+      <div id="upset-svg" style="overflow-x:auto;"></div>
+      <div id="venn-detail" style="margin-top:14px;max-width:560px;"></div>
       <p id="venn-status" class="secondary" style="margin:8px 0 0;"></p>
       {{ sql_panel("venn-sql") }}
     </div>
@@ -343,45 +335,8 @@
       loadKwPages();            // 'pages in this shortlist'
     }
 
-    // ---- Keyword overlap Venn (dependency-free SVG) ----
+    // ---- Keyword overlap (UpSet plot + detail list) ----
     const VENN_COLORS = ["#1d70b8", "#00703c", "#d4351c", "#4c2c92", "#28a197"];
-    function vennGeometry(n) {
-      if (n === 2) return [{cx:150,cy:185,rx:95,ry:95,rot:0},{cx:250,cy:185,rx:95,ry:95,rot:0}];
-      if (n === 3) return [{cx:160,cy:150,rx:95,ry:95,rot:0},{cx:240,cy:150,rx:95,ry:95,rot:0},{cx:200,cy:225,rx:95,ry:95,rot:0}];
-      if (n === 4) return [{cx:170,cy:180,rx:150,ry:88,rot:45},{cx:150,cy:170,rx:150,ry:88,rot:45},
-                           {cx:250,cy:170,rx:150,ry:88,rot:-45},{cx:230,cy:180,rx:150,ry:88,rot:-45}];
-      // Upright, 5-fold-symmetric star: position AND orientation both advance by 72° (no
-      // pinwheel tilt), so it reads clean rather than skewed. Congruent ellipses can't
-      // realise all 31 regions — the innermost slivers live in the detail list / UpSet.
-      var out=[], C=220, cyc=210, d=46, rx=158, ry=82;
-      for (var i=0;i<5;i++){ var deg=-90+i*72, a=deg*Math.PI/180;
-        out.push({cx:C+d*Math.cos(a), cy:cyc+d*Math.sin(a), rx:rx, ry:ry, rot:deg}); }
-      return out;
-    }
-    function vennBox(n){ return n>=5 ? {W:440,H:420} : (n===4 ? {W:420,H:360} : {W:400,H:360}); }
-    function vennInShape(px,py,s){ var t=(-s.rot)*Math.PI/180, dx=px-s.cx, dy=py-s.cy;
-      var x=dx*Math.cos(t)-dy*Math.sin(t), y=dx*Math.sin(t)+dy*Math.cos(t);
-      return (x*x)/(s.rx*s.rx)+(y*y)/(s.ry*s.ry) <= 1; }
-    function renderVennSvg(n, counts){
-      var shapes=vennGeometry(n), box=vennBox(n), W=box.W, H=box.H;
-      var s=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-height:340px;" xmlns="http://www.w3.org/2000/svg">`;
-      shapes.forEach(function(sh,i){ s+=`<g transform="translate(${sh.cx} ${sh.cy}) rotate(${sh.rot})">`
-        +`<ellipse rx="${sh.rx}" ry="${sh.ry}" fill="${VENN_COLORS[i]}" fill-opacity="0.28" `
-        +`stroke="${VENN_COLORS[i]}" stroke-width="1.5"/></g>`; });
-      var acc={};
-      for (var py=4; py<H; py+=3){ for (var px=4; px<W; px+=3){
-        var mask=0; for (var i=0;i<n;i++){ if (vennInShape(px,py,shapes[i])) mask|=(1<<i); }
-        if (!mask) continue; var a=acc[mask]||(acc[mask]={sx:0,sy:0,c:0}); a.sx+=px; a.sy+=py; a.c++;
-      }}
-      var LABEL_MIN = n>=5 ? 46 : (n===4 ? 30 : 8);
-      for (var mask=1; mask<(1<<n); mask++){ var cnt=counts[mask]||0, a=acc[mask];
-        if (!a || !cnt || a.c<LABEL_MIN) continue;
-        s+=`<text x="${(a.sx/a.c).toFixed(0)}" y="${(a.sy/a.c).toFixed(0)}" text-anchor="middle" `
-          +`dominant-baseline="central" font-size="13" font-weight="700" fill="#0b0c0c" `
-          +`paint-order="stroke" stroke="#fff" stroke-width="3">${fmtInt(cnt)}</text>`;
-      }
-      return s+`</svg>`;
-    }
     function comboLabel(mask, keywords){ var out=[];
       for (var i=0;i<keywords.length;i++){ if (mask & (1<<i)) out.push(keywords[i]); } return out.join(" ∩ "); }
     function renderVennDetail(keywords, counts){
@@ -427,22 +382,19 @@
     async function loadVenn(){
       var n = parseInt(document.getElementById("venn-n").value, 10) || 5;
       var status=document.getElementById("venn-status");
-      document.getElementById("venn-svg").innerHTML = `<span class="spinner"></span>`;
-      document.getElementById("venn-detail").innerHTML = "";
-      document.getElementById("upset-svg").innerHTML = "";
+      var upset=document.getElementById("upset-svg"), detail=document.getElementById("venn-detail");
+      upset.innerHTML = `<span class="spinner"></span>`; detail.innerHTML = "";
       try {
         var j = await (await fetch(`/api/categories/${CID}/keyword-overlap?n=${n}`)).json();
         if (window.setSqlPanel) setSqlPanel("venn-sql", j.sql);
-        if (j.pending){ document.getElementById("venn-svg").innerHTML=""; document.getElementById("upset-block").hidden=true; status.textContent="Shortlist not computed yet — it populates after the nightly refresh or when the category is saved."; return; }
+        if (j.pending){ upset.innerHTML=""; status.textContent="Shortlist not computed yet — it populates after the nightly refresh or when the category is saved."; return; }
         var kws = j.keywords || [];
-        if (kws.length < 2){ document.getElementById("venn-svg").innerHTML=""; document.getElementById("upset-block").hidden=true; status.textContent="Add at least two keywords to see their overlap."; return; }
+        if (kws.length < 2){ upset.innerHTML=""; status.textContent="Add at least two keywords to see their overlap."; return; }
         var counts={}; (j.regions||[]).forEach(function(r){ counts[r.mask]=r.count; });
-        document.getElementById("venn-svg").innerHTML = renderVennSvg(kws.length, counts);
-        document.getElementById("venn-detail").innerHTML = renderVennDetail(kws, counts);
-        document.getElementById("upset-block").hidden = false;
-        document.getElementById("upset-svg").innerHTML = renderUpset(kws, counts, 16);
+        upset.innerHTML = renderUpset(kws, counts, 16);
+        detail.innerHTML = renderVennDetail(kws, counts);
         status.textContent = (kws.length < n) ? `Only ${kws.length} keywords available.` : "";
-      } catch(e){ document.getElementById("venn-svg").innerHTML=""; status.textContent="Could not load the overlap diagram."; }
+      } catch(e){ upset.innerHTML=""; status.textContent="Could not load the overlap diagram."; }
     }
     document.getElementById("venn-n").addEventListener("change", loadVenn);
 
