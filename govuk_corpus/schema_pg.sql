@@ -266,6 +266,21 @@ CREATE TABLE IF NOT EXISTS category_page_counts (
     computed_at  text
 );
 
+-- Persisted membership of each category's deterministic shortlist (organisation +
+-- document-type + keyword filters), one row per distinct page. content_id is GOV.UK's
+-- real unique id, falling back to url when a page has none; url is the representative
+-- (MIN(url)) among the pages that matched. Refreshed by the nightly cycle and on
+-- category create/edit. Lets reporting/dashboards read the filtered set without
+-- re-running the filters — join to content for title/doctype/dates.
+CREATE TABLE IF NOT EXISTS category_shortlist_pages (
+    category_id  bigint NOT NULL,
+    content_id   text   NOT NULL,
+    url          text,
+    computed_at  text,
+    PRIMARY KEY (category_id, content_id)
+);
+CREATE INDEX IF NOT EXISTS idx_csp_category ON category_shortlist_pages(category_id);
+
 -- Partial indexes over the "usable page" guard (is_redirect=0 AND content_hash
 -- IS NOT NULL) that every shortlist count carries. Lets the total count do an
 -- index-only scan and the document-type count skip the dead rows.

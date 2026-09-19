@@ -249,6 +249,18 @@ CREATE TABLE IF NOT EXISTS category_page_counts (
     computed_at  TEXT
 );
 
+-- Persisted membership of each category's deterministic shortlist (organisation +
+-- document-type + keyword filters), one row per distinct page. content_id is GOV.UK's
+-- real unique id (url fallback when absent); url is the representative MIN(url).
+CREATE TABLE IF NOT EXISTS category_shortlist_pages (
+    category_id  INTEGER NOT NULL,
+    content_id   TEXT    NOT NULL,
+    url          TEXT,
+    computed_at  TEXT,
+    PRIMARY KEY (category_id, content_id)
+);
+CREATE INDEX IF NOT EXISTS idx_csp_category ON category_shortlist_pages(category_id);
+
 -- Per-page feedback (guc-0019): a rating + comment left from the feedback widget on any page.
 CREATE TABLE IF NOT EXISTS page_feedback (
     id               INTEGER PRIMARY KEY,

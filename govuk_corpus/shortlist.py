@@ -54,6 +54,7 @@ def build_query(
     include_redirects: bool = False,
     include_unfetched: bool = False,    # include rows we have no body for (content_hash NULL)
     count_only: bool = False,
+    membership: bool = False,           # (content_id, MIN(url)) per distinct page (shortlist table)
     include_title: bool = False,        # also select c.title (for CSV export)
     detail: bool = False,               # url + title + size + last-updated (for the results table)
     select_expr: Optional[str] = None,  # explicit SELECT list (for custom exports)
@@ -99,11 +100,20 @@ def build_query(
         where.append("c.content_hash IS NOT NULL")
 
     where_sql = (" WHERE " + " AND ".join(where)) if where else ""
-    # c.url is the primary key and every filter is now a predicate on content c
-    # (organisations via EXISTS), so there is no row fan-out and DISTINCT is unneeded.
+    # content_id is GOV.UK's real unique id, and many urls (aliases/redirects) map to one.
+    # Count and list per distinct content_id, not per url; a page with no content_id falls
+    # back to its url so it still counts once. The representative url is MIN(url).
+    dedup_key = "COALESCE(c.content_id, c.url)"
+
     if count_only:
-        select = "COUNT(*) AS n"
-    elif select_expr:
+        return f"SELECT COUNT(DISTINCT {dedup_key}) AS n FROM content c{where_sql}", params
+
+    if membership:
+        # One (content_id, representative url) per distinct page — for category_shortlist_pages.
+        return (f"SELECT {dedup_key} AS content_id, MIN(c.url) AS url "
+                f"FROM content c{where_sql} GROUP BY {dedup_key} ORDER BY {dedup_key}", params)
+
+    if select_expr:
         select = select_expr
     elif detail:
         select = (f"c.url AS url, c.title AS title, {_SIZE_EXPR} AS size_bytes, "
@@ -112,15 +122,16 @@ def build_query(
         select = "c.url AS url, c.title AS title"
     else:
         select = "c.url AS url"
-    sql = f"SELECT {select} FROM content c{where_sql}"
-    if not count_only:
-        sql += " ORDER BY c.url"
-        if limit:
-            sql += f" LIMIT {_P}"
-            params.append(limit)
-        if offset:
-            sql += f" OFFSET {_P}"
-            params.append(offset)
+    # Keep one representative row (MIN url) per distinct content_id, then read that row's
+    # full columns. Backend-agnostic (no DISTINCT ON) — the dedup happens in the subquery.
+    reps = f"SELECT MIN(c.url) AS url FROM content c{where_sql} GROUP BY {dedup_key}"
+    sql = f"SELECT {select} FROM content c WHERE c.url IN ({reps}) ORDER BY c.url"
+    if limit:
+        sql += f" LIMIT {_P}"
+        params.append(limit)
+    if offset:
+        sql += f" OFFSET {_P}"
+        params.append(offset)
     return sql, params
 
 
@@ -340,11 +351,25 @@ def org_breakdown_query(*, organisations: Sequence[str], document_types: Sequenc
         params.extend(kwp)
     where.append("c.is_redirect = 0")
     where.append("c.content_hash IS NOT NULL")
-    sql = (f"SELECT po.organisation_slug AS org, COUNT(DISTINCT po.page_url) AS n "
+    # Count distinct content_id (falling back to url) so aliased urls count once.
+    sql = (f"SELECT po.organisation_slug AS org, "
+           f"COUNT(DISTINCT COALESCE(c.content_id, c.url)) AS n "
            f"FROM content c JOIN page_organisations po ON po.page_url = c.url "
            f"WHERE {' AND '.join(where)} "
            f"GROUP BY po.organisation_slug ORDER BY n DESC, po.organisation_slug LIMIT {int(limit)}")
     return sql, params
+
+
+def membership_query(**filters) -> Tuple[str, list]:
+    """(sql, params) yielding one (content_id, representative url) row per distinct page
+    for the given filters — the basis for the persisted shortlist membership table."""
+    return build_query(membership=True, **filters)
+
+
+def membership_rows(conn, **filters) -> List[Tuple[str, str]]:
+    """[(content_id, url)] — distinct pages for the filters, representative url = MIN(url)."""
+    sql, params = membership_query(**filters)
+    return [(r["content_id"], r["url"]) for r in conn.execute(sql, tuple(params)).fetchall()]
 
 
 def org_breakdown(conn, *, organisations: Sequence[str], document_types: Sequence[str] = (),

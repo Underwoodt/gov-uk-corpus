@@ -58,7 +58,8 @@ class TestBuildQuery(unittest.TestCase):
 
     def test_count_only(self):
         sql, _ = build_query(count_only=True)
-        self.assertIn("COUNT(*)", sql)
+        # Counts are per distinct content_id (url fallback), not per url.
+        self.assertIn("COUNT(DISTINCT COALESCE(c.content_id, c.url))", sql)
         self.assertNotIn("ORDER BY", sql)
 
     def test_keyword_clause_postgres_fulltext(self):

@@ -18,6 +18,7 @@ from __future__ import annotations
 from typing import Dict, Optional
 
 from . import categories as cat
+from . import orgs as orgs_mod
 from . import shortlist
 from .backend import db
 
@@ -28,13 +29,52 @@ _P = "%s" if db.__name__.endswith("db_pg") else "?"
 
 def _count_for(conn, category: dict) -> int:
     """Input-shortlist size for one category: organisations + document types, no
-    keywords (matches what the list column has always shown)."""
+    keywords (matches what the list column has always shown). Now distinct-content_id."""
     return shortlist.count(
         conn,
         organisations=cat.parse_list(category.get("dept_slugs")),
         document_types=cat.parse_list(category.get("document_type_slugs")),
         keywords=[],
     )
+
+
+def _effective_filters(conn, category: dict) -> dict:
+    """The full filter a category actually applies — organisations (expanded to child
+    departments when 'include child organisations' is set), document types and keywords.
+    Mirrors the app's _effective_filters so the membership table matches the funnel."""
+    org_slugs = cat.parse_list(category.get("dept_slugs"))
+    if category.get("include_child_orgs") and org_slugs:
+        org_slugs = orgs_mod.expand_with_children(conn, org_slugs, recursive=True)
+    return dict(
+        organisations=org_slugs,
+        document_types=cat.parse_list(category.get("document_type_slugs")),
+        keywords=cat.parse_list(category.get("keywords")),
+        match="any",
+    )
+
+
+def _store_membership(conn, category_id: int, rows) -> None:
+    """Replace a category's persisted shortlist membership with (content_id, url) rows."""
+    ts = cat.now_iso()
+    conn.execute(f"DELETE FROM category_shortlist_pages WHERE category_id = {_P}", (category_id,))
+    # Chunked multi-row INSERTs (backend-agnostic; keeps statement/param counts sane).
+    CHUNK = 500
+    for i in range(0, len(rows), CHUNK):
+        batch = rows[i:i + CHUNK]
+        values = ",".join([f"({_P}, {_P}, {_P}, {_P})"] * len(batch))
+        params = []
+        for content_id, url in batch:
+            params.extend((category_id, content_id, url, ts))
+        conn.execute(
+            f"INSERT INTO category_shortlist_pages (category_id, content_id, url, computed_at) "
+            f"VALUES {values}", tuple(params))
+
+
+def _refresh_membership(conn, category: dict) -> int:
+    """Recompute and persist one category's shortlist membership. Returns the row count."""
+    rows = shortlist.membership_rows(conn, **_effective_filters(conn, category))
+    _store_membership(conn, int(category["id"]), rows)
+    return len(rows)
 
 
 def _store(conn, category_id: int, pages_kept: int) -> None:
@@ -56,6 +96,7 @@ def refresh_one(conn, cid: int) -> Optional[int]:
             return None
         n = _count_for(conn, category)
         _store(conn, cid, n)
+        _refresh_membership(conn, category)   # persist the full org+dept+keyword shortlist
         conn.commit()
         return n
     except Exception:
@@ -72,15 +113,19 @@ def refresh_all(conn) -> Dict[str, int]:
     for r in rows:
         try:
             _store(conn, int(r["id"]), _count_for(conn, r))
+            _refresh_membership(conn, r)   # persist the full org+dept+keyword shortlist
+            conn.commit()                  # commit per category so one big set can't lose the rest
             updated += 1
         except Exception:
             conn.rollback()  # skip the bad row, keep going
-    # prune counts for deleted categories
+    # prune rows for deleted categories from both tables
     if ids:
         ph = ",".join([_P] * len(ids))
         conn.execute(f"DELETE FROM category_page_counts WHERE category_id NOT IN ({ph})", tuple(ids))
+        conn.execute(f"DELETE FROM category_shortlist_pages WHERE category_id NOT IN ({ph})", tuple(ids))
     else:
         conn.execute("DELETE FROM category_page_counts")
+        conn.execute("DELETE FROM category_shortlist_pages")
     conn.commit()
     return {"categories": len(ids), "updated": updated}
 
