@@ -247,8 +247,7 @@ CREATE TABLE IF NOT EXISTS categories (
     only_use_extra_law_urls       INTEGER DEFAULT 0,
     should_include_urls           TEXT,   -- URLs expected IN the final shortlist (URL-check list)
     should_exclude_urls           TEXT,   -- URLs expected OUT of the shortlist (for later checks)
-    hybrid_on_save                INTEGER DEFAULT 0,  -- run GOV.UK hybrid search (bg) on save
-    keyword_scope                 TEXT DEFAULT 'anywhere'  -- keyword match scope: anywhere | title_desc
+    hybrid_on_save                INTEGER DEFAULT 0   -- run GOV.UK hybrid search (bg) on save
 );
 
 -- Precomputed "input shortlist" size per category (organisations + document

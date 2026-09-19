@@ -24,7 +24,7 @@ USER_FIELDS = [
     "document_type_slugs", "keywords",
     "inclusion_context", "exclusion_context", "adjudication_hints_keep",
     "adjudication_hints_drop", "extra_guidance_urls", "only_use_extra_guidance_urls",
-    "extra_law_urls", "only_use_extra_law_urls", "hybrid_on_save", "keyword_scope",
+    "extra_law_urls", "only_use_extra_law_urls", "hybrid_on_save",
 ]
 REQUIRED_FIELDS = [
     "owner_email", "description", "dept_slugs", "document_type_slugs", "inclusion_context",
@@ -56,12 +56,7 @@ _LABELS = {
     "only_use_extra_guidance_urls": "Only Use Extra Guidance URLs",
     "extra_law_urls": "Include LAW URLs", "only_use_extra_law_urls": "Only Use Extra LAW URLs",
     "hybrid_on_save": "Run GOV.UK hybrid search on save",
-    "keyword_scope": "Keyword match scope",
 }
-
-# Where a keyword must appear to count as a match.
-KEYWORD_SCOPES = ("anywhere", "title_desc")
-DEFAULT_KEYWORD_SCOPE = "anywhere"
 
 
 def label(field: str) -> str:
@@ -103,10 +98,6 @@ def _coerce(data: Dict[str, Any]) -> Dict[str, Any]:
     for b in ("only_use_extra_guidance_urls", "only_use_extra_law_urls", "include_child_orgs",
               "hybrid_on_save"):
         out[b] = 1 if str(data.get(b) or "0") in ("1", "Y", "y", "True", "true", "on") else 0
-    # Keyword scope: normalise to a known value, defaulting to 'anywhere'.
-    out["keyword_scope"] = (str(data.get("keyword_scope") or "").strip()
-                            if str(data.get("keyword_scope") or "").strip() in KEYWORD_SCOPES
-                            else DEFAULT_KEYWORD_SCOPE)
     return out
 
 

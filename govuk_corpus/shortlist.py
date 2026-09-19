@@ -27,31 +27,20 @@ _P = "%s" if _IS_PG else "?"   # param placeholder for the active backend
 _SIZE_EXPR = "octet_length(c.search_text)" if _IS_PG else "length(c.search_text)"
 
 
-# Title+description text (a page's own summary of what it covers), used by the stricter
-# 'title_desc' keyword scope. The Postgres form must match idx_content_titledesc_tsv exactly.
-_TD_TSVECTOR = "to_tsvector('english', coalesce(c.title, '') || ' ' || coalesce(c.description, ''))"
-_TD_TEXT_SQLITE = "LOWER(COALESCE(c.title,'') || ' ' || COALESCE(c.description,''))"
-_ALL_TEXT_SQLITE = ("LOWER(COALESCE(c.title,'') || ' ' || COALESCE(c.description,'') "
-                    "|| ' ' || COALESCE(c.search_text,''))")
+def _keyword_clause(keywords, match, is_pg):
+    """(sql_fragment, params) for keyword matching over title+description.
 
-
-def _keyword_clause(keywords, match, is_pg, scope="anywhere"):
-    """(sql_fragment, params) for keyword matching.
-
-    `scope`: 'anywhere' matches title+description+body; 'title_desc' matches only the
-    title+description (a page's own summary — far fewer incidental "mentions" false hits).
-    Postgres: GIN-indexed full-text (stemmed via 'english') — search_tsv for 'anywhere',
-    an expression tsvector over title+description for 'title_desc'.
-    SQLite (pilot): case-insensitive LIKE over the same fields.
+    Postgres: GIN-indexed full-text (search_tsv @@ tsquery), stemmed via 'english'.
+    SQLite (pilot): case-insensitive LIKE over title+description.
     `match`: 'any' → OR the keywords, 'all' → AND them.
     """
     if is_pg:
-        col = _TD_TSVECTOR if scope == "title_desc" else "c.search_tsv"
         op = " || " if match == "any" else " && "
         tq = op.join(["plainto_tsquery('english', %s)"] * len(keywords))
-        return f"{col} @@ ({tq})", list(keywords)
+        return f"c.search_tsv @@ ({tq})", list(keywords)
     op = " OR " if match == "any" else " AND "
-    field = _TD_TEXT_SQLITE if scope == "title_desc" else _ALL_TEXT_SQLITE
+    field = ("LOWER(COALESCE(c.title,'') || ' ' || COALESCE(c.description,'') "
+             "|| ' ' || COALESCE(c.search_text,''))")
     like = op.join([f"{field} LIKE ?"] * len(keywords))
     return f"({like})", [f"%{kw.lower()}%" for kw in keywords]
 
@@ -62,7 +51,6 @@ def build_query(
     document_types: Sequence[str] = (),
     keywords: Sequence[str] = (),
     match: str = "all",                 # all | any  (how to combine keywords)
-    keyword_scope: str = "anywhere",    # anywhere | title_desc (where a keyword must appear)
     include_redirects: bool = False,
     include_unfetched: bool = False,    # include rows we have no body for (content_hash NULL)
     count_only: bool = False,
@@ -96,7 +84,7 @@ def build_query(
         params.extend(document_types)
 
     if keywords:
-        clause, kw_params = _keyword_clause(keywords, match, _IS_PG, keyword_scope)
+        clause, kw_params = _keyword_clause(keywords, match, _IS_PG)
         where.append(clause)
         params.extend(kw_params)
 
@@ -130,7 +118,7 @@ def build_query(
             # SAME per-keyword clause as membership/charts, so the stored hits explain exactly
             # why the page qualified. These SELECT-side params precede the WHERE params.
             for i, kw in enumerate(keywords):
-                clause, kwp = _keyword_clause([kw], match, _IS_PG, keyword_scope)
+                clause, kwp = _keyword_clause([kw], match, _IS_PG)
                 cols.append(f"MAX(CASE WHEN {clause} THEN 1 ELSE 0 END) AS kw_{i}")
                 hit_params.extend(kwp)
         return (f"SELECT {', '.join(cols)} "
@@ -357,7 +345,6 @@ def count(conn, **kwargs) -> int:
 
 def org_breakdown_query(*, organisations: Sequence[str], document_types: Sequence[str] = (),
                         keywords: Sequence[str] = (), match: str = "any",
-                        keyword_scope: str = "anywhere",
                         limit: int = 300) -> Tuple[Optional[str], list]:
     """(sql, params) for the per-organisation breakdown, or (None, []) with no orgs."""
     if not organisations:
@@ -371,7 +358,7 @@ def org_breakdown_query(*, organisations: Sequence[str], document_types: Sequenc
         where.append(doctype_clause(document_types))     # effective type (html_publication -> parent)
         params.extend(document_types)
     if keywords:
-        clause, kwp = _keyword_clause(keywords, match, _IS_PG, keyword_scope)
+        clause, kwp = _keyword_clause(keywords, match, _IS_PG)
         where.append(clause)
         params.extend(kwp)
     where.append("c.is_redirect = 0")

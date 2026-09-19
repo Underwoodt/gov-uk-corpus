@@ -14,46 +14,6 @@ from govuk_corpus import categories as cat
 from govuk_corpus import category_counts, db, reporting, shortlist
 
 
-import unittest as _ut
-
-
-class TestKeywordScope(_ut.TestCase):
-    """title_desc scope matches only the title/description; anywhere also matches the body."""
-    def setUp(self):
-        self.conn = db.connect(":memory:")
-        db.init_db(self.conn)
-        rows = [
-            # url, title, description, search_text
-            ("https://www.gov.uk/t", "Slurry storage guidance", "", "generic body"),   # kw in title
-            ("https://www.gov.uk/d", "Farm update", "About slurry lagoons", "generic"),  # kw in description
-            ("https://www.gov.uk/b", "Farm payments update", "", "slurry lagoon rules"), # kw in BODY only
-        ]
-        for url, title, desc, body in rows:
-            self.conn.execute(
-                "INSERT INTO content (url, title, description, search_text, document_type, "
-                "is_redirect, content_hash) VALUES (?,?,?,?,?,?,?)",
-                (url, title, desc, body, "guidance", 0, "h"))
-            self.conn.execute(
-                "INSERT INTO page_organisations (page_url, organisation_content_id, organisation_slug, role) "
-                "VALUES (?,?,?,?)", (url, "defra", "defra", "primary"))
-        self.conn.commit()
-        self.f = dict(organisations=["defra"], document_types=["guidance"],
-                      keywords=["slurry"], match="any")
-
-    def tearDown(self):
-        self.conn.close()
-
-    def test_anywhere_matches_all_three(self):
-        self.assertEqual(shortlist.count(self.conn, keyword_scope="anywhere", **self.f), 3)
-
-    def test_title_desc_excludes_body_only(self):
-        # /b (keyword only in the body) drops out; title and description hits remain.
-        self.assertEqual(shortlist.count(self.conn, keyword_scope="title_desc", **self.f), 2)
-
-    def test_default_scope_is_anywhere(self):
-        self.assertEqual(shortlist.count(self.conn, **self.f), 3)
-
-
 class TestKeywordHits(unittest.TestCase):
     def setUp(self):
         self.conn = db.connect(":memory:")

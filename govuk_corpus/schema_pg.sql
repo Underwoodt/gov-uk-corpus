@@ -245,10 +245,6 @@ ALTER TABLE content ADD COLUMN IF NOT EXISTS search_tsv tsvector
       coalesce(title, '') || ' ' || coalesce(description, '') || ' ' || coalesce(search_text, ''))
   ) STORED;
 CREATE INDEX IF NOT EXISTS idx_content_search_tsv ON content USING GIN (search_tsv);
--- The stricter title/description keyword scope matches to_tsvector(title||description) on the
--- fly. No dedicated index: keyword matching runs after the organisation filter has narrowed the
--- candidate set, so it's fast for the normal org-scoped case. (A keyword-only shortlist with no
--- organisation would seq-scan — uncommon and UI-discouraged; add an expression GIN index then.)
 
 -- Readability / plain-English analysis of the body text (populated by a later job).
 ALTER TABLE content ADD COLUMN IF NOT EXISTS reading_age real;          -- estimated reading age (years)
@@ -276,7 +272,6 @@ ALTER TABLE categories ADD COLUMN IF NOT EXISTS should_include_urls text;
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS should_exclude_urls text;
 -- Run the GOV.UK hybrid search (compare + fetch) as a background stage on save.
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS hybrid_on_save smallint DEFAULT 0;
-ALTER TABLE categories ADD COLUMN IF NOT EXISTS keyword_scope text DEFAULT 'anywhere';  -- keyword match scope: anywhere | title_desc
 
 -- Precomputed "input shortlist" size per category (organisations + document
 -- types, no keywords). Refreshed as the tidy-up phase of the nightly corpus
