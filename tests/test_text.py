@@ -8,7 +8,8 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from govuk_corpus.text import body_text, html_to_text
+from govuk_corpus.text import (body_text, html_to_text, organisation_names,
+                               search_text, strip_phrases)
 
 
 class TestHtmlToText(unittest.TestCase):
@@ -39,6 +40,35 @@ class TestBodyText(unittest.TestCase):
     def test_none(self):
         self.assertEqual(body_text({"details": {}}), "")
         self.assertEqual(body_text({}), "")
+
+
+class TestOrgNameStripping(unittest.TestCase):
+    DEFRA = "Department for Environment, Food & Rural Affairs"
+
+    def _payload(self, body):
+        return {"details": {"body": body},
+                "links": {"primary_publishing_organisation": [{"title": self.DEFRA}]}}
+
+    def test_organisation_names(self):
+        p = {"links": {"primary_publishing_organisation": [{"title": self.DEFRA}],
+                       "organisations": [{"title": "Environment Agency"}, {"title": ""}]}}
+        self.assertEqual(organisation_names(p), [self.DEFRA, "Environment Agency"])
+
+    def test_strip_phrases_case_insensitive(self):
+        self.assertEqual(strip_phrases("A food policy from the DEPARTMENT FOR ENVIRONMENT, "
+                                       "FOOD & RURAL AFFAIRS today", [self.DEFRA]),
+                         "A food policy from the today")
+
+    def test_search_text_removes_own_org_name(self):
+        # 'food' survives as genuine content; the org-name occurrence of 'food' is removed.
+        p = self._payload("<p>New food hygiene rules. Published by the "
+                          "Department for Environment, Food &amp; Rural Affairs.</p>")
+        out = search_text(p)
+        self.assertIn("food hygiene", out.lower())
+        self.assertNotIn("rural affairs", out.lower())
+
+    def test_search_text_keeps_body_when_no_org(self):
+        self.assertEqual(search_text({"details": {"body": "<p>plain body</p>"}}), "plain body")
 
 
 if __name__ == "__main__":

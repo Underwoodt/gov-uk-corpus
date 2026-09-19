@@ -55,3 +55,35 @@ def body_text(payload: Dict[str, Any]) -> str:
         if part.get("body"):
             pieces.append(html_to_text(part["body"]))
     return " ".join(p for p in pieces if p)
+
+
+def organisation_names(payload: Dict[str, Any]) -> list:
+    """Titles of the page's own organisations (primary + related), from the payload links.
+    These are used to strip the department/organisation name out of the searchable text, so a
+    keyword doesn't match a page merely because that organisation published it."""
+    links = payload.get("links") or {}
+    names: list[str] = []
+    for key in ("primary_publishing_organisation", "organisations"):
+        for it in links.get(key) or []:
+            title = (it.get("title") or "").strip()
+            if title:
+                names.append(title)
+    return names
+
+
+def strip_phrases(text: str, phrases) -> str:
+    """Remove each phrase (case-insensitive, whole-string occurrences) from `text`, then
+    collapse whitespace. Longest phrases first so a longer name is removed before a shorter
+    name nested inside it."""
+    if not text:
+        return text
+    for p in sorted({p for p in phrases if p}, key=len, reverse=True):
+        text = re.sub(re.escape(p), " ", text, flags=re.IGNORECASE)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def search_text(payload: Dict[str, Any]) -> str:
+    """The body text used for keyword search, with the page's own organisation names removed
+    (so e.g. a Defra page doesn't match 'food' just because 'Department for Environment, Food &
+    Rural Affairs' appears in its text). This is what `content.search_text` stores."""
+    return strip_phrases(body_text(payload), organisation_names(payload))

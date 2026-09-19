@@ -314,6 +314,23 @@ set -a; . /home/ubuntu/gov-uk-corpus.env; set +a
 
 Without `--rescan` it only scans rows not yet scored. It's resumable (`--after <url>`).
 
+### Keyword search text re-scan (organisation-name stripping)
+`content.search_text` is the HTML-stripped body with the page's **own organisation names
+removed**, so a keyword doesn't match a page merely because that organisation published it.
+New/updated pages get this at crawl time. After the extraction rules change (e.g. this
+stripping was added), recompute every existing page's search_text — a **one-time, long** pass
+over the whole corpus (~877k rows). On Postgres the generated `search_tsv` recomputes
+automatically as each row is rewritten.
+
+```bash
+set -a; . /home/ubuntu/gov-uk-corpus.env; set +a
+.venv/bin/python -m govuk_corpus.build_search_text --rescan
+# Optional: run in chunks with --limit N (resumable — it pages by url), or in tmux/screen.
+```
+
+Without `--rescan` it only fills rows whose search_text is still NULL. Until the rescan runs,
+existing pages keep their old (un-stripped) search_text — no harm, just not yet cleaned.
+
 ### Nightly corpus cycle & category counts
 The daily batch cycle is `python -m govuk_corpus.run_all` (Stage 0→3, then a
 **tidy-up** phase). Its tidy-up recomputes each category's stored "pages kept" figure

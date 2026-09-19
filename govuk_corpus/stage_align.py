@@ -17,7 +17,7 @@ from .backend import db
 from .canonical import canonicalise, path_of
 from .extract import extract_fields, extract_organisations
 from .hashing import content_hash
-from .text import body_text
+from .text import search_text
 
 
 def _new_counters() -> Dict[str, int]:
@@ -103,7 +103,7 @@ def align_urls(conn, run_id: str, urls: Iterable[str], source,
                 "content": raw_json,
                 "content_hash": new_hash,
                 "http_status": resp.status_code,
-                "search_text": body_text(payload),   # HTML-stripped body for keyword search
+                "search_text": search_text(payload),  # HTML-stripped body, own org names removed
             })
             if source is not None:      # None = leave existing source untouched (reconcile re-verify)
                 fields["source"] = source
