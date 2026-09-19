@@ -10,6 +10,13 @@
     .prov-search { background:#fbe5d6; color:#8a3b12; }        /* gap: GOV.UK Search only */
     .prov-both { background:#d9f2e4; color:var(--green-dark,#00703c); }
     .prov-shortlister { background:#e8f1fb; color:var(--dark-blue,#003078); }
+    /* Keyword-hit lozenges: which terms put a page in the shortlist / GOV.UK results. */
+    .kw-hits { display:flex; flex-wrap:wrap; gap:4px; }
+    .kw-hit { display:inline-block; font-size:12px; font-weight:600; padding:1px 8px; border-radius:999px;
+      white-space:nowrap; border:1px solid transparent; }
+    .kw-corpus { background:#eef3ff; color:var(--dark-blue,#003078); border-color:#cfe0f7; }  /* corpus term */
+    .kw-govuk { background:#fdeee2; color:#8a3b12; border-color:#f3d6bf; }                     /* GOV.UK term */
+    .kw-none { color:var(--muted,#6b7477); font-size:12px; }
     /* GOV.UK threshold-hit warning (coverage may be truncated). */
     .gc-warn { background:#fef7e0; border:1px solid #f2d888; border-left:4px solid #e0a800;
       border-radius:6px; padding:10px 12px; margin:8px 0 0; font-size:14px; }
@@ -167,9 +174,9 @@
         filters — the input shortlist. <span id="kw-pages-total"></span></p>
       <div style="overflow-x:auto;">
         <table id="kw-pages-table" style="font-size:14px;width:100%;">
-          <thead><tr><th>Title</th><th>Document type</th><th>URL</th></tr></thead>
+          <thead><tr><th>Title</th><th>Document type</th><th>Keyword hits</th><th>URL</th></tr></thead>
           <tbody id="kw-pages-rows">
-            <tr><td colspan="3" class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr>
+            <tr><td colspan="4" class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr>
           </tbody>
         </table>
       </div>
@@ -321,7 +328,8 @@
         </div>
         <div style="overflow-x:auto;margin-top:8px;">
           <table id="gc-table" style="font-size:14px;width:100%;">
-            <thead><tr><th>Source</th><th>Title</th><th>Document type</th><th>URL</th></tr></thead>
+            <thead><tr><th>Source</th><th>Title</th><th>Document type</th>
+              <th>Corpus terms</th><th>GOV.UK terms</th><th>URL</th></tr></thead>
             <tbody id="gc-rows"></tbody>
           </table>
         </div>
@@ -446,11 +454,18 @@
     // with a Download link for the full data (same export as the audit page).
     const KWP_PAGE = 25;
     let kwpOffset = 0;
+    // Render a list of matched keywords as small lozenges (cls = kw-corpus | kw-govuk).
+    function kwLozenges(list, cls) {
+      const arr = Array.isArray(list) ? list : [];
+      if (!arr.length) return `<span class="kw-none">—</span>`;
+      return `<span class="kw-hits">` +
+        arr.map(k => `<span class="kw-hit ${cls}">${esc(k)}</span>`).join("") + `</span>`;
+    }
     async function loadKwPages() {
       const tbody = document.getElementById("kw-pages-rows");
       const status = document.getElementById("kw-pages-status");
       tbody.innerHTML =
-        `<tr><td colspan="3" class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr>`;
+        `<tr><td colspan="4" class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr>`;
       document.getElementById("kw-pages-empty").hidden = true;
       try {
         const j = await (await fetch(`/api/categories/${CID}/results-table?limit=${KWP_PAGE}&offset=${kwpOffset}`)).json();
@@ -463,6 +478,7 @@
           `<tr>` +
             `<td><a href="${esc(r.url)}">${esc(r.title || r.url)}</a></td>` +
             `<td>${esc(r.effective_document_type || "—")}</td>` +
+            `<td>${kwLozenges(r.corpus_keywords, "kw-corpus")}</td>` +
             `<td><a href="${esc(r.url)}" class="mono" style="font-size:13px;">${esc(r.url)}</a></td>` +
           `</tr>`).join("") : "";
         const from = rows.length ? kwpOffset + 1 : 0, to = kwpOffset + rows.length;
@@ -505,7 +521,7 @@
     async function loadCoverage() {
       const tbody = document.getElementById("gc-rows"), status = document.getElementById("gc-status");
       const source = document.getElementById("gc-source").value;
-      tbody.innerHTML = `<tr><td colspan="4" class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="6" class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr>`;
       try {
         const j = await (await fetch(`/api/categories/${CID}/augmented-pages?source=${encodeURIComponent(source)}&limit=${GC_PAGE}&offset=${gcOffset}&q=${encodeURIComponent(gcQuery)}`)).json();
         const sum = j.summary || {counts:{}, total:0};
@@ -549,7 +565,7 @@
           document.getElementById("gc-controls").hidden = true;
           document.getElementById("gc-download").hidden = true;
           document.getElementById("gc-pager").hidden = true;
-          tbody.innerHTML = `<tr><td colspan="4" class="secondary" style="padding:10px 6px;">Not run yet — click “Compare with GOV.UK Search”.</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="6" class="secondary" style="padding:10px 6px;">Not run yet — click “Compare with GOV.UK Search”.</td></tr>`;
           status.textContent = ""; return;
         }
         document.getElementById("gc-controls").hidden = false;
@@ -570,8 +586,10 @@
             `<td>${provLozenge(r.source)}</td>` +
             `<td><a href="${esc(r.url)}">${esc(r.title || r.url)}</a></td>` +
             `<td>${esc(r.document_type || "—")}</td>` +
+            `<td>${kwLozenges(r.corpus_keywords, "kw-corpus")}</td>` +
+            `<td>${kwLozenges(r.govuk_keywords, "kw-govuk")}</td>` +
             `<td><a href="${esc(r.url)}" class="mono" style="font-size:13px;">${esc(r.url)}</a></td>` +
-          `</tr>`).join("") : `<tr><td colspan="4" class="secondary" style="padding:10px 6px;">No pages for this filter.</td></tr>`;
+          `</tr>`).join("") : `<tr><td colspan="6" class="secondary" style="padding:10px 6px;">No pages for this filter.</td></tr>`;
         const from = rows.length ? gcOffset + 1 : 0, to = gcOffset + rows.length;
         document.getElementById("gc-range").textContent = `${fmtInt(from)}–${fmtInt(to)} of ${fmtInt(total)}`;
         document.getElementById("gc-prev").disabled = gcOffset <= 0;

@@ -1340,10 +1340,12 @@ def download_augmented(request: Request, cid: int):
     conn.close()
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["source", "url", "content_id", "title", "document_type", "phrases"])
+    w.writerow(["source", "url", "content_id", "title", "document_type",
+                "corpus_keywords", "govuk_keywords"])
     for r in rows:
         w.writerow([r.get("source"), r.get("url"), r.get("content_id"),
-                    r.get("title"), r.get("document_type"), r.get("phrases")])
+                    r.get("title"), r.get("document_type"),
+                    r.get("corpus_keywords"), r.get("govuk_keywords")])
     return Response(buf.getvalue(), media_type="text/csv",
                     headers={"Content-Disposition": f'attachment; filename="govuk-coverage-{cid}-{_dl_stamp()}.csv"'})
 
@@ -1424,12 +1426,16 @@ def api_keyword_breakdown(request: Request, cid: int):
     terms = reporting.keyword_breakdown(conn, cid, filters["keywords"])
     mcount = reporting.membership_count(conn, cid)
     computed_at = reporting.membership_computed_at(conn, cid)
-    blocks = []
-    for kw in filters["keywords"]:
-        ksql, kp = reporting.keyword_count_query(cid, kw)
-        blocks.append(f"-- Count for keyword: {kw}\n{_display_sql(ksql, kp)};")
+    if reporting.has_matched_keywords(conn, cid):
+        # Counts come from the stored per-page hits (same source as the row lozenges).
+        sql = reporting.matched_keywords_sql(cid) if filters["keywords"] else "-- No keywords set for this category."
+    else:
+        blocks = []
+        for kw in filters["keywords"]:
+            ksql, kp = reporting.keyword_count_query(cid, kw)
+            blocks.append(f"-- Count for keyword: {kw}\n{_display_sql(ksql, kp)};")
+        sql = "\n\n".join(blocks) if blocks else "-- No keywords set for this category."
     conn.close()
-    sql = "\n\n".join(blocks) if blocks else "-- No keywords set for this category."
     pending = bool(filters["keywords"]) and mcount == 0
     return JSONResponse({"terms": terms, "sql": sql, "pending": pending, "computed_at": computed_at})
 
@@ -2617,6 +2623,17 @@ def api_results_table(request: Request, cid: int, limit: int = 50, offset: int =
         _keys, esql, eparams = shortlist.export_query(_RESULTS_FIELDS, limit=limit, offset=offset,
                                                       **filters, **extra)
         rows = [dict(r) for r in conn.execute(esql, tuple(eparams)).fetchall()]
+        # Attach the corpus keyword hits stored on the membership (single source of truth,
+        # shared with the charts). One IN-list lookup for this page of rows — no N+1.
+        page_urls = [r["url"] for r in rows if r.get("url")]
+        if page_urls:
+            ph = ",".join([shortlist._P] * len(page_urls))
+            hits = {dict(h)["url"]: dict(h)["matched_keywords"] for h in conn.execute(
+                f"SELECT url, matched_keywords FROM category_shortlist_pages "
+                f"WHERE category_id = {shortlist._P} AND url IN ({ph})",
+                tuple([cid] + page_urls)).fetchall()}
+            for r in rows:
+                r["corpus_keywords"] = search_augment._load_list(hits.get(r.get("url")))
     except Exception as e:
         conn.close()
         return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=500)

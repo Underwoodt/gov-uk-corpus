@@ -281,13 +281,15 @@ CREATE TABLE IF NOT EXISTS category_page_counts (
 -- category create/edit. Lets reporting/dashboards read the filtered set without
 -- re-running the filters — join to content for title/doctype/dates.
 CREATE TABLE IF NOT EXISTS category_shortlist_pages (
-    category_id  bigint NOT NULL,
-    content_id   text   NOT NULL,
-    url          text,
-    computed_at  text,
+    category_id      bigint NOT NULL,
+    content_id       text   NOT NULL,
+    url              text,
+    matched_keywords text,   -- JSON array of the category keywords this page matched (corpus/deterministic)
+    computed_at      text,
     PRIMARY KEY (category_id, content_id)
 );
 CREATE INDEX IF NOT EXISTS idx_csp_category ON category_shortlist_pages(category_id);
+ALTER TABLE category_shortlist_pages ADD COLUMN IF NOT EXISTS matched_keywords text;
 
 -- On-demand GOV.UK Search coverage: the augmented shortlist for a category, tagging each
 -- page by provenance vs the org-scoped GOV.UK Search of the same keywords. source is
@@ -303,10 +305,12 @@ CREATE TABLE IF NOT EXISTS category_search_pages (
     document_type  text,
     source         text,          -- shortlister | both | search
     phrases        text,          -- keywords that matched in GOV.UK Search (comma-joined)
+    corpus_phrases text,          -- JSON array of the keywords this page matched in our corpus (shortlister/both)
     computed_at    text,
     PRIMARY KEY (category_id, url)
 );
 CREATE INDEX IF NOT EXISTS idx_csrch_category ON category_search_pages(category_id, source);
+ALTER TABLE category_search_pages ADD COLUMN IF NOT EXISTS corpus_phrases text;
 
 -- Reporting view: each category's materialised shortlist joined to page attributes,
 -- so BI tools / dashboards can read the filtered result without re-running the filters.

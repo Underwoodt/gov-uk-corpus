@@ -10,7 +10,9 @@ the ``category_shortlist_report`` view (declared in the schema) instead of these
 """
 from __future__ import annotations
 
-from typing import List
+import json
+from collections import Counter
+from typing import List, Tuple
 
 from . import shortlist
 from .backend import db
@@ -124,6 +126,44 @@ def doctype_breakdown(conn, cid: int) -> List[dict]:
             for r in conn.execute(sql, tuple(params)).fetchall() if r["dt"]]
 
 
+def _matched_sets(conn, cid: int) -> Tuple[List[set], bool]:
+    """(per-page matched-keyword sets, has_stored_data) from category_shortlist_pages.
+    has_stored_data is False only when every row's matched_keywords is NULL (membership
+    built before this column existed) — the caller then falls back to live matching."""
+    sets: List[set] = []
+    has = False
+    for r in conn.execute(
+            f"SELECT matched_keywords FROM category_shortlist_pages WHERE category_id = {_P}",
+            (cid,)).fetchall():
+        v = dict(r).get("matched_keywords")
+        if v is not None:
+            has = True
+        try:
+            lst = json.loads(v) if v else []
+        except Exception:
+            lst = []
+        sets.append(set(lst) if isinstance(lst, list) else set())
+    return sets, has
+
+
+def has_matched_keywords(conn, cid: int) -> bool:
+    """True when this category's membership carries stored keyword hits (the single source
+    of truth the charts read); False for pre-upgrade rows that need live re-matching."""
+    row = conn.execute(
+        f"SELECT 1 FROM category_shortlist_pages "
+        f"WHERE category_id = {_P} AND matched_keywords IS NOT NULL LIMIT 1", (cid,)).fetchone()
+    return row is not None
+
+
+def matched_keywords_sql(cid: int) -> str:
+    """Display SQL for the charts that derive from the stored hits (a single read; the
+    per-keyword counting happens in Python from matched_keywords)."""
+    return ("-- Keyword hits are stored per page in category_shortlist_pages.matched_keywords\n"
+            "-- (a JSON array set when the shortlist is built), so the row lozenges and these\n"
+            "-- charts share one source of truth. Counting is done in Python from:\n"
+            f"SELECT matched_keywords FROM category_shortlist_pages WHERE category_id = {cid};")
+
+
 def keyword_count_query(cid: int, keyword: str, match: str = "any"):
     """(sql, params) — how many pages in the materialised shortlist contain one keyword.
     Scoped to the shortlist (a few thousand rows), so it's fast and can't time out even
@@ -136,38 +176,60 @@ def keyword_count_query(cid: int, keyword: str, match: str = "any"):
 
 
 def keyword_overlap(conn, cid: int, keywords, match: str = "any") -> dict:
-    """Overlap of the given keywords within the materialised shortlist, as region counts
-    for a Venn. For each shortlist page we compute a bitmask of which keywords it contains
-    (bit i = keywords[i]), then count pages per exact combination. Region mask == the set
-    of keywords a page matches; the empty region (mask 0, matches none) is dropped. One
-    grouped query over the (small) membership, so it's instant."""
+    """Overlap of the given keywords within the materialised shortlist, as region counts for
+    an UpSet/Venn. Region mask == the set of keywords a page matched (bit i = keywords[i]);
+    the empty region (matches none) is dropped. Derives from the per-page keyword hits stored
+    in category_shortlist_pages.matched_keywords — the same values shown as row lozenges — so
+    the chart and the rows agree by construction. Falls back to live matching for a category
+    whose membership predates that column."""
     keywords = list(keywords)
     if not keywords:
         return {"keywords": [], "regions": [], "sql": "-- No keywords."}
-    parts, params = [], []
-    for i, kw in enumerate(keywords):
-        clause, kwp = shortlist._keyword_clause([kw], match, shortlist._IS_PG)
-        parts.append(f"CASE WHEN {clause} THEN {1 << i} ELSE 0 END")
-        params.extend(kwp)
-    mask_expr = " + ".join(parts)
-    params.append(cid)
-    sql = (f"SELECT ({mask_expr}) AS mask, COUNT(*) AS n "
-           f"FROM category_shortlist_pages m JOIN content c ON c.url = m.url "
-           f"WHERE m.category_id = {_P} GROUP BY 1")   # membership is one row per content_id
-    regions = [{"mask": int(r["mask"]), "count": r["n"]}
-               for r in conn.execute(sql, tuple(params)).fetchall() if int(r["mask"]) != 0]
-    return {"keywords": keywords, "regions": regions, "sql": (sql, params)}
+    sets, has = _matched_sets(conn, cid)
+    if not has:
+        # Fallback: recompute from content with the per-keyword clause (pre-upgrade rows).
+        parts, params = [], []
+        for i, kw in enumerate(keywords):
+            clause, kwp = shortlist._keyword_clause([kw], match, shortlist._IS_PG)
+            parts.append(f"CASE WHEN {clause} THEN {1 << i} ELSE 0 END")
+            params.extend(kwp)
+        params.append(cid)
+        sql = (f"SELECT ({' + '.join(parts)}) AS mask, COUNT(*) AS n "
+               f"FROM category_shortlist_pages m JOIN content c ON c.url = m.url "
+               f"WHERE m.category_id = {_P} GROUP BY 1")
+        regions = [{"mask": int(r["mask"]), "count": r["n"]}
+                   for r in conn.execute(sql, tuple(params)).fetchall() if int(r["mask"]) != 0]
+        return {"keywords": keywords, "regions": regions, "sql": (sql, params)}
+    idx = {kw: i for i, kw in enumerate(keywords)}
+    counts: Counter = Counter()
+    for s in sets:
+        mask = 0
+        for kw in s:
+            if kw in idx:
+                mask |= (1 << idx[kw])
+        if mask:
+            counts[mask] += 1
+    regions = [{"mask": m, "count": n} for m, n in counts.items()]
+    return {"keywords": keywords, "regions": regions, "sql": matched_keywords_sql(cid)}
 
 
 def keyword_breakdown(conn, cid: int, keywords, match: str = "any") -> List[dict]:
+    """Pages matching EACH keyword within the shortlist. Reads the stored per-page hits
+    (single source of truth); falls back to a live per-keyword count for pre-upgrade rows."""
+    keywords = list(keywords)
+    sets, has = _matched_sets(conn, cid)
     out = []
-    for kw in keywords:
-        sql, params = keyword_count_query(cid, kw, match)
-        try:
-            n = conn.execute(sql, tuple(params)).fetchone()["n"]
-        except Exception:
-            n = None
-        out.append({"keyword": kw, "count": n})
+    if has:
+        for kw in keywords:
+            out.append({"keyword": kw, "count": sum(1 for s in sets if kw in s)})
+    else:
+        for kw in keywords:
+            sql, params = keyword_count_query(cid, kw, match)
+            try:
+                n = conn.execute(sql, tuple(params)).fetchone()["n"]
+            except Exception:
+                n = None
+            out.append({"keyword": kw, "count": n})
     out.sort(key=lambda t: (t["count"] is None, -(t["count"] or 0)))
     return out
 

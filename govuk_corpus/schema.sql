@@ -255,10 +255,11 @@ CREATE TABLE IF NOT EXISTS category_page_counts (
 -- document-type + keyword filters), one row per distinct page. content_id is GOV.UK's
 -- real unique id (url fallback when absent); url is the representative MIN(url).
 CREATE TABLE IF NOT EXISTS category_shortlist_pages (
-    category_id  INTEGER NOT NULL,
-    content_id   TEXT    NOT NULL,
-    url          TEXT,
-    computed_at  TEXT,
+    category_id      INTEGER NOT NULL,
+    content_id       TEXT    NOT NULL,
+    url              TEXT,
+    matched_keywords TEXT,   -- JSON array of the category keywords this page matched (corpus/deterministic)
+    computed_at      TEXT,
     PRIMARY KEY (category_id, content_id)
 );
 CREATE INDEX IF NOT EXISTS idx_csp_category ON category_shortlist_pages(category_id);
@@ -273,7 +274,8 @@ CREATE TABLE IF NOT EXISTS category_search_pages (
     title          TEXT,
     document_type  TEXT,
     source         TEXT,
-    phrases        TEXT,
+    phrases        TEXT,          -- keywords that matched in GOV.UK Search (comma-joined)
+    corpus_phrases TEXT,          -- JSON array of the keywords this page matched in our corpus (shortlister/both)
     computed_at    TEXT,
     PRIMARY KEY (category_id, url)
 );

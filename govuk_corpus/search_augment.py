@@ -24,6 +24,17 @@ from .canonical import canonicalise
 _P = "%s" if db.__name__.endswith("db_pg") else "?"
 
 
+def _load_list(v) -> list:
+    """Parse a stored JSON array (matched keywords); tolerate NULL / bad data."""
+    if not v:
+        return []
+    try:
+        out = json.loads(v)
+        return out if isinstance(out, list) else []
+    except Exception:
+        return []
+
+
 def _qkey(cid: int) -> str:
     return f"govuk_queries_{cid}"
 
@@ -53,19 +64,22 @@ def _content_lookup(conn, urls: Sequence[str]) -> dict:
 
 
 def _store(conn, cid: int, rows: List[tuple]) -> None:
-    """Replace a category's augmented rows. Each row: (url, content_id, title, doctype, source, phrases)."""
+    """Replace a category's augmented rows. Each row:
+    (url, content_id, title, doctype, source, phrases, corpus_phrases) where phrases is the
+    GOV.UK-Search matched keywords (comma-joined) and corpus_phrases is a JSON array of the
+    keywords the page matched in our corpus."""
     ts = cat.now_iso()
     conn.execute(f"DELETE FROM category_search_pages WHERE category_id = {_P}", (cid,))
     CHUNK = 400
     for i in range(0, len(rows), CHUNK):
         batch = rows[i:i + CHUNK]
-        values = ",".join([f"({_P}, {_P}, {_P}, {_P}, {_P}, {_P}, {_P}, {_P})"] * len(batch))
+        values = ",".join([f"({_P}, {_P}, {_P}, {_P}, {_P}, {_P}, {_P}, {_P}, {_P})"] * len(batch))
         params: list = []
-        for url, content_id, title, doctype, source, phrases in batch:
-            params.extend((cid, url, content_id, title, doctype, source, phrases, ts))
+        for url, content_id, title, doctype, source, phrases, corpus_phrases in batch:
+            params.extend((cid, url, content_id, title, doctype, source, phrases, corpus_phrases, ts))
         conn.execute(
             "INSERT INTO category_search_pages "
-            "(category_id, url, content_id, title, document_type, source, phrases, computed_at) "
+            "(category_id, url, content_id, title, document_type, source, phrases, corpus_phrases, computed_at) "
             f"VALUES {values}", tuple(params))
 
 
@@ -100,7 +114,7 @@ def compare(conn, cid: int, keywords: Sequence[str], organisations: Sequence[str
                            "phrases": it.get("phrases") or []}
 
     membership = [dict(r) for r in conn.execute(
-        f"SELECT content_id, url FROM category_shortlist_pages WHERE category_id = {_P}",
+        f"SELECT content_id, url, matched_keywords FROM category_shortlist_pages WHERE category_id = {_P}",
         (cid,)).fetchall()]
 
     lookup = _content_lookup(conn, [m["url"] for m in membership] + search_urls)
@@ -122,15 +136,20 @@ def compare(conn, cid: int, keywords: Sequence[str], organisations: Sequence[str
         url = m["url"]
         title = lookup.get(url, (None, None, None))[1]
         eff = lookup.get(url, (None, None, None))[2]
-        source = "both" if m["content_id"] in search_keys else "shortlister"
-        rows.append((url, m["content_id"], title, eff, source, None))
+        in_search = m["content_id"] in search_keys
+        source = "both" if in_search else "shortlister"
+        # GOV.UK phrases: only for 'both' pages (which GOV.UK Search also returned).
+        govuk = ", ".join(search_meta[search_keys[m["content_id"]]]["phrases"]) if in_search else None
+        # Corpus phrases: the keywords this page matched in our corpus, carried from membership.
+        rows.append((url, m["content_id"], title, eff, source, govuk, m.get("matched_keywords")))
 
     for k, cu in search_keys.items():
         if k in shortlist_keys:
             continue                                   # already emitted as 'both'
         _, cidv = key_for(cu)
         meta = search_meta[cu]
-        rows.append((cu, cidv, meta["title"], meta["doctype"], "search", ", ".join(meta["phrases"])))
+        # search-only: no corpus match (it wasn't in our deterministic shortlist).
+        rows.append((cu, cidv, meta["title"], meta["doctype"], "search", ", ".join(meta["phrases"]), None))
 
     _store(conn, cid, rows)
     conn.commit()
@@ -190,9 +209,13 @@ def augmented_pages(conn, cid: int, source: str = "", limit: int = 100, offset: 
     order = ("CASE source WHEN 'search' THEN 0 WHEN 'both' THEN 1 ELSE 2 END, url"
              if not source else "url")
     rows = [dict(r) for r in conn.execute(
-        f"SELECT url, content_id, title, document_type, source, phrases "
+        f"SELECT url, content_id, title, document_type, source, phrases, corpus_phrases "
         f"FROM category_search_pages WHERE {wsql} ORDER BY {order} LIMIT {_P} OFFSET {_P}",
         tuple(params) + (limit, offset)).fetchall()]
+    for r in rows:
+        # GOV.UK matched keywords (comma-joined) and corpus matched keywords (JSON) -> arrays.
+        r["govuk_keywords"] = [p.strip() for p in (r.get("phrases") or "").split(",") if p.strip()]
+        r["corpus_keywords"] = _load_list(r.get("corpus_phrases"))
     return {"total": total, "rows": rows, "limit": limit, "offset": offset, "source": source}
 
 
@@ -237,9 +260,15 @@ def evaluable_search_only(conn, cid: int) -> int:
 
 
 def export_rows(conn, cid: int) -> List[dict]:
-    """All augmented rows for a CSV export."""
-    return [dict(r) for r in conn.execute(
-        f"SELECT source, url, content_id, title, document_type, phrases "
-        f"FROM category_search_pages WHERE category_id = {_P} "
-        f"ORDER BY CASE source WHEN 'search' THEN 0 WHEN 'both' THEN 1 ELSE 2 END, url",
-        (cid,)).fetchall()]
+    """All augmented rows for a CSV export, with the corpus and GOV.UK keyword hits."""
+    out = []
+    for r in conn.execute(
+            f"SELECT source, url, content_id, title, document_type, phrases, corpus_phrases "
+            f"FROM category_search_pages WHERE category_id = {_P} "
+            f"ORDER BY CASE source WHEN 'search' THEN 0 WHEN 'both' THEN 1 ELSE 2 END, url",
+            (cid,)).fetchall():
+        d = dict(r)
+        d["govuk_keywords"] = d.pop("phrases", None) or ""            # comma-joined already
+        d["corpus_keywords"] = ", ".join(_load_list(d.pop("corpus_phrases", None)))
+        out.append(d)
+    return out

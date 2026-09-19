@@ -55,6 +55,7 @@ def build_query(
     include_unfetched: bool = False,    # include rows we have no body for (content_hash NULL)
     count_only: bool = False,
     membership: bool = False,           # (content_id, MIN(url)) per distinct page (shortlist table)
+    keyword_hits: bool = False,         # with membership: also emit kw_i (1/0) per keyword matched
     include_title: bool = False,        # also select c.title (for CSV export)
     detail: bool = False,               # url + title + size + last-updated (for the results table)
     select_expr: Optional[str] = None,  # explicit SELECT list (for custom exports)
@@ -110,8 +111,19 @@ def build_query(
 
     if membership:
         # One (content_id, representative url) per distinct page — for category_shortlist_pages.
-        return (f"SELECT {dedup_key} AS content_id, MIN(c.url) AS url "
-                f"FROM content c{where_sql} GROUP BY {dedup_key} ORDER BY {dedup_key}", params)
+        cols = [f"{dedup_key} AS content_id", "MIN(c.url) AS url"]
+        hit_params: list = []
+        if keyword_hits and keywords:
+            # One 1/0 column per keyword: did ANY aliased row of this page match it? Uses the
+            # SAME per-keyword clause as membership/charts, so the stored hits explain exactly
+            # why the page qualified. These SELECT-side params precede the WHERE params.
+            for i, kw in enumerate(keywords):
+                clause, kwp = _keyword_clause([kw], match, _IS_PG)
+                cols.append(f"MAX(CASE WHEN {clause} THEN 1 ELSE 0 END) AS kw_{i}")
+                hit_params.extend(kwp)
+        return (f"SELECT {', '.join(cols)} "
+                f"FROM content c{where_sql} GROUP BY {dedup_key} ORDER BY {dedup_key}",
+                hit_params + params)
 
     if select_expr:
         select = select_expr
@@ -370,6 +382,20 @@ def membership_rows(conn, **filters) -> List[Tuple[str, str]]:
     """[(content_id, url)] — distinct pages for the filters, representative url = MIN(url)."""
     sql, params = membership_query(**filters)
     return [(r["content_id"], r["url"]) for r in conn.execute(sql, tuple(params)).fetchall()]
+
+
+def membership_rows_with_hits(conn, **filters) -> List[Tuple[str, str, List[str]]]:
+    """[(content_id, url, [matched keywords])] — distinct pages plus which of the category's
+    keywords each page matched, computed with the same clause used for membership. The matched
+    list is empty when there are no keywords."""
+    keywords = list(filters.get("keywords") or [])
+    sql, params = build_query(membership=True, keyword_hits=True, **filters)
+    out: List[Tuple[str, str, List[str]]] = []
+    for r in conn.execute(sql, tuple(params)).fetchall():
+        d = dict(r)
+        matched = [keywords[i] for i in range(len(keywords)) if d.get(f"kw_{i}")]
+        out.append((d["content_id"], d["url"], matched))
+    return out
 
 
 def org_breakdown(conn, *, organisations: Sequence[str], document_types: Sequence[str] = (),

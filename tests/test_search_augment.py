@@ -18,18 +18,22 @@ class TestAugmentedPages(unittest.TestCase):
         self.conn = db.connect(":memory:")
         db.init_db(self.conn)
         rows = [
-            # url, content_id, title, document_type, source
-            ("https://www.gov.uk/a", "c1", "Nitrate rules guidance", "guidance", "shortlister"),
-            ("https://www.gov.uk/b", "c2", "Slurry storage NITRATE notice", "notice", "both"),
-            ("https://www.gov.uk/c", "c3", "Water quality report", "publication", "search"),
-            ("https://www.gov.uk/d", "c4", "Farming payments", "guidance", "shortlister"),
+            # url, content_id, title, document_type, source, phrases(govuk), corpus_phrases(json)
+            ("https://www.gov.uk/a", "c1", "Nitrate rules guidance", "guidance", "shortlister",
+             None, '["nitrate"]'),
+            ("https://www.gov.uk/b", "c2", "Slurry storage NITRATE notice", "notice", "both",
+             "nitrate, slurry", '["nitrate", "slurry"]'),
+            ("https://www.gov.uk/c", "c3", "Water quality report", "publication", "search",
+             "water quality", None),
+            ("https://www.gov.uk/d", "c4", "Farming payments", "guidance", "shortlister",
+             None, '["payments"]'),
         ]
-        for url, cid, title, dt, source in rows:
+        for url, cid, title, dt, source, phrases, corpus in rows:
             self.conn.execute(
                 "INSERT INTO category_search_pages "
-                "(category_id, url, content_id, title, document_type, source, phrases, computed_at) "
-                "VALUES (?,?,?,?,?,?,?,?)",
-                (7, url, cid, title, dt, source, None, "2026-09-19T00:00:00+00:00"))
+                "(category_id, url, content_id, title, document_type, source, phrases, "
+                "corpus_phrases, computed_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                (7, url, cid, title, dt, source, phrases, corpus, "2026-09-19T00:00:00+00:00"))
         self.conn.commit()
 
     def tearDown(self):
@@ -63,6 +67,19 @@ class TestAugmentedPages(unittest.TestCase):
         out = search_augment.augmented_pages(self.conn, 7, q="zzz-nothing")
         self.assertEqual(out["total"], 0)
         self.assertEqual(out["rows"], [])
+
+    def test_rows_carry_both_keyword_sets(self):
+        out = search_augment.augmented_pages(self.conn, 7)
+        by_url = {r["url"]: r for r in out["rows"]}
+        both = by_url["https://www.gov.uk/b"]
+        self.assertEqual(both["corpus_keywords"], ["nitrate", "slurry"])
+        self.assertEqual(both["govuk_keywords"], ["nitrate", "slurry"])
+        search_only = by_url["https://www.gov.uk/c"]
+        self.assertEqual(search_only["corpus_keywords"], [])          # not in our corpus shortlist
+        self.assertEqual(search_only["govuk_keywords"], ["water quality"])
+        shortlister = by_url["https://www.gov.uk/a"]
+        self.assertEqual(shortlister["corpus_keywords"], ["nitrate"])
+        self.assertEqual(shortlister["govuk_keywords"], [])           # GOV.UK didn't return it
 
 
 if __name__ == "__main__":

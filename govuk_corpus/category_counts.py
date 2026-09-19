@@ -15,6 +15,7 @@ runs on both SQLite (pilot/tests) and Postgres (server).
 """
 from __future__ import annotations
 
+import json
 from typing import Dict, Optional
 
 from . import categories as cat
@@ -54,25 +55,28 @@ def _effective_filters(conn, category: dict) -> dict:
 
 
 def _store_membership(conn, category_id: int, rows) -> None:
-    """Replace a category's persisted shortlist membership with (content_id, url) rows."""
+    """Replace a category's persisted shortlist membership. Each row is
+    (content_id, url, matched_keywords) where matched_keywords is a list of keywords."""
     ts = cat.now_iso()
     conn.execute(f"DELETE FROM category_shortlist_pages WHERE category_id = {_P}", (category_id,))
     # Chunked multi-row INSERTs (backend-agnostic; keeps statement/param counts sane).
     CHUNK = 500
     for i in range(0, len(rows), CHUNK):
         batch = rows[i:i + CHUNK]
-        values = ",".join([f"({_P}, {_P}, {_P}, {_P})"] * len(batch))
+        values = ",".join([f"({_P}, {_P}, {_P}, {_P}, {_P})"] * len(batch))
         params = []
-        for content_id, url in batch:
-            params.extend((category_id, content_id, url, ts))
+        for content_id, url, matched in batch:
+            params.extend((category_id, content_id, url, json.dumps(matched or []), ts))
         conn.execute(
-            f"INSERT INTO category_shortlist_pages (category_id, content_id, url, computed_at) "
+            f"INSERT INTO category_shortlist_pages "
+            f"(category_id, content_id, url, matched_keywords, computed_at) "
             f"VALUES {values}", tuple(params))
 
 
 def _refresh_membership(conn, category: dict) -> int:
-    """Recompute and persist one category's shortlist membership. Returns the row count."""
-    rows = shortlist.membership_rows(conn, **_effective_filters(conn, category))
+    """Recompute and persist one category's shortlist membership, including which keywords
+    each page matched. Returns the row count."""
+    rows = shortlist.membership_rows_with_hits(conn, **_effective_filters(conn, category))
     _store_membership(conn, int(category["id"]), rows)
     return len(rows)
 
