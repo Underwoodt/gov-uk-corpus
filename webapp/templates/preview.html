@@ -102,6 +102,18 @@
         {{ sql_panel("org-sql") }}
       </div>
 
+      <div id="doc-breakdown">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;">
+          <h2 style="margin:0;font-size:19px;">Which document types matched</h2>
+          <a href="#" id="doc-toggle" hidden style="font-size:14px;">Show all</a>
+        </div>
+        <p class="hint" style="margin-top:2px;">Pages in the saved shortlist by document type
+          (html_publications count under their parent type). Each page counts once.</p>
+        <table style="width:100%;"><tbody id="doc-rows"><tr><td class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr></tbody></table>
+        <p id="doc-empty" class="secondary" hidden>No document types in this shortlist.</p>
+        {{ sql_panel("doc-sql") }}
+      </div>
+
       <div id="kw-breakdown">
         <div style="display:flex;justify-content:space-between;align-items:baseline;">
           <h2 style="margin:0;font-size:19px;">Which terms matched</h2>
@@ -298,6 +310,7 @@
         }
       }
       loadOrgBreakdown();       // 'which organisations matched'
+      loadDoctypeBreakdown();   // 'which document types matched'
       loadKeywordBreakdown();   // 'which terms matched'
       loadKwPages();            // 'pages in this shortlist'
     }
@@ -383,6 +396,55 @@
       orgExpanded = !orgExpanded;
       e.target.textContent = orgExpanded ? "Show top " + ORG_TOP : "Show all";
       renderOrgRows();
+    });
+
+    // "Which document types matched" — shortlist pages per effective document type.
+    const DOC_TOP = 8;
+    let docExpanded = false, docRows = [];
+    const docLabel = s => String(s || "").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+    async function loadDoctypeBreakdown() {
+      const wrap = document.getElementById("doc-breakdown");
+      wrap.hidden = false;
+      document.getElementById("doc-rows").innerHTML =
+        `<tr><td class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr>`;
+      let pending = false;
+      try {
+        const j = await (await fetch(`/api/categories/${CID}/doctype-breakdown`)).json();
+        docRows = j.types || [];
+        pending = !!j.pending;
+        if (window.setSqlPanel) setSqlPanel("doc-sql", j.sql);
+      } catch (e) {
+        document.getElementById("doc-rows").innerHTML =
+          `<tr><td class="secondary" style="padding:10px 6px;">Could not load this breakdown.</td></tr>`;
+        return;
+      }
+      if (pending) {
+        document.getElementById("doc-rows").innerHTML =
+          `<tr><td class="secondary" style="padding:10px 6px;">Shortlist not computed yet — it populates after the nightly refresh or when the category is saved.</td></tr>`;
+        document.getElementById("doc-toggle").hidden = true;
+        return;
+      }
+      document.getElementById("doc-empty").hidden = docRows.length !== 0;
+      document.getElementById("doc-toggle").hidden = docRows.length <= DOC_TOP;
+      renderDoctypeRows();
+    }
+    function renderDoctypeRows() {
+      const max = Math.max(1, ...docRows.map(t => t.count || 0));
+      const shown = docExpanded ? docRows : docRows.slice(0, DOC_TOP);
+      document.getElementById("doc-rows").innerHTML = shown.map(t => {
+        const pct = t.count == null ? 0 : Math.round((t.count / max) * 100);
+        return `<tr>` +
+          `<td class="bd-name" title="${esc(t.document_type)}">${esc(docLabel(t.document_type))}</td>` +
+          `<td class="bd-cell"><div class="bd-track"><div class="bd-fill" style="width:${pct}%;"></div></div></td>` +
+          `<td class="bd-val">${fmtInt(t.count)}</td>` +
+        `</tr>`;
+      }).join("");
+    }
+    document.getElementById("doc-toggle").addEventListener("click", e => {
+      e.preventDefault();
+      docExpanded = !docExpanded;
+      e.target.textContent = docExpanded ? "Show top " + DOC_TOP : "Show all";
+      renderDoctypeRows();
     });
 
     // "Which terms matched" — per-keyword page counts, rendered as bars.

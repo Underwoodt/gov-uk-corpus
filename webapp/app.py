@@ -1216,6 +1216,33 @@ def api_org_breakdown(request: Request, cid: int):
     return JSONResponse({"orgs": orgs_out, "sql": sql, "pending": pending, "computed_at": computed_at})
 
 
+@app.get("/api/categories/{cid}/doctype-breakdown")
+def api_doctype_breakdown(request: Request, cid: int):
+    """Pages in the materialised shortlist by effective document type — the 'which
+    document types matched' breakdown. Reads category_shortlist_pages (instant)."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    conn = connect()
+    category = cat.get_category(conn, cid)
+    if not category:
+        conn.close()
+        return JSONResponse({"error": "not found"}, status_code=404)
+    filters = _effective_filters(conn, category)
+    try:
+        types_out = reporting.doctype_breakdown(conn, cid)
+        mcount = reporting.membership_count(conn, cid)
+        computed_at = reporting.membership_computed_at(conn, cid)
+    except Exception as e:
+        conn.close()
+        return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=500)
+    conn.close()
+    dsql, dparams = reporting.doctype_breakdown_query(cid)
+    sql = _display_sql(dsql, dparams)
+    has_filter = bool(filters["organisations"] or filters["document_types"] or filters["keywords"])
+    pending = has_filter and mcount == 0
+    return JSONResponse({"types": types_out, "sql": sql, "pending": pending, "computed_at": computed_at})
+
+
 @app.get("/api/categories/{cid}/keyword-breakdown")
 def api_keyword_breakdown(request: Request, cid: int):
     """Pages matching EACH keyword individually, within the org + document-type set —

@@ -108,6 +108,22 @@ def org_breakdown(conn, cid: int, organisations) -> List[dict]:
             for r in conn.execute(sql, tuple(params)).fetchall()]
 
 
+def doctype_breakdown_query(cid: int, limit: int = 300):
+    """(sql, params) — pages in the materialised shortlist by effective document type
+    (html_publication rolled up to its parent), counting distinct content_id."""
+    sql = (f"SELECT {_EFF} AS dt, COUNT(DISTINCT COALESCE(c.content_id, c.url)) AS n "
+           f"FROM category_shortlist_pages m JOIN content c ON c.url = m.url "
+           f"WHERE m.category_id = {_P} "
+           f"GROUP BY {_EFF} ORDER BY n DESC, dt LIMIT {int(limit)}")
+    return sql, [cid]
+
+
+def doctype_breakdown(conn, cid: int) -> List[dict]:
+    sql, params = doctype_breakdown_query(cid)
+    return [{"document_type": r["dt"], "count": r["n"]}
+            for r in conn.execute(sql, tuple(params)).fetchall() if r["dt"]]
+
+
 def keyword_count_query(cid: int, keyword: str, match: str = "any"):
     """(sql, params) — how many pages in the materialised shortlist contain one keyword.
     Scoped to the shortlist (a few thousand rows), so it's fast and can't time out even
