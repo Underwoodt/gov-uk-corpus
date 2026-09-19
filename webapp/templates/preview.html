@@ -113,18 +113,6 @@
         <p id="doc-empty" class="secondary" hidden>No document types in this shortlist.</p>
         {{ sql_panel("doc-sql") }}
       </div>
-
-      <div id="kw-breakdown">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;">
-          <h2 style="margin:0;font-size:19px;">Which terms matched</h2>
-          <a href="#" id="kw-toggle" hidden style="font-size:14px;">Show all</a>
-        </div>
-        <p class="hint" style="margin-top:2px;">Of the pages in the saved shortlist, how many contain each keyword.
-          Terms overlap, so these don't sum to the total.</p>
-        <table style="width:100%;"><tbody id="kw-rows"><tr><td class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr></tbody></table>
-        <p id="kw-empty" class="secondary" hidden>No keywords set for this category.</p>
-        {{ sql_panel("kw-sql") }}
-      </div>
     </div>
 
     <div id="kw-venn" style="margin-top:32px;">
@@ -140,8 +128,20 @@
       <p class="hint" style="margin-top:2px;">How the top keywords co-occur across the shortlist pages. Each bar is a
         combination of terms and the number of pages matching exactly that set; the dots show which terms it covers.
         Taller bars are terms that tend to appear together.</p>
-      <div id="upset-svg" style="overflow-x:auto;"></div>
-      <div id="venn-detail" style="margin-top:14px;max-width:560px;"></div>
+      <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start;">
+        <div id="upset-svg" style="overflow-x:auto;flex:2 1 420px;min-width:0;"></div>
+        <div id="kw-breakdown" style="flex:1 1 280px;min-width:260px;">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;">
+            <h3 style="margin:0;font-size:16px;">Which terms matched</h3>
+            <a href="#" id="kw-toggle" hidden style="font-size:14px;">Show all</a>
+          </div>
+          <p class="hint" style="margin-top:2px;">Of the pages in the saved shortlist, how many contain each keyword.
+            Terms overlap, so these don't sum to the total.</p>
+          <table style="width:100%;"><tbody id="kw-rows"><tr><td class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr></tbody></table>
+          <p id="kw-empty" class="secondary" hidden>No keywords set for this category.</p>
+          {{ sql_panel("kw-sql") }}
+        </div>
+      </div>
       <p id="venn-status" class="secondary" style="margin:8px 0 0;"></p>
       {{ sql_panel("venn-sql") }}
     </div>
@@ -335,24 +335,8 @@
       loadKwPages();            // 'pages in this shortlist'
     }
 
-    // ---- Keyword overlap (UpSet plot + detail list) ----
+    // ---- Keyword overlap (UpSet plot) ----
     const VENN_COLORS = ["#1d70b8", "#00703c", "#d4351c", "#4c2c92", "#28a197"];
-    function comboLabel(mask, keywords){ var out=[];
-      for (var i=0;i<keywords.length;i++){ if (mask & (1<<i)) out.push(keywords[i]); } return out.join(" ∩ "); }
-    function renderVennDetail(keywords, counts){
-      var n=keywords.length, legend="", i;
-      for (i=0;i<n;i++){ var tot=0; for (var m=1;m<(1<<n);m++){ if (m&(1<<i)) tot+=counts[m]||0; }
-        legend+=`<div style="display:flex;align-items:center;gap:8px;font-size:14px;margin:2px 0;">`
-          +`<span style="width:13px;height:13px;border-radius:3px;background:${VENN_COLORS[i]};flex:0 0 auto;"></span>`
-          +`<span>${esc(keywords[i])}</span><span class="secondary" style="margin-left:auto;">${fmtInt(tot)}</span></div>`; }
-      var regs=[]; for (var mask=1; mask<(1<<n); mask++){ if (counts[mask]) regs.push([mask,counts[mask]]); }
-      regs.sort(function(a,b){ return b[1]-a[1]; });
-      var rows=regs.map(function(r){ return `<tr><td style="padding:3px 8px 3px 0;">${esc(comboLabel(r[0],keywords))}</td>`
-        +`<td class="num" style="padding:3px 0;font-weight:700;">${fmtInt(r[1])}</td></tr>`; }).join("");
-      return `<div style="font-weight:700;font-size:14px;margin:0 0 6px;">Keywords</div>${legend}`
-        +`<div style="font-weight:700;font-size:14px;margin:14px 0 6px;">Overlap detail (pages per combination)</div>`
-        +`<div style="max-height:260px;overflow:auto;"><table style="font-size:13px;width:100%;"><tbody>${rows}</tbody></table></div>`;
-    }
     // UpSet plot: sorted intersection bars + a dot-matrix of which keywords each covers.
     function renderUpset(keywords, counts, cap){
       var n=keywords.length, combos=[];
@@ -382,8 +366,8 @@
     async function loadVenn(){
       var n = parseInt(document.getElementById("venn-n").value, 10) || 5;
       var status=document.getElementById("venn-status");
-      var upset=document.getElementById("upset-svg"), detail=document.getElementById("venn-detail");
-      upset.innerHTML = `<span class="spinner"></span>`; detail.innerHTML = "";
+      var upset=document.getElementById("upset-svg");
+      upset.innerHTML = `<span class="spinner"></span>`;
       try {
         var j = await (await fetch(`/api/categories/${CID}/keyword-overlap?n=${n}`)).json();
         if (window.setSqlPanel) setSqlPanel("venn-sql", j.sql);
@@ -392,7 +376,6 @@
         if (kws.length < 2){ upset.innerHTML=""; status.textContent="Add at least two keywords to see their overlap."; return; }
         var counts={}; (j.regions||[]).forEach(function(r){ counts[r.mask]=r.count; });
         upset.innerHTML = renderUpset(kws, counts, 16);
-        detail.innerHTML = renderVennDetail(kws, counts);
         status.textContent = (kws.length < n) ? `Only ${kws.length} keywords available.` : "";
       } catch(e){ upset.innerHTML=""; status.textContent="Could not load the overlap diagram."; }
     }
