@@ -18,7 +18,7 @@ we can pin the report to an exact page.
 
 ## Next free serial
 
-**`guc-0021`** ← assign this to the next new page, then increment this line.
+**`guc-0022`** ← assign this to the next new page, then increment this line.
 
 ## How it's wired (so the rule is automatic)
 
@@ -61,6 +61,7 @@ we can pin the report to an exact page.
 | guc-0018 | URL check (corpus / active / final shortlist) | `url_check.html` | `GET /categories/{id}/url-check`, `POST /api/categories/{id}/url-check`, `POST /categories/{id}/url-check/save` | Active |
 | guc-0019 | GOV.UK search | `govuk_search.html` | `GET /govuk-search`, `GET /api/govuk-search` | Active |
 | guc-0020 | User administration (admin) | `admin_users.html` | `GET /admin/users`, `POST /admin/users` (accounts mode) | Active |
+| guc-0021 | Updating category (post-save rebuild) | `rebuilding.html` | `GET /categories/{id}/rebuilding`, `POST /api/categories/{id}/refresh-shortlist`, `POST /api/categories/{id}/reconcile-eval` | Active |
 
 ## Sub-tab IDs
 

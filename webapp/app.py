@@ -844,11 +844,10 @@ async def create_category(request: Request):
     if errors:
         return templates.TemplateResponse("form.html", _form_ctx(conn, request, None, data, errors))
     cid = cat.create_category(conn, data)
-    category_counts.refresh_one(conn, cid)         # recompute the shortlist membership + count
-    evaluate.reconcile_to_shortlist(conn, cid)     # keep LLM results aligned (no-op for a new one)
     conn.close()
-    # Land on the Keyword Matching view (guc-0003a) so the saved shortlist is right there.
-    return RedirectResponse(url=str(request.url_for("preview_category_page", cid=cid)), status_code=303)
+    # The shortlist rebuild + eval reconcile run on the interstitial (guc-0021), which shows
+    # progress and then moves on to the Keyword Matching view (guc-0003a).
+    return RedirectResponse(url=str(request.url_for("rebuild_category_page", cid=cid)), status_code=303)
 
 
 @app.post("/categories/{cid}/copy")
@@ -896,11 +895,57 @@ async def update_category(request: Request, cid: int):
         merged = {**category, **data}
         return templates.TemplateResponse("form.html", _form_ctx(conn, request, category, merged, errors))
     cat.update_category(conn, cid, data)
-    category_counts.refresh_one(conn, cid)         # recompute the shortlist membership + count
-    evaluate.reconcile_to_shortlist(conn, cid)     # retain valid LLM results, drop filtered-out
     conn.close()
-    # Land on the Keyword Matching view (guc-0003a) so the updated shortlist is right there.
-    return RedirectResponse(url=str(request.url_for("preview_category_page", cid=cid)), status_code=303)
+    # The shortlist rebuild + eval reconcile run on the interstitial (guc-0021), which shows
+    # progress and then moves on to the Keyword Matching view (guc-0003a).
+    return RedirectResponse(url=str(request.url_for("rebuild_category_page", cid=cid)), status_code=303)
+
+
+# ---- post-save rebuild interstitial (guc-0021) --------------------------
+@app.get("/categories/{cid}/rebuilding", response_class=HTMLResponse)
+def rebuild_category_page(request: Request, cid: int):
+    """Progress page shown after a definition is saved: it drives the shortlist rebuild and
+    the evaluation reconcile (as staged POSTs), then moves on to guc-0003a."""
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    category = cat.get_category(conn, cid)
+    if not category:
+        conn.close()
+        return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
+    category["display_name"] = cat.prettify(category.get("slug")) or (category.get("description") or "Untitled")
+    resp = templates.TemplateResponse("rebuilding.html", ctx(conn, request, category=category))
+    conn.close()
+    return resp
+
+
+@app.post("/api/categories/{cid}/refresh-shortlist")
+def api_refresh_shortlist(request: Request, cid: int):
+    """Recompute a category's stored count + materialised shortlist membership."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    conn = connect()
+    if not cat.get_category(conn, cid):
+        conn.close()
+        return JSONResponse({"error": "not found"}, status_code=404)
+    category_counts.refresh_one(conn, cid)
+    n = reporting.membership_count(conn, cid)
+    conn.close()
+    return JSONResponse({"ok": True, "membership_count": n})
+
+
+@app.post("/api/categories/{cid}/reconcile-eval")
+def api_reconcile_eval(request: Request, cid: int):
+    """Align the category's LLM evaluation results with its refreshed shortlist."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    conn = connect()
+    if not cat.get_category(conn, cid):
+        conn.close()
+        return JSONResponse({"error": "not found"}, status_code=404)
+    evaluate.reconcile_to_shortlist(conn, cid)
+    conn.close()
+    return JSONResponse({"ok": True})
 
 
 def _form_ctx(conn, request, category, values, errors) -> dict:
