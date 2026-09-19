@@ -95,8 +95,8 @@
           <h2 style="margin:0;font-size:19px;">Which organisations matched</h2>
           <a href="#" id="org-toggle" hidden style="font-size:14px;">Show all</a>
         </div>
-        <p class="hint" style="margin-top:2px;">Pages contributed by each organisation (within the document-type
-          and keyword filters). Organisations overlap, so these don't sum to the total.</p>
+        <p class="hint" style="margin-top:2px;">Pages contributed by each organisation, from the saved shortlist.
+          Organisations overlap, so these don't sum to the total.</p>
         <table style="width:100%;"><tbody id="org-rows"><tr><td class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr></tbody></table>
         <p id="org-empty" class="secondary" hidden>No organisations set for this category.</p>
         {{ sql_panel("org-sql") }}
@@ -107,8 +107,8 @@
           <h2 style="margin:0;font-size:19px;">Which terms matched</h2>
           <a href="#" id="kw-toggle" hidden style="font-size:14px;">Show all</a>
         </div>
-        <p class="hint" style="margin-top:2px;">Pages matching each keyword on its own (within the organisation and
-          document-type filters). Terms overlap, so these don't sum to the keyword total.</p>
+        <p class="hint" style="margin-top:2px;">Of the pages in the saved shortlist, how many contain each keyword.
+          Terms overlap, so these don't sum to the total.</p>
         <table style="width:100%;"><tbody id="kw-rows"><tr><td class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr></tbody></table>
         <p id="kw-empty" class="secondary" hidden>No keywords set for this category.</p>
         {{ sql_panel("kw-sql") }}
@@ -345,13 +345,21 @@
       wrap.hidden = false;
       document.getElementById("org-rows").innerHTML =
         `<tr><td class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr>`;
+      let pending = false;
       try {
         const j = await (await fetch(`/api/categories/${CID}/org-breakdown`)).json();
         orgRows = j.orgs || [];
+        pending = !!j.pending;
         if (window.setSqlPanel) setSqlPanel("org-sql", j.sql);
       } catch (e) {
         document.getElementById("org-rows").innerHTML =
           `<tr><td class="secondary" style="padding:10px 6px;">Could not load this breakdown.</td></tr>`;
+        return;
+      }
+      if (pending) {
+        document.getElementById("org-rows").innerHTML =
+          `<tr><td class="secondary" style="padding:10px 6px;">Shortlist not computed yet — it populates after the nightly refresh or when the category is saved.</td></tr>`;
+        document.getElementById("org-toggle").hidden = true;
         return;
       }
       document.getElementById("org-empty").hidden = orgRows.length !== 0;
@@ -385,13 +393,21 @@
       wrap.hidden = false;
       document.getElementById("kw-rows").innerHTML =
         `<tr><td class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr>`;
+      let pending = false;
       try {
         const j = await (await fetch(`/api/categories/${CID}/keyword-breakdown`)).json();
         kwTerms = j.terms || [];
+        pending = !!j.pending;
         if (window.setSqlPanel) setSqlPanel("kw-sql", j.sql);
       } catch (e) {
         document.getElementById("kw-rows").innerHTML =
           `<tr><td class="secondary" style="padding:10px 6px;">Could not load this breakdown.</td></tr>`;
+        return;
+      }
+      if (pending) {
+        document.getElementById("kw-rows").innerHTML =
+          `<tr><td class="secondary" style="padding:10px 6px;">Shortlist not computed yet — it populates after the nightly refresh or when the category is saved.</td></tr>`;
+        document.getElementById("kw-toggle").hidden = true;
         return;
       }
       document.getElementById("kw-empty").hidden = kwTerms.length !== 0;

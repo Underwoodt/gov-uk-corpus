@@ -1199,18 +1199,21 @@ def api_org_breakdown(request: Request, cid: int):
         return JSONResponse({"error": "not found"}, status_code=404)
     filters = _effective_filters(conn, category)
     try:
-        orgs_out = shortlist.org_breakdown(
-            conn, organisations=filters["organisations"],
-            document_types=filters["document_types"], keywords=filters["keywords"], match="any")
+        # Read from the materialised shortlist (category_shortlist_pages) — instant, and
+        # it can't time out the way the old whole-corpus scan could.
+        orgs_out = reporting.org_breakdown(conn, cid, filters["organisations"])
+        mcount = reporting.membership_count(conn, cid)
+        computed_at = reporting.membership_computed_at(conn, cid)
     except Exception as e:
         conn.close()
         return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=500)
     conn.close()
-    osql, oparams = shortlist.org_breakdown_query(
-        organisations=filters["organisations"], document_types=filters["document_types"],
-        keywords=filters["keywords"], match="any")
+    osql, oparams = reporting.org_breakdown_query(cid, filters["organisations"])
     sql = _display_sql(osql, oparams) if osql else "-- No organisations set for this category."
-    return JSONResponse({"orgs": orgs_out, "sql": sql})
+    # 'pending' = the category has organisations but its shortlist hasn't been materialised
+    # yet (no refresh has run); the UI shows a "not computed yet" note rather than "none".
+    pending = bool(filters["organisations"]) and mcount == 0
+    return JSONResponse({"orgs": orgs_out, "sql": sql, "pending": pending, "computed_at": computed_at})
 
 
 @app.get("/api/categories/{cid}/keyword-breakdown")
@@ -1226,22 +1229,19 @@ def api_keyword_breakdown(request: Request, cid: int):
         conn.close()
         return JSONResponse({"error": "not found"}, status_code=404)
     filters = _effective_filters(conn, category)
-    base = {"organisations": filters["organisations"], "document_types": filters["document_types"]}
-    terms = []
+    # Count each keyword within the materialised shortlist (a few thousand rows), not the
+    # whole corpus — instant, and can't time out on common terms (import/export/transit).
+    terms = reporting.keyword_breakdown(conn, cid, filters["keywords"])
+    mcount = reporting.membership_count(conn, cid)
+    computed_at = reporting.membership_computed_at(conn, cid)
     blocks = []
     for kw in filters["keywords"]:
-        try:
-            n = cached_count(conn, keywords=[kw], match="any", **base)
-        except Exception:
-            n = None            # a single slow/failed term shouldn't sink the whole panel
-        terms.append({"keyword": kw, "count": n})
-        cs, cp = shortlist.build_query(count_only=True, keywords=[kw], match="any", **base)
-        blocks.append(f"-- Count for keyword: {kw}\n{_display_sql(cs, cp)};")
+        ksql, kp = reporting.keyword_count_query(cid, kw)
+        blocks.append(f"-- Count for keyword: {kw}\n{_display_sql(ksql, kp)};")
     conn.close()
-    # Sort by count desc (None last), preserving order for ties.
-    terms.sort(key=lambda t: (t["count"] is None, -(t["count"] or 0)))
     sql = "\n\n".join(blocks) if blocks else "-- No keywords set for this category."
-    return JSONResponse({"terms": terms, "sql": sql})
+    pending = bool(filters["keywords"]) and mcount == 0
+    return JSONResponse({"terms": terms, "sql": sql, "pending": pending, "computed_at": computed_at})
 
 
 @app.get("/api/categories/{cid}/results")

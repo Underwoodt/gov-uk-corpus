@@ -71,6 +71,67 @@ def category_pages(conn, cid: int, limit: int = 100, offset: int = 0) -> dict:
     return {"total": total, "rows": rows, "limit": limit, "offset": offset}
 
 
+def membership_count(conn, cid: int) -> int:
+    return conn.execute(
+        f"SELECT COUNT(*) AS n FROM category_shortlist_pages WHERE category_id = {_P}",
+        (cid,)).fetchone()["n"]
+
+
+def membership_computed_at(conn, cid: int):
+    return conn.execute(
+        f"SELECT MAX(computed_at) AS t FROM category_shortlist_pages WHERE category_id = {_P}",
+        (cid,)).fetchone()["t"]
+
+
+# ---- breakdowns over the materialised shortlist (instant; no corpus scan) ----
+
+def org_breakdown_query(cid: int, organisations, limit: int = 300):
+    """(sql, params) — pages in the materialised shortlist contributed by each of the
+    category's organisations. Counts distinct content_id; organisations overlap."""
+    if not organisations:
+        return None, []
+    ph = ",".join([_P] * len(organisations))
+    sql = (f"SELECT po.organisation_slug AS org, COUNT(DISTINCT COALESCE(c.content_id, c.url)) AS n "
+           f"FROM category_shortlist_pages m "
+           f"JOIN content c ON c.url = m.url "
+           f"JOIN page_organisations po ON po.page_url = c.url "
+           f"WHERE m.category_id = {_P} AND po.organisation_slug IN ({ph}) "
+           f"GROUP BY po.organisation_slug ORDER BY n DESC, po.organisation_slug LIMIT {int(limit)}")
+    return sql, [cid] + list(organisations)
+
+
+def org_breakdown(conn, cid: int, organisations) -> List[dict]:
+    sql, params = org_breakdown_query(cid, organisations)
+    if sql is None:
+        return []
+    return [{"organisation": r["org"], "count": r["n"]}
+            for r in conn.execute(sql, tuple(params)).fetchall()]
+
+
+def keyword_count_query(cid: int, keyword: str, match: str = "any"):
+    """(sql, params) — how many pages in the materialised shortlist contain one keyword.
+    Scoped to the shortlist (a few thousand rows), so it's fast and can't time out even
+    for very common terms — unlike the old whole-corpus per-term count."""
+    clause, kwp = shortlist._keyword_clause([keyword], match, shortlist._IS_PG)
+    sql = (f"SELECT COUNT(*) AS n FROM category_shortlist_pages m "
+           f"JOIN content c ON c.url = m.url "
+           f"WHERE m.category_id = {_P} AND {clause}")
+    return sql, [cid] + list(kwp)
+
+
+def keyword_breakdown(conn, cid: int, keywords, match: str = "any") -> List[dict]:
+    out = []
+    for kw in keywords:
+        sql, params = keyword_count_query(cid, kw, match)
+        try:
+            n = conn.execute(sql, tuple(params)).fetchone()["n"]
+        except Exception:
+            n = None
+        out.append({"keyword": kw, "count": n})
+    out.sort(key=lambda t: (t["count"] is None, -(t["count"] or 0)))
+    return out
+
+
 def _group(conn, cid: int, expr: str) -> List[dict]:
     return _rows(conn, f"""
         SELECT {expr} AS key, COUNT(*) AS count
