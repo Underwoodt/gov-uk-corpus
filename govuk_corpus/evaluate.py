@@ -211,8 +211,12 @@ def rename_run(conn, run_id: str, name: str) -> None:
 
 def run_candidates(conn, run_id: str, category_id: int, limit: int, *,
                    organisations: Sequence[str], document_types: Sequence[str] = (),
-                   keywords: Sequence[str] = (), match: str = "any") -> List[dict]:
-    """Next `limit` shortlisted pages not yet evaluated IN THIS RUN."""
+                   keywords: Sequence[str] = (), match: str = "any",
+                   include_search_only: bool = True) -> List[dict]:
+    """Next `limit` shortlisted pages not yet evaluated IN THIS RUN. The deterministic
+    shortlist is evaluated first; if there's room left, top up with the category's pinned
+    GOV.UK-Search-only pages that have since been fetched into the corpus (so search-only
+    coverage gaps are evaluated too)."""
     select_expr = ("c.url AS url, c.title AS title, c.description AS description, "
                    "c.search_text AS body")
     extra_where = (f"c.url NOT IN (SELECT url FROM evaluation_results WHERE run_id = {_P})")
@@ -220,7 +224,25 @@ def run_candidates(conn, run_id: str, category_id: int, limit: int, *,
         select_expr=select_expr, extra_where=extra_where, extra_params=[run_id],
         organisations=organisations, document_types=document_types,
         keywords=keywords, match=match, limit=limit)
-    return [dict(r) for r in conn.execute(sql, tuple(params)).fetchall()]
+    rows = [dict(r) for r in conn.execute(sql, tuple(params)).fetchall()]
+    if not include_search_only or len(rows) >= limit:
+        return rows[:limit]
+    # Top up with pinned GOV.UK-Search-only pages that are now in the corpus (have a body)
+    # and not yet evaluated in this run.
+    got = {r["url"] for r in rows}
+    top = conn.execute(
+        f"SELECT c.url AS url, c.title AS title, c.description AS description, c.search_text AS body "
+        f"FROM category_search_pages sp JOIN content c ON c.url = sp.url "
+        f"WHERE sp.category_id = {_P} AND sp.source = 'search' "
+        f"AND c.is_redirect = 0 AND c.content_hash IS NOT NULL "
+        f"AND c.url NOT IN (SELECT url FROM evaluation_results WHERE run_id = {_P}) "
+        f"ORDER BY c.url LIMIT {_P}",
+        (category_id, run_id, limit - len(rows))).fetchall()
+    for r in top:
+        d = dict(r)
+        if d["url"] not in got:
+            rows.append(d)
+    return rows[:limit]
 
 
 def save_page(conn, run_id: str, category_id: int, url: str,

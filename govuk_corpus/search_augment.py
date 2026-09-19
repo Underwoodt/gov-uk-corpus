@@ -162,6 +162,46 @@ def augmented_pages(conn, cid: int, source: str = "", limit: int = 100, offset: 
     return {"total": total, "rows": rows, "limit": limit, "offset": offset, "source": source}
 
 
+def pending_fetch_urls(conn, cid: int) -> List[str]:
+    """GOV.UK-Search-only URLs for this category that aren't in the corpus yet — the ones to
+    fetch so they gain content/content_id/search_text and become LLM-evaluable."""
+    rows = conn.execute(
+        f"SELECT sp.url FROM category_search_pages sp "
+        f"LEFT JOIN content c ON c.url = sp.url "
+        f"WHERE sp.category_id = {_P} AND sp.source = 'search' AND c.url IS NULL",
+        (cid,)).fetchall()
+    return [dict(r)["url"] for r in rows]
+
+
+def refresh_content_ids(conn, cid: int) -> int:
+    """After fetching search-only pages, backfill content_id/title/document_type on the
+    search rows now present in the corpus. Returns the number updated."""
+    rows = conn.execute(
+        f"SELECT sp.url AS url, c.content_id AS cid, c.title AS title, {_EFF} AS eff "
+        f"FROM category_search_pages sp JOIN content c ON c.url = sp.url "
+        f"WHERE sp.category_id = {_P} AND sp.source = 'search' "
+        f"AND (sp.content_id IS NULL OR sp.content_id = '')",
+        (cid,)).fetchall()
+    n = 0
+    for r in rows:
+        d = dict(r)
+        conn.execute(
+            f"UPDATE category_search_pages SET content_id = {_P}, title = COALESCE({_P}, title), "
+            f"document_type = COALESCE({_P}, document_type) WHERE category_id = {_P} AND url = {_P}",
+            (d.get("cid"), d.get("title"), d.get("eff"), cid, d["url"]))
+        n += 1
+    conn.commit()
+    return n
+
+
+def evaluable_search_only(conn, cid: int) -> int:
+    """How many GOV.UK-Search-only pages are already in the corpus (i.e. evaluable now)."""
+    return conn.execute(
+        f"SELECT COUNT(*) AS n FROM category_search_pages sp JOIN content c ON c.url = sp.url "
+        f"WHERE sp.category_id = {_P} AND sp.source = 'search' "
+        f"AND c.is_redirect = 0 AND c.content_hash IS NOT NULL", (cid,)).fetchone()["n"]
+
+
 def export_rows(conn, cid: int) -> List[dict]:
     """All augmented rows for a CSV export."""
     return [dict(r) for r in conn.execute(

@@ -182,6 +182,7 @@
         <h2 style="margin:0;font-size:19px;">GOV.UK Search coverage</h2>
         <span>
           <a href="#" id="gc-download" style="font-size:14px;" hidden>Download CSV</a>
+          <button type="button" class="btn secondary-btn" id="gc-fetch" style="margin-left:12px;padding:4px 12px;font-size:14px;" hidden>Fetch GOV.UK-only pages</button>
           <button type="button" class="btn secondary-btn" id="gc-run" style="margin-left:12px;padding:4px 12px;font-size:14px;">Compare with GOV.UK Search</button>
         </span>
       </div>
@@ -481,9 +482,16 @@
         }
         document.getElementById("gc-controls").hidden = false;
         document.getElementById("gc-download").hidden = false;
+        const pending = sum.pending_fetch || 0, evaluable = sum.evaluable || 0;
+        const fetchBtn = document.getElementById("gc-fetch");
+        fetchBtn.hidden = pending === 0;
+        fetchBtn.textContent = `Fetch ${fmtInt(pending)} GOV.UK-only page${pending === 1 ? "" : "s"}`;
         document.getElementById("gc-summary").innerHTML =
           `${provLozenge("shortlister")} ${fmtInt(c.shortlister||0)} · ${provLozenge("both")} ${fmtInt(c.both||0)} · `
-          + `${provLozenge("search")} ${fmtInt(c.search||0)}` + (sum.computed_at ? ` <span class="secondary">· as of ${esc(String(sum.computed_at).slice(0,16).replace("T"," "))}</span>` : "");
+          + `${provLozenge("search")} ${fmtInt(c.search||0)}`
+          + ` <span class="secondary">· ${fmtInt(evaluable)} GOV.UK-only in corpus (evaluable)`
+          + (pending ? `, ${fmtInt(pending)} to fetch` : "")
+          + (sum.computed_at ? ` · as of ${esc(String(sum.computed_at).slice(0,16).replace("T"," "))}` : "") + `</span>`;
         const rows = j.rows || [], total = j.total;
         tbody.innerHTML = rows.length ? rows.map(r =>
           `<tr>` +
@@ -510,6 +518,20 @@
         const j = await r.json().catch(() => ({}));
         if (!r.ok || j.error) throw new Error(j.error || ("HTTP " + r.status));
         gcOffset = 0; document.getElementById("gc-source").value = "";
+        await loadCoverage();
+      } catch (e) { status.style.color = "var(--red,#d4351c)"; status.textContent = "Error: " + (e.message || e); }
+      finally { btn.disabled = false; btn.textContent = label; }
+    });
+    document.getElementById("gc-fetch").addEventListener("click", async () => {
+      const btn = document.getElementById("gc-fetch"), status = document.getElementById("gc-status");
+      btn.disabled = true; const label = btn.textContent; btn.textContent = "Fetching…";
+      status.style.color = ""; status.innerHTML = '<span class="spinner"></span> Fetching GOV.UK-only pages into the corpus…';
+      try {
+        const r = await fetch(`/api/categories/${CID}/govuk-fetch`, { method: "POST" });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || j.error) throw new Error(j.error || ("HTTP " + r.status));
+        status.textContent = `Fetched ${fmtInt(j.fetched||0)} page(s); ${fmtInt(j.evaluable||0)} now evaluable`
+          + (j.pending ? `, ${fmtInt(j.pending)} still to fetch (click again).` : ".");
         await loadCoverage();
       } catch (e) { status.style.color = "var(--red,#d4351c)"; status.textContent = "Error: " + (e.message || e); }
       finally { btn.disabled = false; btn.textContent = label; }

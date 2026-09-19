@@ -41,7 +41,7 @@ from govuk_corpus import categories as cat
 from govuk_corpus import category_counts, category_transfer, feedback, guardrails, sessions
 from govuk_corpus import (audit_stats, category_interview, evaluate, extract, orgs,
                           peak_schedule, pricing, readability, reporting, roles,
-                          search_augment, settings, shortlist)
+                          search_augment, settings, shortlist, stage_align)
 from govuk_corpus import orgs as orgs_mod   # stable module handle (some routes take an `orgs` param)
 from govuk_corpus.backend import db
 
@@ -1279,10 +1279,50 @@ def api_augmented_pages(request: Request, cid: int, source: str = "", limit: int
     conn = connect()
     try:
         out = search_augment.augmented_pages(conn, cid, source=source, limit=limit, offset=offset)
-        out["summary"] = search_augment.summary(conn, cid)
+        summary = search_augment.summary(conn, cid)
+        summary["evaluable"] = search_augment.evaluable_search_only(conn, cid)
+        summary["pending_fetch"] = len(search_augment.pending_fetch_urls(conn, cid))
+        out["summary"] = summary
         return JSONResponse(out)
     finally:
         conn.close()
+
+
+_GOVUK_FETCH_CAP = 300   # bound one fetch batch; re-run to continue if more remain
+
+
+@app.post("/api/categories/{cid}/govuk-fetch")
+async def api_govuk_fetch(request: Request, cid: int):
+    """Fetch this category's GOV.UK-Search-only pages that aren't in the corpus yet, so they
+    gain content and become eligible for LLM evaluation. Bounded per call; re-run for more."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    conn = connect()
+    if not cat.get_category(conn, cid):
+        conn.close()
+        return JSONResponse({"error": "not found"}, status_code=404)
+    urls = search_augment.pending_fetch_urls(conn, cid)[:_GOVUK_FETCH_CAP]
+    if not urls:
+        evaluable = search_augment.evaluable_search_only(conn, cid)
+        conn.close()
+        return JSONResponse({"fetched": 0, "pending": 0, "evaluable": evaluable})
+
+    def work():
+        run_id = db.start_run(conn, stage="govuk-augment", scope=str(cid))
+        counters = stage_align.align_urls(conn, run_id, urls, source="govuk-search", stage="govuk-augment")
+        db.finish_run(conn, run_id, counters)
+        return counters, search_augment.refresh_content_ids(conn, cid)
+    try:
+        counters, updated = await run_in_threadpool(work)
+    except Exception as e:
+        conn.close()
+        logging.getLogger("govuk_fetch").warning("fetch failed for %s: %s", cid, e)
+        return JSONResponse({"error": "Couldn't fetch the pages — try again."}, status_code=502)
+    evaluable = search_augment.evaluable_search_only(conn, cid)
+    pending = len(search_augment.pending_fetch_urls(conn, cid))
+    conn.close()
+    fetched = (counters.get("new", 0) + counters.get("changed", 0) + counters.get("unchanged", 0))
+    return JSONResponse({"fetched": fetched, "updated": updated, "pending": pending, "evaluable": evaluable})
 
 
 @app.get("/categories/{cid}/augmented/download")
