@@ -41,6 +41,7 @@ from govuk_corpus import categories as cat
 from govuk_corpus import category_counts, category_transfer, feedback, guardrails, sessions
 from govuk_corpus import (audit_stats, category_interview, evaluate, extract, orgs,
                           peak_schedule, pricing, readability, reporting, roles, settings, shortlist)
+from govuk_corpus import orgs as orgs_mod   # stable module handle (some routes take an `orgs` param)
 from govuk_corpus.backend import db
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -1929,11 +1930,11 @@ def api_doc_type_counts(request: Request, orgs: str = "", children: str = "0"):
     — feeds the Page Types multi-select on the category form."""
     if not authed(request):
         return JSONResponse({"error": "auth"}, status_code=401)
-    slugs = cat.parse_list(orgs)
+    slugs = cat.parse_list(orgs)   # `orgs` here is the CSV query param, not the orgs module
     conn = connect()
     try:
         if slugs and str(children) in ("1", "true", "on"):
-            slugs = orgs.expand_with_children(conn, slugs)
+            slugs = orgs_mod.expand_with_children(conn, slugs)
         return JSONResponse({"types": _doc_type_counts(conn, slugs)})
     finally:
         conn.close()
