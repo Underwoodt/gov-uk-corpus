@@ -116,6 +116,15 @@ CREATE TABLE IF NOT EXISTS organisation_hierarchy (
 CREATE INDEX IF NOT EXISTS idx_org_hier_parent ON organisation_hierarchy(parent_slug);
 CREATE INDEX IF NOT EXISTS idx_org_hier_child  ON organisation_hierarchy(child_slug);
 
+-- Materialised page count per organisation (distinct content_id over fetched, non-redirect
+-- pages), so the org picker can order/label organisations by size without an ~18s GROUP BY on
+-- every form load. Refreshed by the nightly tidy-up (and on demand).
+CREATE TABLE IF NOT EXISTS organisation_page_counts (
+    slug        text PRIMARY KEY,
+    pages       bigint NOT NULL DEFAULT 0,
+    computed_at text
+);
+
 -- AI inclusion-pass evaluation, tracked per run so different models can be compared.
 CREATE TABLE IF NOT EXISTS evaluation_runs (
     run_id       text PRIMARY KEY,

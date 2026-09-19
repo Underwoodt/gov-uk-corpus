@@ -73,6 +73,51 @@ class TestOrgs(unittest.TestCase):
         self.assertEqual(again["organisations"], 4)
         self.assertEqual(self.conn.execute("SELECT COUNT(*) AS n FROM organisations").fetchone()["n"], 4)
 
+    # ---- page counts + hierarchy forest (for the org picker) ----------------
+
+    def _add_pages(self, slug, n):
+        for i in range(n):
+            url = f"https://www.gov.uk/{slug}/{i}"
+            self.conn.execute(
+                "INSERT INTO content (url, is_redirect, content_hash) VALUES (?,?,?)", (url, 0, "h"))
+            self.conn.execute(
+                "INSERT INTO page_organisations (page_url, organisation_content_id, organisation_slug, role) "
+                "VALUES (?,?,?,?)", (url, slug, slug, "primary"))
+        self.conn.commit()
+
+    def test_refresh_and_read_page_counts(self):
+        self._add_pages("employment-tribunal", 5)
+        self._add_pages("environment-agency", 3)
+        n = orgs.refresh_page_counts(self.conn)
+        self.assertEqual(n, 2)
+        counts = orgs.page_counts(self.conn)
+        self.assertEqual(counts["employment-tribunal"], 5)
+        self.assertEqual(counts["environment-agency"], 3)
+        self.assertTrue(orgs.counts_computed_at(self.conn))
+
+    def test_hierarchy_forest_nesting_and_order(self):
+        self._add_pages("environment-agency", 10)     # biggest root
+        self._add_pages("ministry-of-justice", 4)
+        self._add_pages("employment-tribunal", 2)     # nested two levels under MoJ
+        orgs.refresh_page_counts(self.conn)
+        forest = orgs.hierarchy_forest(self.conn)
+        roots = [n["slug"] for n in forest]
+        # Roots ordered by page count desc: environment-agency (10) before ministry-of-justice (4).
+        self.assertEqual(roots, ["environment-agency", "ministry-of-justice"])
+        moj = next(n for n in forest if n["slug"] == "ministry-of-justice")
+        self.assertEqual([c["slug"] for c in moj["children"]], ["hm-courts-and-tribunals-service"])
+        hmcts = moj["children"][0]
+        self.assertEqual([c["slug"] for c in hmcts["children"]], ["employment-tribunal"])
+        self.assertEqual(hmcts["children"][0]["pages"], 2)
+
+    def test_hierarchy_forest_without_counts(self):
+        # No refresh_page_counts run: every node has pages 0, ordered by title, still nested.
+        forest = orgs.hierarchy_forest(self.conn)
+        self.assertTrue(all(n["pages"] == 0 for n in forest))
+        slugs = {n["slug"] for n in forest}
+        self.assertIn("ministry-of-justice", slugs)
+        self.assertNotIn("employment-tribunal", slugs)   # nested, not a root
+
 
 if __name__ == "__main__":
     unittest.main()

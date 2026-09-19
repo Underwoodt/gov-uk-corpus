@@ -21,6 +21,15 @@
     .sel-x { background:none; border:0; color:#fff; font-size:16px; line-height:1; cursor:pointer;
       padding:0 3px; border-radius:3px; }
     .sel-x:hover { background:rgba(255,255,255,.25); }
+    /* Hierarchical organisation tree: children tucked under a parent, page count shown. */
+    .org-row { display:flex; align-items:center; gap:2px; }
+    .org-row .chk-item { flex:1 1 auto; }
+    .org-caret { flex:0 0 auto; width:20px; height:24px; border:0; background:none; cursor:pointer;
+      color:var(--muted,#6b7477); font-size:11px; line-height:1; padding:0; border-radius:4px; }
+    .org-caret:hover { background:var(--surface-2,#f3f2f1); color:var(--black); }
+    .org-caret-spacer { flex:0 0 auto; width:20px; }
+    .org-count-badge { color:var(--muted,#6b7477); font-size:13px; font-weight:400; font-variant-numeric:tabular-nums; }
+    .org-children[hidden] { display:none; }
     /* Page Types is disabled until an organisation is chosen (counts are org-scoped). */
     .dt-disabled .checklist, .dt-disabled .chk-search, .dt-disabled .sel-box {
       opacity:.55; background:var(--surface-2,#f3f2f1); pointer-events:none; }
@@ -101,14 +110,32 @@
           run and fewer irrelevant results.</p></div></details>
       <div class="sel-box" id="org-selected" aria-live="polite"></div>
       <input type="search" id="org-filter" class="chk-search" placeholder="Search organisations…" autocomplete="off">
+      {% macro org_node(o, depth) %}
+        <div class="org-node" data-t="{{ (o.title ~ ' ' ~ o.slug)|lower }}" data-depth="{{ depth }}">
+          <div class="org-row" style="padding-left:{{ depth * 18 }}px;">
+            {% if o.children %}<button type="button" class="org-caret" aria-expanded="false"
+              aria-label="Show organisations under {{ o.title }}">▸</button>{% else %}<span class="org-caret-spacer"></span>{% endif %}
+            <label class="chk-item">
+              <input type="checkbox" name="dept_slugs" value="{{ o.slug }}" {{ 'checked' if o.slug in selected_orgs }}>
+              <span>{{ o.title }}{% if o.pages %} <span class="org-count-badge">({{ '{:,}'.format(o.pages) }})</span>{% endif %}</span>
+            </label>
+          </div>
+          {% if o.children %}
+          <div class="org-children" hidden>
+            {% for c in o.children %}{{ org_node(c, depth + 1) }}{% endfor %}
+          </div>
+          {% endif %}
+        </div>
+      {% endmacro %}
       <div class="checklist" id="org-list">
-        {% for o in org_options %}
-        <label class="chk-item" data-t="{{ (o.title ~ ' ' ~ o.slug)|lower }}">
-          <input type="checkbox" name="dept_slugs" value="{{ o.slug }}" {{ 'checked' if o.slug in selected_orgs }}><span>{{ o.title }}</span></label>
-        {% endfor %}
+        {% for o in org_tree %}{{ org_node(o, 0) }}{% endfor %}
         {% for s in selected_orgs %}{% if s not in org_option_slugs %}
-        <label class="chk-item" data-t="{{ s|lower }}">
-          <input type="checkbox" name="dept_slugs" value="{{ s }}" checked><span>{{ s }} (not in the org list)</span></label>
+        <div class="org-node" data-t="{{ s|lower }}" data-depth="0">
+          <div class="org-row"><span class="org-caret-spacer"></span>
+            <label class="chk-item">
+              <input type="checkbox" name="dept_slugs" value="{{ s }}" checked><span>{{ s }} (not in the org list)</span></label>
+          </div>
+        </div>
         {% endif %}{% endfor %}
       </div>
       <p class="secondary" id="org-count" style="font-size:13px;margin:6px 0 0;"></p>
@@ -264,12 +291,68 @@
       });
     }
 
-    // Organisations checkbox list: search + a live ticked-count line.
+    // Organisations: a hierarchical tree (children tucked under a parent, ordered by page
+    // count). Collapsible branches, a tree-aware search, and a live ticked-count line.
     (function () {
       var list = document.getElementById("org-list");
       if (!list) return;
       var filter = document.getElementById("org-filter"), count = document.getElementById("org-count");
       var box = document.getElementById("org-selected");
+
+      function kidsOf(node) { return node.querySelector(":scope > .org-children"); }
+      function caretOf(node) { return node.querySelector(":scope > .org-row > .org-caret"); }
+      function setExpanded(node, open) {
+        var kids = kidsOf(node); if (!kids) return;
+        kids.hidden = !open;
+        var caret = caretOf(node);
+        if (caret) { caret.textContent = open ? "▾" : "▸"; caret.setAttribute("aria-expanded", open ? "true" : "false"); }
+      }
+
+      // Caret click toggles a branch (event delegation; the caret is a real button).
+      list.addEventListener("click", function (e) {
+        var caret = e.target.closest && e.target.closest(".org-caret");
+        if (!caret || !list.contains(caret)) return;
+        var node = caret.closest(".org-node"), kids = kidsOf(node);
+        setExpanded(node, kids && kids.hidden);
+      });
+
+      // Open every ancestor branch that holds a ticked box, so selections are visible.
+      function expandChecked() {
+        [].forEach.call(list.querySelectorAll('input:checked'), function (b) {
+          var node = b.closest(".org-node");
+          var p = node && node.parentNode ? node.parentNode.closest(".org-node") : null;
+          while (p) { setExpanded(p, true); p = p.parentNode ? p.parentNode.closest(".org-node") : null; }
+        });
+      }
+
+      // Search: show a node if it matches or any descendant matches, expanding matches.
+      function search(q) {
+        q = (q || "").trim().toLowerCase();
+        var nodes = [].slice.call(list.querySelectorAll(".org-node"));
+        if (!q) {
+          nodes.forEach(function (n) { n.hidden = false; });
+          [].forEach.call(list.querySelectorAll(".org-children"), function (c) { c.hidden = true; });
+          [].forEach.call(list.querySelectorAll(".org-caret"), function (b) {
+            b.textContent = "▸"; b.setAttribute("aria-expanded", "false"); });
+          expandChecked();
+          return;
+        }
+        nodes.sort(function (a, b) { return (+b.dataset.depth) - (+a.dataset.depth); });  // deepest first
+        var shown = [];
+        function isShown(n) { return shown.indexOf(n) !== -1; }
+        nodes.forEach(function (n) {
+          var self = (n.dataset.t || "").indexOf(q) !== -1;
+          var kidShown = [].some.call(n.querySelectorAll(":scope > .org-children > .org-node"), isShown);
+          if (self || kidShown) shown.push(n);
+        });
+        nodes.forEach(function (n) {
+          n.hidden = !isShown(n);
+          var kids = kidsOf(n); if (kids) kids.hidden = false;   // expand while searching
+          var caret = caretOf(n);
+          if (caret) { caret.textContent = "▾"; caret.setAttribute("aria-expanded", "true"); }
+        });
+      }
+
       function refreshUI() {
         var n = list.querySelectorAll('input:checked').length;
         if (count) count.textContent = n
@@ -277,8 +360,9 @@
           : "None selected — searches all organisations.";
         renderSelected(list, box, "No organisations selected — searches all organisations.");
       }
-      if (filter) filter.addEventListener("input", function () { filterChecklist(list, filter.value); });
+      if (filter) filter.addEventListener("input", function () { search(filter.value); });
       list.addEventListener("change", refreshUI);
+      expandChecked();
       refreshUI();
     })();
 

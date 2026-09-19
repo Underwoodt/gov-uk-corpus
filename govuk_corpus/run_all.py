@@ -17,6 +17,7 @@ import os
 from typing import Optional
 
 from . import category_counts
+from . import orgs
 from .backend import db
 from .stage_align import align_urls
 from .stage_attachments import run_stage3
@@ -66,6 +67,11 @@ def run_tidy_up(conn) -> None:
     cached figures reflect the fresh data. Home for future tidy-up tasks."""
     summary = category_counts.refresh_all(conn)
     print(f"\n[tidy-up] category counts: {summary['updated']}/{summary['categories']} refreshed")
+    try:
+        n = orgs.refresh_page_counts(conn)
+        print(f"[tidy-up] organisation page counts: {n} organisations refreshed")
+    except Exception as e:
+        print(f"[tidy-up] organisation page counts: skipped ({type(e).__name__}: {e})")
 
 
 def main() -> None:

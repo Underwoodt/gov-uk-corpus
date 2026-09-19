@@ -97,6 +97,104 @@ def all_orgs(conn) -> List[Dict[str, Any]]:
     return [dict(r) for r in rows]
 
 
+def _now_iso() -> str:
+    from . import categories as _cat
+    return _cat.now_iso()
+
+
+def refresh_page_counts(conn) -> int:
+    """Recompute the page count per organisation (distinct content_id over fetched, non-
+    redirect pages) and replace organisation_page_counts. One GROUP BY over the corpus —
+    slow (~seconds on the full corpus), so it runs in the nightly tidy-up, not per request.
+    Returns the number of organisations counted."""
+    rows = conn.execute(
+        "SELECT po.organisation_slug AS slug, "
+        "COUNT(DISTINCT COALESCE(c.content_id, c.url)) AS n "
+        "FROM page_organisations po JOIN content c ON c.url = po.page_url "
+        "WHERE c.is_redirect = 0 AND c.content_hash IS NOT NULL "
+        "GROUP BY po.organisation_slug").fetchall()
+    ts = _now_iso()
+    conn.execute("DELETE FROM organisation_page_counts")
+    CHUNK = 500
+    data = [(dict(r)["slug"], dict(r)["n"]) for r in rows if dict(r).get("slug")]
+    for i in range(0, len(data), CHUNK):
+        batch = data[i:i + CHUNK]
+        values = ",".join([f"({_P}, {_P}, {_P})"] * len(batch))
+        params: list = []
+        for slug, n in batch:
+            params.extend((slug, n, ts))
+        conn.execute(
+            f"INSERT INTO organisation_page_counts (slug, pages, computed_at) VALUES {values}",
+            tuple(params))
+    conn.commit()
+    return len(data)
+
+
+def page_counts(conn) -> Dict[str, int]:
+    """{slug: pages} from the materialised organisation_page_counts (empty before the first
+    refresh — callers then treat every count as 0)."""
+    return {dict(r)["slug"]: dict(r)["pages"] for r in conn.execute(
+        "SELECT slug, pages FROM organisation_page_counts").fetchall()}
+
+
+def counts_computed_at(conn) -> Optional[str]:
+    row = conn.execute("SELECT MAX(computed_at) AS t FROM organisation_page_counts").fetchone()
+    return dict(row)["t"] if row else None
+
+
+def hierarchy_forest(conn) -> List[Dict[str, Any]]:
+    """The organisation registry as a nested forest for the picker: each node is
+    {slug, title, pages, children:[…]}. Children are tucked under a single chosen parent
+    (the parent with the most pages, so the deepest/biggest branch wins), and every level is
+    ordered by page count descending then title. Page counts come from the materialised
+    organisation_page_counts (0 when not yet computed)."""
+    nodes: Dict[str, Dict[str, Any]] = {}
+    for o in all_orgs(conn):                       # registry orgs (excludes /world%), {slug,title}
+        nodes[o["slug"]] = {"slug": o["slug"], "title": o["title"], "pages": 0, "children": []}
+    counts = page_counts(conn)
+    for slug, node in nodes.items():
+        node["pages"] = int(counts.get(slug, 0) or 0)
+
+    # Parent edges limited to registry orgs; pick one parent per child (most pages, then slug).
+    parents_of: Dict[str, List[str]] = {}
+    for r in conn.execute(
+            "SELECT parent_slug, child_slug FROM organisation_hierarchy").fetchall():
+        d = dict(r)
+        p, c = d["parent_slug"], d["child_slug"]
+        if p in nodes and c in nodes and p != c:
+            parents_of.setdefault(c, []).append(p)
+
+    chosen: Dict[str, str] = {}
+    for child, ps in parents_of.items():
+        chosen[child] = sorted(ps, key=lambda p: (-nodes[p]["pages"], p))[0]
+
+    def _makes_cycle(child: str, parent: str) -> bool:
+        # Walk up from parent; if we reach child, attaching would create a cycle.
+        seen, cur = set(), parent
+        while cur is not None and cur not in seen:
+            if cur == child:
+                return True
+            seen.add(cur)
+            cur = chosen.get(cur)
+        return False
+
+    roots: List[Dict[str, Any]] = []
+    for slug, node in nodes.items():
+        parent = chosen.get(slug)
+        if parent and not _makes_cycle(slug, parent):
+            nodes[parent]["children"].append(node)
+        else:
+            roots.append(node)
+
+    def _sort(level: List[Dict[str, Any]]) -> None:
+        level.sort(key=lambda n: (-n["pages"], (n["title"] or n["slug"]).lower()))
+        for n in level:
+            if n["children"]:
+                _sort(n["children"])
+    _sort(roots)
+    return roots
+
+
 import re as _re
 
 # Function/noise words that would over-match (generic org words match nearly everything).

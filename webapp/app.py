@@ -959,6 +959,7 @@ def api_reconcile_eval(request: Request, cid: int):
 
 def _form_ctx(conn, request, category, values, errors) -> dict:
     org_options = orgs.all_orgs(conn)
+    org_tree = orgs.hierarchy_forest(conn)          # nested forest, ordered by page count
     selected_orgs = cat.parse_list((values or {}).get("dept_slugs"))
     return ctx(
         conn, request,
@@ -969,6 +970,8 @@ def _form_ctx(conn, request, category, values, errors) -> dict:
         v=values or {},
         org_options=org_options,
         org_option_slugs=[o["slug"] for o in org_options],
+        org_tree=org_tree,
+        org_counts_computed_at=orgs.counts_computed_at(conn),
         selected_orgs=selected_orgs,
         selected_doc_types=cat.parse_list((values or {}).get("document_type_slugs")),
         errors=errors,
