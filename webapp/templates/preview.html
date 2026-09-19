@@ -13,6 +13,8 @@
     /* GOV.UK threshold-hit warning (coverage may be truncated). */
     .gc-warn { background:#fef7e0; border:1px solid #f2d888; border-left:4px solid #e0a800;
       border-radius:6px; padding:10px 12px; margin:8px 0 0; font-size:14px; }
+    .gc-ok { background:#e9f5ee; border:1px solid #b9e0c9; border-left:4px solid var(--green-dark,#00703c);
+      border-radius:6px; padding:10px 12px; margin:8px 0 0; font-size:14px; }
     /* Side-by-side breakdown panels with compact bars. auto-fit lets a single
        visible panel (e.g. no keywords) expand to full width. */
     .breakdowns { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));
@@ -304,7 +306,9 @@
           last are pages our filters missed. <em>Fetch GOV.UK-only pages</em> pulls those into the corpus so the AI
           Pipeline evaluates them too. Stored until you re-run it.</p>
         <div id="gc-threshold-warn" class="gc-warn" hidden></div>
-        <div class="controls" id="gc-controls" style="align-items:center;gap:8px;" hidden>
+        <div class="controls" id="gc-controls" style="align-items:center;gap:8px;flex-wrap:wrap;" hidden>
+          <input id="gc-search" type="search" placeholder="Filter titles…" autocomplete="off"
+            style="font:inherit;padding:5px 9px;border:2px solid var(--black);border-radius:6px;min-width:220px;">
           <span id="gc-summary" class="secondary"></span>
           <label class="secondary" style="margin-left:auto;font-size:14px;">Show
             <select id="gc-source" style="font:inherit;padding:3px 6px;border:2px solid var(--black);border-radius:4px;margin-left:4px;">
@@ -476,19 +480,39 @@
     // GOV.UK Search coverage — provenance-tagged augmented shortlist.
     const GC_PAGE = 50;
     let gcOffset = 0;
+    let gcQuery = "";   // server-side title filter, applied across the whole stored set
     const PROV = { search: ["prov-search","GOV.UK Search only"], both: ["prov-both","Both"],
                    shortlister: ["prov-shortlister","Shortlister only"] };
     function provLozenge(s){ const p = PROV[s] || ["prov-shortlister", s]; return `<span class="prov ${p[0]}">${esc(p[1])}</span>`; }
+    // Comment header for the expert query box: each configured threshold as BREACHED / not breached.
+    function gcThresholdComments(th) {
+      const yn = b => b ? "BREACHED" : "not breached";
+      const L = [];
+      L.push("-- GOV.UK Search threshold check (does any cap limit the result set below?)");
+      const trunc = (th.phrases_truncated || 0) > 0;
+      L.push(`--   Keyword-phrase limit (GOVUK_MAX_PHRASES=${fmtInt(th.max_phrases)}): ${yn(trunc)}`
+        + ` — ${fmtInt(th.phrases_submitted)} submitted, ${fmtInt(th.phrases_searched)} searched`
+        + (trunc ? `, ${fmtInt(th.phrases_truncated)} skipped` : ""));
+      const capped = (th.capped_phrases || []);
+      L.push(`--   Per-phrase page cap (GOVUK_PER_PHRASE=${fmtInt(th.per_phrase_cap)}): ${yn(capped.length > 0)}`
+        + (capped.length ? ` — capped: ${capped.map(c => `${c.phrase} (${fmtInt(c.total)})`).join(", ")}` : ""));
+      L.push(`--   GOV.UK pagination ceiling (${fmtInt(th.govuk_ceiling)}, GOV.UK's own limit — not configurable): `
+        + yn(capped.some(c => c.total >= th.govuk_ceiling)));
+      L.push(`--   (GOV.UK also caps each request at 100 results; we page through with start= to gather more.)`);
+      L.push(`-- Overall: ${th.any_hit ? "a threshold was hit — coverage may be incomplete." : "no thresholds hit — full result set retrieved."}`);
+      return L.join("\n");
+    }
     async function loadCoverage() {
       const tbody = document.getElementById("gc-rows"), status = document.getElementById("gc-status");
       const source = document.getElementById("gc-source").value;
       tbody.innerHTML = `<tr><td colspan="4" class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr>`;
       try {
-        const j = await (await fetch(`/api/categories/${CID}/augmented-pages?source=${encodeURIComponent(source)}&limit=${GC_PAGE}&offset=${gcOffset}`)).json();
+        const j = await (await fetch(`/api/categories/${CID}/augmented-pages?source=${encodeURIComponent(source)}&limit=${GC_PAGE}&offset=${gcOffset}&q=${encodeURIComponent(gcQuery)}`)).json();
         const sum = j.summary || {counts:{}, total:0};
         const c = sum.counts || {};
         // Threshold check: warn if a configured cap truncated the GOV.UK result set.
         const warn = document.getElementById("gc-threshold-warn"), th = sum.thresholds || {};
+        const ran = ("any_hit" in th);   // a comparison has been run, so a threshold verdict exists
         if (th.any_hit) {
           const parts = [];
           if (th.phrases_truncated)
@@ -498,18 +522,26 @@
             parts.push(`${fmtInt(th.capped_phrases.length)} phrase(s) had more matches than the ${fmtInt(th.per_phrase_cap)}-page cap: ${names}`);
           }
           const raisable = th.per_phrase_cap < th.govuk_ceiling;
+          warn.className = "gc-warn";
           warn.innerHTML = `⚠ <strong>Coverage may be incomplete</strong> — ${parts.join("; ")}. `
             + `So a "GOV.UK Search only" gap here may be a threshold limit, not a true search-technique difference. `
             + (raisable
                 ? `Raise <code>GOVUK_PER_PHRASE</code> / <code>GOVUK_MAX_PHRASES</code> and re-run to confirm.`
                 : `Phrases capped at ${fmtInt(th.govuk_ceiling)} hit GOV.UK's own pagination ceiling (it can't return more).`);
           warn.hidden = false;
+        } else if (ran) {
+          warn.className = "gc-ok";
+          warn.innerHTML = `✓ <strong>No thresholds were hit</strong> — all ${fmtInt(th.phrases_searched)} keyword phrase(s) were searched `
+            + `and each stayed within the ${fmtInt(th.per_phrase_cap)}-page cap, so the GOV.UK result set was retrieved in full. `
+            + `Any "GOV.UK Search only" gap here is a true search-technique difference, not a threshold limit.`;
+          warn.hidden = false;
         } else { warn.hidden = true; }
-        // Expert-only: the exact GOV.UK Search API queries we sent.
+        // Expert-only: the exact GOV.UK Search API queries we sent, with a threshold header.
         const qbox = document.getElementById("gc-queries-box"), qpre = document.getElementById("gc-queries");
         const queries = sum.query_urls || [];
         if (queries.length) {
-          qpre.textContent = queries.map(q => (q && q.url != null)
+          const header = ran ? gcThresholdComments(th) + "\n\n" : "";
+          qpre.textContent = header + queries.map(q => (q && q.url != null)
             ? `-- ${q.comment || ""}\n${q.url}` : String(q)).join("\n\n");
           qbox.hidden = false;
         } else { qbox.hidden = true; }
@@ -614,6 +646,13 @@
       finally { btn.disabled = false; btn.textContent = label; }
     });
     document.getElementById("gc-source").addEventListener("change", () => { gcOffset = 0; loadCoverage(); });
+    // Type-ahead title filter — debounced, filters the whole stored set server-side.
+    let gcSearchTimer = null;
+    document.getElementById("gc-search").addEventListener("input", (e) => {
+      const v = e.target.value;
+      clearTimeout(gcSearchTimer);
+      gcSearchTimer = setTimeout(() => { gcQuery = v.trim(); gcOffset = 0; loadCoverage(); }, 250);
+    });
     document.getElementById("gc-prev").addEventListener("click", () => { gcOffset = Math.max(0, gcOffset - GC_PAGE); loadCoverage(); });
     document.getElementById("gc-next").addEventListener("click", () => { gcOffset += GC_PAGE; loadCoverage(); });
 

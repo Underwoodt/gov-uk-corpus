@@ -1273,15 +1273,17 @@ async def api_govuk_compare(request: Request, cid: int):
 
 
 @app.get("/api/categories/{cid}/augmented-pages")
-def api_augmented_pages(request: Request, cid: int, source: str = "", limit: int = 100, offset: int = 0):
-    """The stored GOV.UK-coverage augmented shortlist, tagged by source, paginated."""
+def api_augmented_pages(request: Request, cid: int, source: str = "", limit: int = 100,
+                        offset: int = 0, q: str = ""):
+    """The stored GOV.UK-coverage augmented shortlist, tagged by source, paginated; `q`
+    filters by title across the whole set."""
     if not authed(request):
         return JSONResponse({"error": "auth"}, status_code=401)
     limit = max(1, min(limit, 500))
     offset = max(0, offset)
     conn = connect()
     try:
-        out = search_augment.augmented_pages(conn, cid, source=source, limit=limit, offset=offset)
+        out = search_augment.augmented_pages(conn, cid, source=source, limit=limit, offset=offset, q=q)
         summary = search_augment.summary(conn, cid)
         summary["evaluable"] = search_augment.evaluable_search_only(conn, cid)
         summary["pending_fetch"] = len(search_augment.pending_fetch_urls(conn, cid))

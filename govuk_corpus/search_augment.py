@@ -170,13 +170,19 @@ def has_comparison(conn, cid: int) -> bool:
     return row is not None
 
 
-def augmented_pages(conn, cid: int, source: str = "", limit: int = 100, offset: int = 0) -> dict:
-    """A page of the augmented shortlist, optionally filtered to one source."""
+def augmented_pages(conn, cid: int, source: str = "", limit: int = 100, offset: int = 0,
+                    q: str = "") -> dict:
+    """A page of the augmented shortlist, optionally filtered to one source and/or a title
+    substring `q` (case-insensitive, over the WHOLE stored set — not just this page)."""
     where = [f"category_id = {_P}"]
     params: list = [cid]
     if source in ("shortlister", "both", "search"):
         where.append(f"source = {_P}")
         params.append(source)
+    q = (q or "").strip()
+    if q:
+        where.append(f"LOWER(title) LIKE LOWER({_P})")
+        params.append("%" + q + "%")
     wsql = " AND ".join(where)
     total = conn.execute(
         f"SELECT COUNT(*) AS n FROM category_search_pages WHERE {wsql}", tuple(params)).fetchone()["n"]
