@@ -65,7 +65,8 @@ class TestBuildQuery(unittest.TestCase):
     def test_keyword_clause_postgres_fulltext(self):
         clause, params = _keyword_clause(["slurry", "nitrate"], "any", is_pg=True)
         self.assertIn("c.search_tsv @@", clause)
-        self.assertIn("plainto_tsquery('english', %s) || plainto_tsquery('english', %s)", clause)
+        # phraseto_tsquery => multi-word terms match as an adjacent phrase (spaces -> <->)
+        self.assertIn("phraseto_tsquery('english', %s) || phraseto_tsquery('english', %s)", clause)
         self.assertEqual(params, ["slurry", "nitrate"])   # raw terms; PG stems them
 
     def test_keyword_clause_sqlite_like_over_body(self):

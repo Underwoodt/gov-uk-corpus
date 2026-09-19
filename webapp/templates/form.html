@@ -168,17 +168,20 @@
 
     <div class="field">
       <label class="q" for="keywords">Inclusion Keyword(s) <span class="secondary" style="font-weight:400;">(Pre-Inference Filtering: 3)</span></label>
-      <p class="hint">One term per line, or separated by commas. A term is a single word, or a pair of words that sit next to each other.</p>
+      <p class="hint">One term per line, or separated by commas. A term is a single word, or a phrase whose words sit next to each other.</p>
       <details><summary>How your terms are matched</summary>
         <div class="detail">
-          <p>This is a word match, not a search for a phrase or an idea. We look through the title and text
-            of every page for the terms you list. A page with none of them is skipped.</p>
-          <p>Each line is one word (<strong>slurry</strong>) or two words that appear together
-            (<strong>catch certificate</strong>). Three or more words never match. Word endings are matched,
+          <p>We look through the title and text of every page for the terms you list. A page with none of
+            them is skipped.</p>
+          <p>A single word (<strong>slurry</strong>) matches anywhere. A multi-word term is matched as a
+            <strong>phrase</strong> — the words must appear <em>together, in order</em>
+            (<strong>catch certificate</strong> matches “a catch certificate”, but not a page that merely
+            mentions “catch” and “certificate” far apart). A small linking word between them is allowed
+            (<strong>food standards</strong> still matches “food and standards”). Word endings are matched,
             so <strong>lagoon</strong> also finds lagoons. Capital letters do not matter.</p>
           <ul style="margin:0;padding-left:20px;">
-            <li>Avoid broad words such as farm, water, waste. They match thousands of pages.</li>
-            <li>Prefer the specific term: slurry, lagoon, catch certificate.</li>
+            <li>Avoid broad single words such as farm, water, waste — they match thousands of pages.</li>
+            <li>Prefer a specific word or phrase: slurry, lagoon, catch certificate.</li>
           </ul>
         </div></details>
       <textarea id="keywords" name="keywords" rows="4">{{ v.keywords or '' }}</textarea>

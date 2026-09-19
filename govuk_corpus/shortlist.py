@@ -28,15 +28,19 @@ _SIZE_EXPR = "octet_length(c.search_text)" if _IS_PG else "length(c.search_text)
 
 
 def _keyword_clause(keywords, match, is_pg):
-    """(sql_fragment, params) for keyword matching over title+description.
+    """(sql_fragment, params) for keyword matching over title+description+body.
 
-    Postgres: GIN-indexed full-text (search_tsv @@ tsquery), stemmed via 'english'.
-    SQLite (pilot): case-insensitive LIKE over title+description.
+    Postgres: GIN-indexed full-text (search_tsv @@ tsquery), stemmed via 'english'. Each
+    keyword is a PHRASE match via ``phraseto_tsquery`` — a multi-word term must appear with its
+    words adjacent (spaces become the ``<->`` "followed by" operator), and a stop word between
+    them is allowed for (e.g. "food for thought" → ``food <2> thought``). This rejects the
+    scattered-words false positive that ``plainto_tsquery`` (words anywhere) let through.
+    SQLite (pilot): case-insensitive LIKE, so a multi-word term already matches as a substring.
     `match`: 'any' → OR the keywords, 'all' → AND them.
     """
     if is_pg:
         op = " || " if match == "any" else " && "
-        tq = op.join(["plainto_tsquery('english', %s)"] * len(keywords))
+        tq = op.join(["phraseto_tsquery('english', %s)"] * len(keywords))
         return f"c.search_tsv @@ ({tq})", list(keywords)
     op = " OR " if match == "any" else " AND "
     field = ("LOWER(COALESCE(c.title,'') || ' ' || COALESCE(c.description,'') "
