@@ -329,6 +329,64 @@ set -a; . /home/ubuntu/gov-uk-corpus.env; set +a
 
 ---
 
+## Environment variables
+
+All configuration is via environment variables (in production, the systemd
+`EnvironmentFile=/home/ubuntu/gov-uk-corpus.env`; locally, your shell). Anything with a
+default is optional; unset means the default. Restart the service after changing any of them.
+
+**Database / backend**
+
+| Var | Default | Purpose |
+|---|---|---|
+| `DB_BACKEND` | _(empty → SQLite)_ | Set to `postgres` to force Postgres. Postgres is also chosen automatically when `DB_HOST` is set. |
+| `DB_HOST` | `localhost` (PG) | Postgres host. Setting it selects the Postgres backend. |
+| `DB_PORT` | `5432` | Postgres port. |
+| `DB_NAME` | `gov_uk_corpus` | Postgres database name. |
+| `DB_USER` | `corpus` | Postgres user (use a least-privilege app role, not a superuser). |
+| `DB_PASSWORD` | _(empty)_ | Postgres password. Keep the env file `chmod 600`. |
+| `CORPUS_DB` | `data/pilot.db` | SQLite path (local dev/tests only; ignored on Postgres). |
+| `DB_STATEMENT_TIMEOUT_MS` | `15000` | Per-connection Postgres `statement_timeout` (ms). The live box runs `60000`. |
+
+**Auth & security**
+
+| Var | Default | Purpose |
+|---|---|---|
+| `AUTH_MODE` | `shared` | `shared` = single `DASHBOARD_PASSWORD` gate; `accounts` = per-user accounts + RBAC. |
+| `DASHBOARD_PASSWORD` | _(unset)_ | The shared password (only used when `AUTH_MODE=shared`). |
+| `SECURE_COOKIES` | _(unset)_ | `1` marks session cookies `Secure` (needs HTTPS). |
+| `ENABLE_HSTS` | _(unset)_ | `1` sends HSTS **and** flips cookies to `Secure`. Leave unset while serving over HTTP. |
+
+**AI providers** (only needed for the LLM evaluation passes)
+
+| Var | Default | Purpose |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | _(unset)_ | Anthropic key. |
+| `DEEPSEEK_API_KEY` | _(unset)_ | DeepSeek key. |
+| `AI_API_KEY` | _(unset)_ | Fallback key used if the provider-specific one is unset. |
+| `ANTHROPIC_WORKSPACE_ID` | _(unset)_ | Optional Anthropic workspace id (spend attribution). |
+| `AI_TIMEOUT` | `45` | Per-request LLM timeout (seconds). |
+| `AI_MAX_RETRIES` | `4` | LLM request retries. |
+
+**GOV.UK hybrid search & crawl**
+
+| Var | Default | Purpose |
+|---|---|---|
+| `GOVUK_MAX_PHRASES` | `25` | Max keyword phrases searched per hybrid-search run. |
+| `GOVUK_PER_PHRASE` | `10000` | Max pages fetched per phrase (GOV.UK's deep-pagination ceiling; 100/request is GOV.UK's own hard cap and isn't configurable). |
+| `GOVUK_DOCTYPE_AGG` | `200` | Document-type facet buckets requested (comfortably above the ~80 real types). |
+| `GOVUK_RATE` | `2` | Politeness rate limit (requests/sec) for fetching pages into the corpus. |
+
+**Performance & guardrails**
+
+| Var | Default | Purpose |
+|---|---|---|
+| `COUNT_CACHE_TTL` | `300` | TTL (seconds) for the in-memory funnel-count and doc-type-options caches; `0` disables. |
+| `GUARDRAIL_AUP` | `company policy` | Acceptable-use text the assistant guardrail cites. |
+| `GUARDRAIL_BLOCKED_TERMS` | _(empty)_ | Comma-separated terms the assistant guardrail blocks. |
+
+---
+
 ## Troubleshooting
 
 **Login page loads but nothing else / `500` on category pages**
