@@ -1,7 +1,18 @@
 # Intent: move from "category" to "building a filtered shortlist of GOV.UK"
 
-**Status:** Draft for review — *not yet implemented.*
-**Author:** proposed by Claude; to be verified/edited by Tom, then resubmitted for implementation.
+**Status:** ✅ Implemented (user-facing copy) — 2026-09-19. Routes/DB/code identifiers (§17) remain Phase 2.
+**Author:** proposed by Claude; verified/edited by Tom; implemented from this version.
+
+**Decisions applied at implementation:**
+- Object noun = **shortlist** (Option A); rules = **filters**; output = **matching pages / results**.
+- **run → retrieve** for the *deterministic* action only (home row action "Run" → "Retrieve", and the
+  intro ledes). The AI-evaluation **runs** keep the word "run" (Run history, Active run, Run
+  performance, "Preview and run", "No runs yet").
+- Create/edit lede uses **retrieve** (consistent with the home lede).
+- Owner-email field reframed to **owner/creator** ("Owner email address" + "The owner of this
+  shortlist — the person who created it. Not a login.").
+- The "(or keep)" items were taken as their proposed value: audit sub-tab "Shortlist" → **Pages**,
+  heading "Audit shortlist" → **Audit results**, results H1 "Shortlist results" → **Results**.
 
 ## Why
 

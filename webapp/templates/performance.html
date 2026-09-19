@@ -3,11 +3,11 @@
 {% block title %}{{ category.display_name }} — run performance{% endblock %}
 {% block content %}
 
-  <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
+  <a class="back" href="{{ url_for('list_categories_page') }}">‹ Shortlists</a>
   <h1 style="margin:20px 0 20px;">{{ category.display_name }}</h1>
 
   <div class="tabs">
-    <a href="{{ url_for('edit_category_page', cid=category.id) }}">Definition</a>
+    <a href="{{ url_for('edit_category_page', cid=category.id) }}">Filters</a>
     <a href="{{ url_for('preview_category_page', cid=category.id) }}">Preview and run</a>
     <a href="{{ url_for('shortlist_page', cid=category.id) }}">Audit Results</a>
     <span class="current">Run performance</span>
@@ -24,7 +24,7 @@
       <label>Run 3 <select id="pick-2" class="run-pick"></select></label>
     </div>
 
-    <p id="perf-empty" class="secondary" hidden>No runs yet — evaluate a category on the
+    <p id="perf-empty" class="secondary" hidden>No runs yet — evaluate the shortlist on the
       <a href="{{ url_for('preview_category_page', cid=category.id) }}">Preview and run</a> tab first.</p>
 
     <table id="perf-table">

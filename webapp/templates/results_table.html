@@ -6,7 +6,7 @@
 
   <a class="back" href="{{ url_for('preview_category_page', cid=category.id) }}">‹ Back to results</a>
 
-  <h1 style="margin:18px 0 4px;">Shortlist results</h1>
+  <h1 style="margin:18px 0 4px;">Results</h1>
   <p class="secondary" style="margin:0 0 10px;">{{ category.display_name }}
     (<span class="mono">{{ category.slug or '' }}</span>) · <span id="total">…</span> pages ·
     <a href="{{ url_for('download_page', cid=category.id) }}">Download…</a></p>

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block page_id %}guc-0002{% endblock %}
-{% block title %}{{ 'Change' if is_edit else 'Create' }} category{% endblock %}
+{% block title %}{{ 'Change' if is_edit else 'Build' }} shortlist{% endblock %}
 {% block content %}
   <style>
     .chk-search { width:100%; max-width:520px; box-sizing:border-box; padding:8px 10px;
@@ -37,11 +37,11 @@
     .dt-hint-locked { color:var(--muted,#6b7477); }
   </style>
 
-  <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
+  <a class="back" href="{{ url_for('list_categories_page') }}">‹ Shortlists</a>
 
-  <h1 style="margin:20px 0 20px;">{{ 'Change Category' if is_edit else 'Create New Category' }}</h1>
-  <p class="lede" style="margin:0 0 20px;">A category is a saved set of rules for finding gov.uk pages
-    about one topic. These rules build a shortlist of pages, which you can then run.</p>
+  <h1 style="margin:20px 0 20px;">{{ 'Change Shortlist' if is_edit else 'Build a New Shortlist' }}</h1>
+  <p class="lede" style="margin:0 0 20px;">A shortlist is a saved set of filters that finds GOV.UK pages
+    about one topic. These filters build the shortlist, which you can then retrieve.</p>
 
   {% if not is_edit %}
   <div style="margin:0 0 24px;padding:14px 16px;border:1px solid var(--border-mid,#b1b4b6);
@@ -49,7 +49,7 @@
     gap:14px;flex-wrap:wrap;">
     <span aria-hidden="true" style="font-size:22px;line-height:1;">🤖</span>
     <span class="secondary" style="flex:1 1 260px;min-width:240px;">Prefer to be interviewed?
-      Let the assistant ask a few questions and fill this form in for you.</span>
+      Let the assistant build the shortlist with you.</span>
     <a class="btn secondary-btn" href="{{ url_for('category_assistant_page') }}"
       style="margin:0;">Complete with the assistant</a>
   </div>
@@ -64,7 +64,7 @@
   {% endif %}
 
   <div class="tabs">
-    <span class="current">Definition</span>
+    <span class="current">Filters</span>
     {% if is_edit %}
     <a href="{{ url_for('preview_category_page', cid=category.id) }}">Preview and run</a>
     <a href="{{ url_for('shortlist_page', cid=category.id) }}">Audit Results</a>
@@ -80,11 +80,11 @@
 
   <form class="tabpanel" method="post" action="{{ action }}">
       <input type="hidden" name="csrf" value="{{ csrf_token }}">
-    <h2>Definition</h2>
+    <h2>Filters</h2>
 
     <div class="field">
-      <label class="q" for="owner_email">Your email address</label>
-      <p class="hint">We email you when a run finishes. This is not a login.{% if user and not is_edit %}
+      <label class="q" for="owner_email">Owner email address</label>
+      <p class="hint">The owner of this shortlist — the person who created it. Not a login.{% if user and not is_edit %}
         Taken from your account.{% endif %}</p>
       <input id="owner_email" name="owner_email" type="text"
         value="{{ v.owner_email or (user.email if user else '') }}"
@@ -92,7 +92,7 @@
     </div>
 
     <div class="field">
-      <label class="q" for="slug">Name for this category</label>
+      <label class="q" for="slug">Name for this shortlist</label>
       <p class="hint">Lowercase letters, numbers, hyphens and underscores, for example
         <code>farm-slurry-storage</code>.</p>
       <input id="slug" name="slug" type="text" class="narrow" placeholder="farm-slurry-storage"
@@ -231,7 +231,7 @@
         placeholder="Sewage sludge or biosolids, not animal slurry">{{ v.adjudication_hints_drop or '' }}</textarea>
     </div>
 
-    <button class="btn" type="submit">{{ 'Save changes' if is_edit else 'Create category' }}</button>
+    <button class="btn" type="submit">{{ 'Save changes' if is_edit else 'Build shortlist' }}</button>
   </form>
 
   <script>

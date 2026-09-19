@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block page_id %}guc-0013{% endblock %}
-{% block title %}Category assistant{% endblock %}
+{% block title %}Shortlist assistant{% endblock %}
 {% block content %}
   <style>
     /* Chat palette (blue assistant / navy user, GDS-friendly). */
@@ -66,17 +66,17 @@
     .ow-actions { margin-top:10px; display:flex; gap:12px; align-items:center; }
   </style>
 
-  <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
-  <h1 style="margin:16px 0 4px;">Category assistant</h1>
-  <p class="hint" style="margin:0 0 16px;max-width:720px;">Answer a few questions and I'll draft a category, then
-    <strong>create it and open it</strong> for you. Or pick an existing category below to <strong>refine</strong> it —
+  <a class="back" href="{{ url_for('list_categories_page') }}">‹ Shortlists</a>
+  <h1 style="margin:16px 0 4px;">Shortlist assistant</h1>
+  <p class="hint" style="margin:0 0 16px;max-width:720px;">Answer a few questions and I'll draft a shortlist, then
+    <strong>build it and open it</strong> for you. Or pick an existing shortlist below to <strong>refine</strong> it —
     I'll re-ask each part showing the current value, then save your changes and open it. You can keep editing it
     afterwards. Uses AI credit (counts toward the daily budget above).</p>
 
   <div id="import-bar" style="max-width:720px;margin:0 0 16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-    <label for="import-select" style="font-weight:600;">Refine an existing category:</label>
+    <label for="import-select" style="font-weight:600;">Refine an existing shortlist:</label>
     <select id="import-select" style="font:inherit;padding:6px;border:2px solid var(--black);border-radius:6px;">
-      <option value="">— start a new category —</option>
+      <option value="">— start a new shortlist —</option>
       {% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
     </select>
     <button class="btn secondary-btn" id="import-load" type="button">Load &amp; refine</button>
@@ -86,7 +86,7 @@
 
   <div id="draft" hidden style="max-width:720px;border:2px solid var(--green,#00703c);border-radius:8px;padding:14px 16px;margin:6px 0 12px;">
     <strong>Draft ready.</strong> <span id="draft-note">I've put together a starting point.</span>
-    <div style="margin-top:10px;"><button class="btn" id="to-form" type="button">Create category →</button></div>
+    <div style="margin-top:10px;"><button class="btn" id="to-form" type="button">Build shortlist →</button></div>
   </div>
 
   <div id="composer">
@@ -320,9 +320,9 @@
         if (j.fields) {
           draftFields = j.fields;
           document.getElementById("draft-note").textContent = editCid
-            ? "Ready to save your changes and open the category."
-            : "Ready to create this category and open it.";
-          document.getElementById("to-form").textContent = editCid ? "Save changes →" : "Create category →";
+            ? "Ready to save your changes and open the shortlist."
+            : "Ready to build this shortlist and open it.";
+          document.getElementById("to-form").textContent = editCid ? "Save changes →" : "Build shortlist →";
           document.getElementById("draft").hidden = false;
         }
       } catch (e) {

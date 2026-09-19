@@ -1528,7 +1528,7 @@ def _run_evaluation(cid: int, limit: int) -> dict:
     try:
         category = cat.get_category(conn, cid)
         if not category:
-            return {"error": "Category not found."}
+            return {"error": "Shortlist not found."}
         budget = _budget(conn)
         spent = _daily_spend(conn)
         if budget > 0 and spent >= budget:
@@ -1776,7 +1776,7 @@ def _background_hybrid_loop(cid: int, stop_event: threading.Event, status: dict)
         try:
             category = cat.get_category(conn, cid)
             if not category:
-                status["error"] = "category not found"
+                status["error"] = "shortlist not found"
                 return
             filters = _effective_filters(conn, category)
             status["phase"] = "searching"
@@ -2903,7 +2903,7 @@ def download_category_bundle(request: Request, cid: int):
     if bundle is None:
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
     slug = (bundle["meta"].get("slug") or f"cat-{cid}")
-    name = f"category-{slug}-{_dl_stamp()}.json.gz"
+    name = f"shortlist-{slug}-{_dl_stamp()}.json.gz"
     body = gzip.compress(category_transfer.dumps(bundle).encode("utf-8"))
     return Response(body, media_type="application/gzip",
                     headers={"Content-Disposition": f'attachment; filename="{name}"'})
@@ -2940,7 +2940,7 @@ async def admin_import_category(request: Request):
         return RedirectResponse(url=users_url + f"?import_error={quote(f'{type(e).__name__}: {e}')}",
                                 status_code=303)
     conn.close()
-    msg = f"Imported category {summary['slug']} ({summary['content']} pages, {summary['runs']} runs)."
+    msg = f"Imported shortlist {summary['slug']} ({summary['content']} pages, {summary['runs']} runs)."
     return RedirectResponse(url=users_url + f"?import_ok={quote(msg)}", status_code=303)
 
 
@@ -2999,7 +2999,7 @@ def profile_page(request: Request, details_ok: int = 0, pw_ok: int = 0,
     conn = connect()
     levels = [
         ("simple", "Simple",
-         "Build categories, run the AI phase, and review and download the final results."),
+         "Build shortlists, run the AI phase, and review and download the final results."),
         ("advanced", "Advanced",
          "Adds detailed data on the selection — almost log level."),
         ("expert", "Expert",

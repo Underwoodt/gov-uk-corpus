@@ -40,7 +40,7 @@
 
   <div class="navbar"><div class="wrap inner">
     <span class="service">Content Relevance Filters</span>
-    <a href="{{ url_for('list_categories_page') }}" class="{{ 'active' if active_nav not in ['assistant','settings','govuk_search','users'] }}">Categories</a>
+    <a href="{{ url_for('list_categories_page') }}" class="{{ 'active' if active_nav not in ['assistant','settings','govuk_search','users'] }}">Shortlists</a>
     <a href="{{ url_for('govuk_search_page') }}" class="{{ 'active' if active_nav == 'govuk_search' }}">GOV.UK search</a>
     <a href="{{ url_for('assistant_page') }}" class="{{ 'active' if active_nav == 'assistant' }}" data-level="admin">AI Assistant</a>
     <a href="{{ url_for('admin_users_page') }}" class="{{ 'active' if active_nav == 'users' }}" data-level="admin">Users</a>

@@ -48,11 +48,11 @@
     #funnel td .detail { white-space:normal; }  /* expanded filter values still wrap */
   </style>
 
-  <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
+  <a class="back" href="{{ url_for('list_categories_page') }}">‹ Shortlists</a>
   <h1 style="margin:20px 0 20px;">{{ category.display_name }}</h1>
 
   <div class="tabs">
-    <a href="{{ url_for('edit_category_page', cid=category.id) }}">Definition</a>
+    <a href="{{ url_for('edit_category_page', cid=category.id) }}">Filters</a>
     <span class="current">Preview and run</span>
     <a href="{{ url_for('shortlist_page', cid=category.id) }}">Audit Results</a>
     <a href="{{ url_for('performance_page', cid=category.id) }}" data-level="advanced">Run performance</a>
@@ -116,7 +116,7 @@
         <p class="hint" style="margin-top:2px;">Pages contributed by each organisation, from the saved shortlist.
           Organisations overlap, so these don't sum to the total.</p>
         <table style="width:100%;"><tbody id="org-rows"><tr><td class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr></tbody></table>
-        <p id="org-empty" class="secondary" hidden>No organisations set for this category.</p>
+        <p id="org-empty" class="secondary" hidden>No organisations set for this shortlist.</p>
         {{ sql_panel("org-sql") }}
       </div>
 
@@ -156,7 +156,7 @@
           <p class="hint" style="margin-top:2px;">Of the pages in the saved shortlist, how many contain each keyword.
             Terms overlap, so these don't sum to the total.</p>
           <table style="width:100%;"><tbody id="kw-rows"><tr><td class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr></tbody></table>
-          <p id="kw-empty" class="secondary" hidden>No keywords set for this category.</p>
+          <p id="kw-empty" class="secondary" hidden>No keywords set for this shortlist.</p>
           {{ sql_panel("kw-sql") }}
         </div>
       </div>
@@ -199,7 +199,7 @@
 
     <section id="tab-semantic" class="subpanel" role="tabpanel" hidden>
     <h2 style="margin-top:10px;">AI evaluation pipeline (inclusion → exclusion)</h2>
-    <p class="hint" style="margin-top:-20px;">Ask the AI to judge each shortlisted page against this category's
+    <p class="hint" style="margin-top:-20px;">Ask the AI to judge each shortlisted page against this shortlist's
       <em>Include</em> / <em>Exclude</em> context — keep or drop, with a score and reason. Each <strong>run</strong>
       uses one fixed model (set in Settings), so you can start a new run after switching model and compare results
       and cost. Runs in capped batches; uses API credit.</p>
@@ -255,7 +255,7 @@
           title="You will need to execute this once setup.">Create New Run</button>
         <span id="new-run-status" class="secondary"></span>
       </p>
-      <p class="hint" style="margin-top:0;">Every run for this category. Select a run's radio to make it the
+      <p class="hint" style="margin-top:0;">Every run for this shortlist. Select a run's radio to make it the
         <strong>active</strong> run (what <em>Execute Active Run</em> adds to); open a run's name for its per-page details.</p>
       <table id="runs-table" hidden>
         <thead><tr><th title="The run that Evaluate / background runs add to">Active</th>
@@ -293,7 +293,7 @@
         </table>
         {{ sql_panel("run-results-sql") }}
       </div>
-      <p id="rr-empty" class="secondary" hidden>No runs yet — evaluate a category first on the Semantic Match tab.</p>
+      <p id="rr-empty" class="secondary" hidden>No runs yet — evaluate the shortlist first on the AI Pipeline tab.</p>
     </section>
 
     <section id="tab-hybrid" class="subpanel" role="tabpanel" hidden>
@@ -308,7 +308,7 @@
           </span>
         </div>
         <p class="hint" style="margin-top:2px;">Augments the shortlist using GOV.UK's own Search: it runs the
-          category's keywords through the GOV.UK Search API (scoped to this category's organisations and document types) and tags every
+          shortlist's keywords through the GOV.UK Search API (scoped to this shortlist's organisations and document types) and tags every
           page <strong>Shortlister only</strong>, <strong>Both</strong>, or <strong>GOV.UK Search only</strong> — the
           last are pages our filters missed. <em>Fetch GOV.UK-only pages</em> pulls those into the corpus so the AI
           Pipeline evaluates them too. Stored until you re-run it.</p>
@@ -352,9 +352,9 @@
   <p class="secondary" style="margin:22px 0 0;font-size:14px;" data-level="expert">
     <a href="{{ url_for('download_audit', cid=category.id) }}">Download Audit File (Debugging only)</a>
     &nbsp;·&nbsp;
-    <a href="{{ url_for('download_category_bundle', cid=category.id) }}">Download category for a test environment</a>
+    <a href="{{ url_for('download_category_bundle', cid=category.id) }}">Download shortlist for a test environment</a>
     <span class="secondary" style="display:block;margin-top:2px;">Definition, runs, results, membership and
-      metadata-only pages — import in a test system to reproduce and fix this category.</span></p>
+      metadata-only pages — import in a test system to reproduce and fix this shortlist.</span></p>
 
   <script>
     const CID = {{ category.id }};
@@ -440,7 +440,7 @@
       try {
         var j = await (await fetch(`/api/categories/${CID}/keyword-overlap?n=${n}`)).json();
         if (window.setSqlPanel) setSqlPanel("venn-sql", j.sql);
-        if (j.pending){ upset.innerHTML=""; status.textContent="Shortlist not computed yet — it populates after the nightly refresh or when the category is saved."; return; }
+        if (j.pending){ upset.innerHTML=""; status.textContent="Shortlist not computed yet — it populates after the nightly refresh or when the shortlist is saved."; return; }
         var kws = j.keywords || [];
         if (kws.length < 2){ upset.innerHTML=""; status.textContent="Add at least two keywords to see their overlap."; return; }
         var counts={}; (j.regions||[]).forEach(function(r){ counts[r.mask]=r.count; });
@@ -695,7 +695,7 @@
       }
       if (pending) {
         document.getElementById("org-rows").innerHTML =
-          `<tr><td class="secondary" style="padding:10px 6px;">Shortlist not computed yet — it populates after the nightly refresh or when the category is saved.</td></tr>`;
+          `<tr><td class="secondary" style="padding:10px 6px;">Shortlist not computed yet — it populates after the nightly refresh or when the shortlist is saved.</td></tr>`;
         document.getElementById("org-toggle").hidden = true;
         return;
       }
@@ -744,7 +744,7 @@
       }
       if (pending) {
         document.getElementById("doc-rows").innerHTML =
-          `<tr><td class="secondary" style="padding:10px 6px;">Shortlist not computed yet — it populates after the nightly refresh or when the category is saved.</td></tr>`;
+          `<tr><td class="secondary" style="padding:10px 6px;">Shortlist not computed yet — it populates after the nightly refresh or when the shortlist is saved.</td></tr>`;
         document.getElementById("doc-toggle").hidden = true;
         return;
       }
@@ -792,7 +792,7 @@
       }
       if (pending) {
         document.getElementById("kw-rows").innerHTML =
-          `<tr><td class="secondary" style="padding:10px 6px;">Shortlist not computed yet — it populates after the nightly refresh or when the category is saved.</td></tr>`;
+          `<tr><td class="secondary" style="padding:10px 6px;">Shortlist not computed yet — it populates after the nightly refresh or when the shortlist is saved.</td></tr>`;
         document.getElementById("kw-toggle").hidden = true;
         return;
       }

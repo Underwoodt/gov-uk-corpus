@@ -31,7 +31,7 @@
 
     <p class="secondary" style="max-width:640px;">
       Downloads the <strong>{{ preselect|length }}</strong> column{{ '' if preselect|length == 1 else 's' }} selected on the
-      <a href="{{ url_for('shortlist_page', cid=category.id) }}">Audit shortlist</a> — change the selection there.
+      <a href="{{ url_for('shortlist_page', cid=category.id) }}">Audit results</a> — change the selection there.
     </p>
 
     <button class="btn" type="submit">Download</button>

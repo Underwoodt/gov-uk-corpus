@@ -21,10 +21,10 @@
     .uc-fail { color:var(--red,#d4351c); font-weight:700; }
   </style>
 
-  <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
+  <a class="back" href="{{ url_for('list_categories_page') }}">‹ Shortlists</a>
 
   <div class="tabs">
-    <a href="{{ url_for('edit_category_page', cid=category.id) }}">Definition</a>
+    <a href="{{ url_for('edit_category_page', cid=category.id) }}">Filters</a>
     <a href="{{ url_for('preview_category_page', cid=category.id) }}">Preview and run</a>
     <a href="{{ url_for('shortlist_page', cid=category.id) }}">Audit Results</a>
     <a href="{{ url_for('performance_page', cid=category.id) }}" data-level="advanced">Run performance</a>
@@ -32,9 +32,9 @@
   </div>
 
   <h1 style="margin:16px 0 6px;">URL check <span class="secondary" style="font-weight:400;font-size:18px;">— {{ category.display_name }}</span></h1>
-  <p class="hint" style="max-width:760px;">Keep two lists of gov.uk URLs against this category and check them against the
+  <p class="hint" style="max-width:760px;">Keep two lists of gov.uk URLs against this shortlist and check them against the
     corpus. <strong>Should be in</strong> URLs are pages that should reach the final shortlist;
-    <strong>Should not be in</strong> URLs are pages that should stay out. Both lists are saved with the category.</p>
+    <strong>Should not be in</strong> URLs are pages that should stay out. Both lists are saved with the shortlist.</p>
 
   <div class="tabs" role="tablist" style="margin:18px 0 20px;">
     <a href="#" class="stab current" data-tab="expected">Should be in</a>
@@ -166,7 +166,7 @@
         document.getElementById("uc-empty").hidden = ucResults.length !== 0;
         ucDownload.disabled = ucResults.length === 0;
         ucSetStatus(j.has_run ? "" :
-          '<em>No AI run yet for this category — “Final result” is Out for every URL until the pipeline has run.</em>');
+          '<em>No AI run yet for this shortlist — “Final result” is Out for every URL until the pipeline has run.</em>');
       } catch (e) {
         ucSetStatus("Could not run the check.");
       } finally {

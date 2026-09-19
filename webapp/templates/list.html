@@ -1,30 +1,30 @@
 {% extends "base.html" %}
 {% from "_sql.html" import sql_details %}
 {% block page_id %}guc-0001{% endblock %}
-{% block title %}Categories{% endblock %}
+{% block title %}Shortlists{% endblock %}
 {% block content %}
 
   {% if flash %}<div class="success">{{ flash }}</div>{% endif %}
 
-  <h1>Categories</h1>
-  <p class="lede" style="margin:0 0 30px;">A category is a saved set of rules for finding gov.uk pages
-    about one topic. Choose a category to run it or change it, or create a new one.</p>
+  <h1>Shortlists</h1>
+  <p class="lede" style="margin:0 0 30px;">A shortlist is a saved set of filters that finds GOV.UK pages
+    about one topic. Choose a shortlist to retrieve or change it, or build a new one.</p>
 
   <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:30px;">
     <div>
-      <label class="secondary" for="cat-filter" style="display:block;margin-bottom:5px;">Search categories</label>
+      <label class="secondary" for="cat-filter" style="display:block;margin-bottom:5px;">Search shortlists</label>
       <input id="cat-filter" type="text" class="narrow" oninput="filterCats(this.value)">
     </div>
-    <a class="btn" href="{{ url_for('new_category_page') }}">Create a new category</a>
+    <a class="btn" href="{{ url_for('new_category_page') }}">Build a new shortlist</a>
   </div>
 
-  <p class="secondary" id="count-line" style="margin:0 0 10px;">{{ categories|length }} categor{{ 'y' if categories|length == 1 else 'ies' }}</p>
+  <p class="secondary" id="count-line" style="margin:0 0 10px;">{{ categories|length }} shortlist{{ '' if categories|length == 1 else 's' }}</p>
 
   {% if categories %}
   <div class="table-wrap">
   <table id="cat-table">
     <thead><tr>
-      <th>Category</th><th>Owner</th><th>Last updated</th>
+      <th>Shortlist</th><th>Owner</th><th>Last updated</th>
       <th class="num">Pages kept</th><th>Status</th><th>Action</th>
     </tr></thead>
     <tbody>
@@ -40,13 +40,13 @@
           {% if c.pages_kept_at %}<span class="sub" title="Recomputed nightly and on edit">as of {{ c.pages_kept_at }}</span>{% endif %}</td>
         <td><span class="pill {{ c.status }}">{{ c.status }}</span></td>
         <td><span class="actions">
-          <a href="{{ url_for('preview_category_page', cid=c.id) }}">Run</a>
+          <a href="{{ url_for('preview_category_page', cid=c.id) }}">Retrieve</a>
           <a href="{{ url_for('edit_category_page', cid=c.id) }}">Change</a>
           <form method="post" action="{{ url_for('copy_category_route', cid=c.id) }}"
             style="display:inline;margin:0;">
             <input type="hidden" name="csrf" value="{{ csrf_token }}">
             <button type="submit" class="linkish"
-              title="Duplicate this category's rules into a new draft">Copy</button>
+              title="Duplicate this shortlist's filters into a new draft">Copy</button>
           </form>
         </span></td>
       </tr>
@@ -56,7 +56,7 @@
   </div>
   {{ sql_details(list_sql) }}
   {% else %}
-  <p style="margin:20px 0 40px;">No categories yet. Create one to get started.</p>
+  <p style="margin:20px 0 40px;">No shortlists yet. Build one to get started.</p>
   {% endif %}
 
   <script>
@@ -68,7 +68,7 @@
         r.hidden = !hit; if (hit) shown++;
       });
       document.getElementById('count-line').textContent =
-        shown + (shown === 1 ? ' category' : ' categories');
+        shown + (shown === 1 ? ' shortlist' : ' shortlists');
     }
   </script>
 {% endblock %}

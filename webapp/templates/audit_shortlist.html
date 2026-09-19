@@ -39,11 +39,11 @@
     tr.lx-row > td { background:var(--surface-2); }
   </style>
 
-  <a class="back" href="{{ url_for('list_categories_page') }}">‹ Categories</a>
+  <a class="back" href="{{ url_for('list_categories_page') }}">‹ Shortlists</a>
   <h1 style="margin:20px 0 20px;">{{ category.display_name }}</h1>
 
   <div class="tabs">
-    <a href="{{ url_for('edit_category_page', cid=category.id) }}">Definition</a>
+    <a href="{{ url_for('edit_category_page', cid=category.id) }}">Filters</a>
     <a href="{{ url_for('preview_category_page', cid=category.id) }}">Preview and run</a>
     <span class="current">Audit Results</span>
     <a href="{{ url_for('performance_page', cid=category.id) }}" data-level="advanced">Run performance</a>
@@ -52,12 +52,12 @@
 
   <div class="tabpanel">
     <div class="tabs" role="tablist" style="margin-bottom:22px;">
-      <a href="#" class="subtab current" data-tab="shortlist" data-tabid="{{ page_ref }}a" role="tab">Shortlist</a>
+      <a href="#" class="subtab current" data-tab="shortlist" data-tabid="{{ page_ref }}a" role="tab">Pages</a>
       <a href="#" class="subtab" data-tab="dashboard" data-tabid="{{ page_ref }}b" role="tab">GDS Compliance (Non-LLM)</a>
     </div>
 
     <section id="tab-shortlist" class="subpanel" role="tabpanel">
-      <h2 style="margin-top:10px;">Audit shortlist</h2>
+      <h2 style="margin-top:10px;">Audit results</h2>
       <p class="hint" style="margin-top:-14px;">Browse and extract the pages at any stage of the funnel. Choose a
         stage and the fields to show; the same fields pre-fill the download (customise it there).</p>
       <div class="controls" style="align-items:center;gap:12px;">
