@@ -66,15 +66,17 @@ def _store(conn, cid: int, rows: List[tuple]) -> None:
 
 
 def compare(conn, cid: int, keywords: Sequence[str], organisations: Sequence[str],
-            search_fn: Callable[..., dict], document_types: Sequence[str] = ()) -> dict:
+            search_fn: Callable[..., dict], document_types: Sequence[str] = (),
+            progress=None) -> dict:
     """Run the org- and document-type-scoped GOV.UK Search for `keywords`, compare with the
     category's stored deterministic shortlist, and persist the tagged union.
-    `search_fn(phrases, orgs, doctypes)` must return {"results": [{link, title, document_type,
-    phrases}]}. Returns a summary dict."""
+    `search_fn(phrases, orgs, doctypes, progress)` must return {"results": [{link, title,
+    document_type, phrases}]}. `progress(done, total, pages)` is an optional per-phrase
+    callback. Returns a summary dict."""
     keywords = [k for k in (keywords or []) if k]
     results, query_urls = [], []
     if keywords:
-        data = search_fn(keywords, list(organisations or []), list(document_types or [])) or {}
+        data = search_fn(keywords, list(organisations or []), list(document_types or []), progress) or {}
         results = data.get("results", []) or []
         query_urls = data.get("query_urls", []) or []
     # Persist the exact GOV.UK API queries used, for the expert "queries sent" box.

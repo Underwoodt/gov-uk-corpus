@@ -155,6 +155,14 @@
           </ul>
         </div></details>
       <textarea id="keywords" name="keywords" rows="4">{{ v.keywords or '' }}</textarea>
+      <label class="check" style="margin-top:12px;">
+        <input type="checkbox" name="hybrid_on_save" value="1" {{ 'checked' if v.hybrid_on_save }}>
+        Run GOV.UK hybrid search on save
+      </label>
+      <p class="hint" style="margin-top:6px;">After saving, also search GOV.UK's own Search for these keywords
+        (scoped to the organisations and document types above), tag pages by provenance, and fetch any
+        GOV.UK-only pages into the corpus so the AI Pipeline can evaluate them. Runs in the background — it can
+        take a few minutes — and its results appear on the <strong>Hybrid Search</strong> tab.</p>
     </div>
 
     <div class="field">

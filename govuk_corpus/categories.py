@@ -24,7 +24,7 @@ USER_FIELDS = [
     "document_type_slugs", "keywords",
     "inclusion_context", "exclusion_context", "adjudication_hints_keep",
     "adjudication_hints_drop", "extra_guidance_urls", "only_use_extra_guidance_urls",
-    "extra_law_urls", "only_use_extra_law_urls",
+    "extra_law_urls", "only_use_extra_law_urls", "hybrid_on_save",
 ]
 REQUIRED_FIELDS = [
     "owner_email", "description", "dept_slugs", "document_type_slugs", "inclusion_context",
@@ -55,6 +55,7 @@ _LABELS = {
     "extra_guidance_urls": "Include Guidance URLs",
     "only_use_extra_guidance_urls": "Only Use Extra Guidance URLs",
     "extra_law_urls": "Include LAW URLs", "only_use_extra_law_urls": "Only Use Extra LAW URLs",
+    "hybrid_on_save": "Run GOV.UK hybrid search on save",
 }
 
 
@@ -94,7 +95,8 @@ def validate(data: Dict[str, Any]) -> List[str]:
 
 def _coerce(data: Dict[str, Any]) -> Dict[str, Any]:
     out = dict(data)
-    for b in ("only_use_extra_guidance_urls", "only_use_extra_law_urls", "include_child_orgs"):
+    for b in ("only_use_extra_guidance_urls", "only_use_extra_law_urls", "include_child_orgs",
+              "hybrid_on_save"):
         out[b] = 1 if str(data.get(b) or "0") in ("1", "Y", "y", "True", "true", "on") else 0
     return out
 

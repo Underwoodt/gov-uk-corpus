@@ -292,6 +292,7 @@
             <a href="#" id="gc-download" style="font-size:14px;" hidden>Download CSV</a>
             <button type="button" class="btn secondary-btn" id="gc-fetch" style="margin-left:12px;padding:4px 12px;font-size:14px;" hidden>Fetch GOV.UK-only pages</button>
             <button type="button" class="btn secondary-btn" id="gc-run" style="margin-left:12px;padding:4px 12px;font-size:14px;">Compare with GOV.UK Search</button>
+            <button type="button" class="btn secondary-btn" id="gc-stop" style="margin-left:8px;padding:4px 12px;font-size:14px;color:#d4351c;" hidden>Stop</button>
           </span>
         </div>
         <p class="hint" style="margin-top:2px;">Augments the shortlist using GOV.UK's own Search: it runs the
@@ -526,18 +527,55 @@
         status.textContent = "";
       } catch (e) { tbody.innerHTML = ""; status.textContent = "Could not load the coverage list."; }
     }
+    // Hybrid search runs as a background job (it can take minutes at the 10k/phrase limit):
+    // start it, then poll for progress and reload the list when it finishes.
+    let gcPollTimer = null;
+    function gcHybridMessage(s) {
+      if (s.phase === "searching")
+        return `Searching GOV.UK… ${fmtInt(s.phrases_done || 0)}/${fmtInt(s.phrases_total || 0)} phrases, ${fmtInt(s.pages || 0)} pages found`;
+      if (s.phase === "fetching")
+        return `Fetching GOV.UK-only pages into the corpus… ${fmtInt(s.fetched || 0)} fetched`
+             + (s.pending != null ? `, ${fmtInt(s.pending)} to go` : "");
+      return "Working…";
+    }
+    async function gcPoll() {
+      const status = document.getElementById("gc-status"), btn = document.getElementById("gc-run");
+      let s;
+      try { s = await (await fetch(`/api/categories/${CID}/hybrid-bg/status`)).json(); }
+      catch (e) { return; }
+      if (s.running) {
+        btn.disabled = true; status.style.color = "";
+        document.getElementById("gc-stop").hidden = false;
+        status.innerHTML = '<span class="spinner"></span> ' + esc(gcHybridMessage(s));
+        if (!gcPollTimer) gcPollTimer = setInterval(gcPoll, 3000);
+      } else {
+        if (gcPollTimer) { clearInterval(gcPollTimer); gcPollTimer = null; }
+        btn.disabled = false;
+        document.getElementById("gc-stop").hidden = true;
+        if (s.error) { status.style.color = "var(--red,#d4351c)"; status.textContent = "Error: " + s.error; }
+        else if (s.finished_at) {
+          status.style.color = "";
+          status.textContent = `Done — ${fmtInt(s.fetched || 0)} GOV.UK-only page(s) fetched`
+            + (s.evaluable != null ? `, ${fmtInt(s.evaluable)} evaluable.` : ".");
+        }
+        gcOffset = 0; await loadCoverage();
+      }
+    }
     document.getElementById("gc-run").addEventListener("click", async () => {
       const btn = document.getElementById("gc-run"), status = document.getElementById("gc-status");
-      btn.disabled = true; const label = btn.textContent; btn.textContent = "Comparing…";
-      status.innerHTML = '<span class="spinner"></span> Searching GOV.UK…';
+      btn.disabled = true; status.style.color = ""; status.innerHTML = '<span class="spinner"></span> Starting GOV.UK hybrid search…';
       try {
-        const r = await fetch(`/api/categories/${CID}/govuk-compare`, { method: "POST" });
+        const r = await fetch(`/api/categories/${CID}/hybrid-bg/start`, { method: "POST" });
         const j = await r.json().catch(() => ({}));
         if (!r.ok || j.error) throw new Error(j.error || ("HTTP " + r.status));
-        gcOffset = 0; document.getElementById("gc-source").value = "";
-        await loadCoverage();
-      } catch (e) { status.style.color = "var(--red,#d4351c)"; status.textContent = "Error: " + (e.message || e); }
-      finally { btn.disabled = false; btn.textContent = label; }
+        gcPoll();
+      } catch (e) { btn.disabled = false; status.style.color = "var(--red,#d4351c)"; status.textContent = "Error: " + (e.message || e); }
+    });
+    document.getElementById("gc-stop").addEventListener("click", async () => {
+      document.getElementById("gc-stop").disabled = true;
+      try { await fetch(`/api/categories/${CID}/hybrid-bg/stop`, { method: "POST" }); } catch (e) {}
+      document.getElementById("gc-stop").disabled = false;
+      document.getElementById("gc-status").textContent = "Stopping after the current batch…";
     });
     document.getElementById("gc-fetch").addEventListener("click", async () => {
       const btn = document.getElementById("gc-fetch"), status = document.getElementById("gc-status");
@@ -1101,7 +1139,7 @@
           const v = document.getElementById("rr-run-select").value;
           if (v) loadRunResults(v, "");
         }
-        if (tab === "hybrid") loadCoverage();   // lazy: only hit the API when opened
+        if (tab === "hybrid") gcPoll();   // lazy: loads the list, or resumes progress if a job is running
         try { localStorage.setItem("preview-subtab-" + CID, tab); } catch (e) {}
       }
       btns.forEach(b => b.addEventListener("click", e => { e.preventDefault(); show(b.dataset.tab); }));

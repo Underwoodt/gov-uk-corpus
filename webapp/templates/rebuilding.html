@@ -39,6 +39,13 @@
         <span><span class="rb-title">Reconciling AI evaluations</span>
           <span class="rb-detail" id="d-reconcile">Keeping decisions for pages still in the shortlist, removing the rest…</span></span>
       </li>
+      {% if hybrid_on_save %}
+      <li class="rb-step pending" id="st-hybrid">
+        <span class="rb-ico"><span class="dot"></span></span>
+        <span><span class="rb-title">GOV.UK hybrid search</span>
+          <span class="rb-detail" id="d-hybrid">Starting the background search + fetch…</span></span>
+      </li>
+      {% endif %}
       <li class="rb-step pending" id="st-done">
         <span class="rb-ico"><span class="dot"></span></span>
         <span><span class="rb-title">Opening results</span></span>
@@ -79,6 +86,20 @@
             Number(j.membership_count).toLocaleString() + " pages in the shortlist.";
         }
         await stage("st-reconcile", `/api/categories/${CID}/reconcile-eval`);
+        {% if hybrid_on_save %}
+        // Kick off the hybrid search in the background and proceed — it can take minutes and
+        // finishes on the Hybrid Search tab. A failure to start is non-fatal.
+        running("st-hybrid");
+        try {
+          const h = await fetch(`/api/categories/${CID}/hybrid-bg/start`, { method: "POST" });
+          await h.json().catch(() => ({}));
+          done("st-hybrid");
+          document.getElementById("d-hybrid").textContent = "Running in the background — see the Hybrid Search tab.";
+        } catch (e) {
+          done("st-hybrid");
+          document.getElementById("d-hybrid").textContent = "Couldn’t start — open the Hybrid Search tab to run it.";
+        }
+        {% endif %}
         done("st-done");
         setTimeout(function () { window.location.replace(PREVIEW); }, 500);
       } catch (e) {

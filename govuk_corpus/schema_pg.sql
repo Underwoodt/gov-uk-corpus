@@ -261,6 +261,8 @@ ALTER TABLE categories ADD COLUMN IF NOT EXISTS include_child_orgs smallint DEFA
 -- URL-check lists: URLs expected in / out of the final shortlist (guc-0018).
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS should_include_urls text;
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS should_exclude_urls text;
+-- Run the GOV.UK hybrid search (compare + fetch) as a background stage on save.
+ALTER TABLE categories ADD COLUMN IF NOT EXISTS hybrid_on_save smallint DEFAULT 0;
 
 -- Precomputed "input shortlist" size per category (organisations + document
 -- types, no keywords). Refreshed as the tidy-up phase of the nightly corpus

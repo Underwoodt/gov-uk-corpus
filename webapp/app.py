@@ -499,6 +499,7 @@ def form_values(form) -> dict:
     d["dept_slugs"] = "\n".join(s.strip() for s in form.getlist("dept_slugs") if s.strip())
     d["document_type_slugs"] = "\n".join(s.strip() for s in form.getlist("document_type_slugs") if s.strip())
     d["include_child_orgs"] = form.get("include_child_orgs")  # checkbox: "on" or absent
+    d["hybrid_on_save"] = form.get("hybrid_on_save")          # checkbox: run GOV.UK hybrid search on save
     d["description"] = cat.prettify(d.get("slug"))  # keep the Streamlit list name sensible
     return d
 
@@ -921,7 +922,8 @@ def rebuild_category_page(request: Request, cid: int):
         conn.close()
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
     category["display_name"] = cat.prettify(category.get("slug")) or (category.get("description") or "Untitled")
-    resp = templates.TemplateResponse("rebuilding.html", ctx(conn, request, category=category))
+    resp = templates.TemplateResponse("rebuilding.html", ctx(
+        conn, request, category=category, hybrid_on_save=bool(category.get("hybrid_on_save"))))
     conn.close()
     return resp
 
@@ -1258,7 +1260,7 @@ async def api_govuk_compare(request: Request, cid: int):
     def work():
         return search_augment.compare(
             conn, cid, filters["keywords"], filters["organisations"],
-            lambda phrases, org_slugs, doctypes: _govuk_search_multi(phrases, org_slugs, doctypes),
+            lambda phrases, org_slugs, doctypes, progress=None: _govuk_search_multi(phrases, org_slugs, doctypes),
             document_types=filters["document_types"])
     try:
         out = await run_in_threadpool(work)
@@ -1750,6 +1752,106 @@ async def api_bg_eval_stop(request: Request, cid: int):
     return JSONResponse({"stopping": ent is not None})
 
 
+# ---- background GOV.UK hybrid search (compare + fetch into the corpus) ----
+# Can take minutes (up to 25 phrases x 10k pages), so it runs off-request in a thread,
+# per category, with pollable progress. In-memory; does not survive a restart (the results
+# it writes to category_search_pages / content do).
+_bg_hybrid: Dict[int, dict] = {}
+
+
+def _background_hybrid_loop(cid: int, stop_event: threading.Event, status: dict) -> None:
+    try:
+        conn = connect()
+        try:
+            category = cat.get_category(conn, cid)
+            if not category:
+                status["error"] = "category not found"
+                return
+            filters = _effective_filters(conn, category)
+            status["phase"] = "searching"
+
+            def prog(done, total, pages):
+                status["phrases_done"], status["phrases_total"], status["pages"] = done, total, pages
+
+            def search_fn(phrases, org_slugs, doctypes, progress=None):
+                return _govuk_search_multi(phrases, org_slugs, doctypes, progress=progress,
+                                           should_stop=stop_event.is_set)
+            summary = search_augment.compare(
+                conn, cid, filters["keywords"], filters["organisations"], search_fn,
+                document_types=filters["document_types"], progress=prog)
+            status["counts"] = summary.get("counts")
+            if stop_event.is_set():
+                status["stopped"] = "user"
+                return
+            # Fetch GOV.UK-only pages into the corpus (bounded batches) so they're evaluable.
+            status["phase"] = "fetching"
+            while not stop_event.is_set():
+                urls = search_augment.pending_fetch_urls(conn, cid)[:_GOVUK_FETCH_CAP]
+                if not urls:
+                    break
+                run_id = db.start_run(conn, stage="govuk-augment", scope=str(cid))
+                counters = stage_align.align_urls(conn, run_id, urls, source="govuk-search", stage="govuk-augment")
+                db.finish_run(conn, run_id, counters)
+                search_augment.refresh_content_ids(conn, cid)
+                status["fetched"] = status.get("fetched", 0) + (
+                    counters.get("new", 0) + counters.get("changed", 0) + counters.get("unchanged", 0))
+                status["pending"] = len(search_augment.pending_fetch_urls(conn, cid))
+            status["evaluable"] = search_augment.evaluable_search_only(conn, cid)
+        finally:
+            conn.close()
+    except Exception as e:
+        status["error"] = f"{type(e).__name__}: {e}"
+    finally:
+        status["running"] = False
+        status["finished_at"] = db.now_iso()
+
+
+def _start_hybrid_bg(cid: int) -> dict:
+    """Start (or report the running) background hybrid job for a category."""
+    with _bg_lock:
+        ent = _bg_hybrid.get(cid)
+        if ent and ent["status"].get("running"):
+            return {"already_running": True, "status": ent["status"]}
+        stop_event = threading.Event()
+        status = {"running": True, "phase": "starting", "phrases_done": 0, "phrases_total": 0,
+                  "pages": 0, "fetched": 0, "pending": None, "evaluable": None, "counts": None,
+                  "stopped": None, "error": None, "started_at": db.now_iso(), "finished_at": None}
+        t = threading.Thread(target=_background_hybrid_loop, args=(cid, stop_event, status), daemon=True)
+        _bg_hybrid[cid] = {"thread": t, "stop": stop_event, "status": status}
+        t.start()
+        return {"started": True, "status": status}
+
+
+@app.post("/api/categories/{cid}/hybrid-bg/start")
+async def api_hybrid_bg_start(request: Request, cid: int):
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    conn = connect()
+    ok = cat.get_category(conn, cid) is not None
+    conn.close()
+    if not ok:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return JSONResponse(_start_hybrid_bg(cid))
+
+
+@app.get("/api/categories/{cid}/hybrid-bg/status")
+async def api_hybrid_bg_status(request: Request, cid: int):
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    ent = _bg_hybrid.get(cid)
+    return JSONResponse(ent["status"] if ent else {"running": False})
+
+
+@app.post("/api/categories/{cid}/hybrid-bg/stop")
+async def api_hybrid_bg_stop(request: Request, cid: int):
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    ent = _bg_hybrid.get(cid)
+    if ent:
+        ent["stop"].set()
+    return JSONResponse({"stopping": ent is not None})
+
+
 @app.get("/categories/{cid}/performance", response_class=HTMLResponse)
 def performance_page(request: Request, cid: int):
     if not authed(request):
@@ -1897,8 +1999,13 @@ async def submit_feedback(request: Request):
 _GOVUK_SEARCH_URL = "https://www.gov.uk/api/search.json"
 _GOVUK_SEARCH_FIELDS = ("title", "link", "description", "content_store_document_type")
 _GOVUK_UA = {"User-Agent": "gov-uk-corpus-shortlist-builder", "Accept": "application/json"}
-_GOVUK_MAX_PHRASES = 12        # cap the number of phrase lines
-_GOVUK_PER_PHRASE = 300        # cap pages listed per phrase (the doc-type set is complete regardless)
+# Guardrails on a Compare run (env-configurable). GOV.UK caps rows at 100 per request, so
+# per-phrase paging is always in 100s regardless; that hard limit isn't ours to change. It
+# also can't paginate past from+size = 10000 (its deep-pagination ceiling), so 10000 is the
+# most retrievable per phrase — we default to it, favouring completeness over speed.
+_GOVUK_MAX_PHRASES = int(os.getenv("GOVUK_MAX_PHRASES", "25"))     # phrase lines searched per run
+_GOVUK_PER_PHRASE = int(os.getenv("GOVUK_PER_PHRASE", "10000"))    # pages listed per phrase (GOV.UK ceiling)
+_GOVUK_DOCTYPE_AGG = int(os.getenv("GOVUK_DOCTYPE_AGG", "200"))    # doc-type facet buckets (complete set)
 
 
 def _govuk_get(params) -> tuple:
@@ -1926,7 +2033,7 @@ def _govuk_doctypes(phrase: str, organisations=(), document_types=()) -> tuple:
     """The complete document-type distribution for a phrase (via the API's aggregate), as
     {slug: count}, plus the total number of matching pages. Optionally org/doc-type scoped."""
     url, data = _govuk_get([("q", _phrase_q(phrase)), ("count", "0"),
-                            ("aggregate_content_store_document_type", "200")]
+                            ("aggregate_content_store_document_type", str(_GOVUK_DOCTYPE_AGG))]
                            + _govuk_filter_params(organisations, document_types))
     opts = data.get("aggregates", {}).get("content_store_document_type", {}).get("options", [])
     out = {}
@@ -1938,7 +2045,7 @@ def _govuk_doctypes(phrase: str, organisations=(), document_types=()) -> tuple:
     return out, int(data.get("total") or 0), url
 
 
-def _govuk_search_multi(phrases, organisations=(), document_types=()) -> dict:
+def _govuk_search_multi(phrases, organisations=(), document_types=(), progress=None, should_stop=None) -> dict:
     """Search GOV.UK for several phrases (one per line). Returns the combined page list
     (title, link, document type, which phrases matched), the full document-type set with
     counts, per-phrase totals, and the query URLs used. Optionally scoped to org + doc-type slugs."""
@@ -1947,7 +2054,10 @@ def _govuk_search_multi(phrases, organisations=(), document_types=()) -> dict:
     scope = (f"{len(organisations)} organisation(s)" if organisations else "all organisations")
     scope += (f", {len(document_types)} document type(s)" if document_types else ", all document types")
     pages, doctypes, per_phrase, query_urls = {}, {}, [], []
-    for phrase in phrases[:_GOVUK_MAX_PHRASES]:
+    phrase_list = phrases[:_GOVUK_MAX_PHRASES]
+    for idx, phrase in enumerate(phrase_list):
+        if should_stop and should_stop():
+            break
         dt, total, agg_url = _govuk_doctypes(phrase, organisations, document_types)
         query_urls.append({"comment": f'Phrase "{phrase}": total matches + the full document-type '
                                       f'breakdown ({scope}); exact-phrase match, no rows fetched.',
@@ -1955,9 +2065,14 @@ def _govuk_search_multi(phrases, organisations=(), document_types=()) -> dict:
         for slug, n in dt.items():
             doctypes[slug] = doctypes.get(slug, 0) + n
         per_phrase.append({"phrase": phrase, "total": total})
+        # GOV.UK can't paginate past from+size = 10000, so never request beyond that,
+        # even if GOVUK_PER_PHRASE is set higher.
+        cap = min(_GOVUK_PER_PHRASE, 10000)
         start = 0
-        while start < _GOVUK_PER_PHRASE:
-            count = min(100, _GOVUK_PER_PHRASE - start)
+        while start < cap:
+            if should_stop and should_stop():
+                break
+            count = min(100, cap - start)
             url, data = _govuk_get([("q", _phrase_q(phrase)), ("count", str(count)), ("start", str(start))]
                                    + [("fields", f) for f in _GOVUK_SEARCH_FIELDS] + filter_params)
             query_urls.append({"comment": f'Phrase "{phrase}": fetch matching pages '
@@ -1981,6 +2096,8 @@ def _govuk_search_multi(phrases, organisations=(), document_types=()) -> dict:
             start += len(res)
             if start >= total:
                 break
+        if progress:
+            progress(idx + 1, len(phrase_list), len(pages))
     doctype_list = sorted(({"type": t, "count": c} for t, c in doctypes.items()),
                           key=lambda x: (-x["count"], x["type"]))
     return {"results": list(pages.values()), "doctypes": doctype_list,
