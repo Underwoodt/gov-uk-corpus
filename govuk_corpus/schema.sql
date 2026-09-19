@@ -88,6 +88,7 @@ CREATE TABLE IF NOT EXISTS page_organisations (
     PRIMARY KEY (page_url, organisation_content_id, role)
 );
 CREATE INDEX IF NOT EXISTS idx_page_orgs_slug ON page_organisations(organisation_slug);
+CREATE INDEX IF NOT EXISTS idx_page_orgs_slug_url ON page_organisations(organisation_slug, page_url);
 
 -- Parent -> child/attachment relationships between PAGES (both live in content).
 CREATE TABLE IF NOT EXISTS page_links (

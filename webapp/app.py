@@ -151,6 +151,11 @@ _COUNT_CACHE: Dict[tuple, tuple] = {}
 _COUNT_TTL = int(os.getenv("COUNT_CACHE_TTL", "300"))
 _COUNT_LOCK = threading.Lock()
 
+# Doc-type options for the Page Types picker are org-scoped and change ~daily; cache the
+# result per (org set, children flag) so repeat edits load instantly. Same TTL as counts.
+_DOCTYPE_CACHE: Dict[tuple, tuple] = {}
+_DOCTYPE_LOCK = threading.Lock()
+
 
 def _count_key(filters: dict) -> tuple:
     return (tuple(sorted(filters.get("organisations") or [])),
@@ -1931,13 +1936,23 @@ def api_doc_type_counts(request: Request, orgs: str = "", children: str = "0"):
     if not authed(request):
         return JSONResponse({"error": "auth"}, status_code=401)
     slugs = cat.parse_list(orgs)   # `orgs` here is the CSV query param, not the orgs module
+    want_children = str(children) in ("1", "true", "on")
+    key = (tuple(sorted(slugs)), want_children)
+    if _COUNT_TTL > 0:
+        with _DOCTYPE_LOCK:
+            hit = _DOCTYPE_CACHE.get(key)
+            if hit and hit[1] > time.time():
+                return JSONResponse({"types": hit[0]})
     conn = connect()
     try:
-        if slugs and str(children) in ("1", "true", "on"):
-            slugs = orgs_mod.expand_with_children(conn, slugs)
-        return JSONResponse({"types": _doc_type_counts(conn, slugs)})
+        eff_slugs = orgs_mod.expand_with_children(conn, slugs) if (slugs and want_children) else slugs
+        types = _doc_type_counts(conn, eff_slugs)
     finally:
         conn.close()
+    if _COUNT_TTL > 0:
+        with _DOCTYPE_LOCK:
+            _DOCTYPE_CACHE[key] = (types, time.time() + _COUNT_TTL)
+    return JSONResponse({"types": types})
 
 
 @app.post("/api/org-options")

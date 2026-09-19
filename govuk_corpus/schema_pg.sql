@@ -72,6 +72,12 @@ CREATE TABLE IF NOT EXISTS page_organisations (
     PRIMARY KEY (page_url, organisation_content_id, role)
 );
 CREATE INDEX IF NOT EXISTS idx_page_orgs_slug ON page_organisations(organisation_slug);
+-- Composite (slug, page_url) lets "DISTINCT page_url WHERE organisation_slug IN (…)" run as
+-- an index-only scan — the hot path for the Page Types picker's doc-type-counts, especially
+-- for orgs with many child departments. Built here without CONCURRENTLY (schema runs on
+-- startup), so it briefly locks page_organisations; to avoid the lock, create it by hand first:
+--   CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_page_orgs_slug_url ON page_organisations(organisation_slug, page_url);
+CREATE INDEX IF NOT EXISTS idx_page_orgs_slug_url ON page_organisations(organisation_slug, page_url);
 
 CREATE TABLE IF NOT EXISTS page_links (
     parent_url text NOT NULL,
