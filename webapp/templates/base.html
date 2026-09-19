@@ -238,5 +238,38 @@
       window.addEventListener("load", wire);   // re-measure once fonts/layout settle
     })();
   </script>
+  <script>
+    // Policy: links to gov.uk pages (corpus / shortlist content) always open in a NEW TAB,
+    // so the user never loses their place in the tool. App-internal links are same-origin
+    // (not gov.uk) and are left alone. Covers both server-rendered anchors and the many
+    // links inserted later via fetch+innerHTML (results tables, coverage, breakdowns) by
+    // watching the DOM. See CLAUDE.md > Web pages.
+    (function () {
+      function isGovUk(a) {
+        try { return /(^|\.)gov\.uk$/i.test(new URL(a.href, location.href).hostname); }
+        catch (e) { return false; }
+      }
+      function mark(a) {
+        if (a.__extTab || !a.getAttribute("href") || !isGovUk(a)) return;
+        a.__extTab = true;
+        a.target = "_blank";
+        a.rel = a.rel ? a.rel : "noopener noreferrer";   // security: no window.opener access
+      }
+      function scan(root) {
+        if (root.nodeType !== 1) return;
+        if (root.matches && root.matches("a[href]")) mark(root);
+        if (root.querySelectorAll) [].forEach.call(root.querySelectorAll("a[href]"), mark);
+      }
+      function start() {
+        scan(document.body);
+        new MutationObserver(function (muts) {
+          for (var i = 0; i < muts.length; i++)
+            [].forEach.call(muts[i].addedNodes, scan);
+        }).observe(document.body, { childList: true, subtree: true });
+      }
+      if (document.readyState !== "loading") start();
+      else document.addEventListener("DOMContentLoaded", start);
+    })();
+  </script>
 </body>
 </html>

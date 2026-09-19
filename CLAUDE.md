@@ -14,6 +14,13 @@ Project conventions that must be followed for every change. This file is the hom
   the row, don't reuse the number).
 - Pages are Jinja templates under `webapp/templates/` that `extends "base.html"`; the
   ID is a `{% block page_id %}` set right after the `extends` line.
+- **Links to gov.uk pages always open in a new tab.** Any anchor pointing at a `gov.uk`
+  host (the corpus/shortlist content links) must open in a new browser tab so the user
+  never loses their place in the tool. This is handled globally — a policy script in
+  `base.html` sets `target="_blank"` + `rel="noopener noreferrer"` on every gov.uk link,
+  including ones inserted later via fetch/`innerHTML`, by watching the DOM. New gov.uk
+  links therefore need no per-link code; don't remove the `target` or point it back to the
+  same tab. App-internal links are same-origin (not gov.uk) and stay in the same tab.
 - **Sub-tabs carry an identifier too**, so a specific tab can be named in a bug report:
   the page's ID plus a letter (`a`, `b`, `c`, …) — e.g. the Preview page (`guc-0003`)
   sub-tabs are `guc-0003a` / `guc-0003b` / `guc-0003c`. Each sub-tab carries its id as a
