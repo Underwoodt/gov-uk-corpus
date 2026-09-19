@@ -219,6 +219,65 @@ def augmented_pages(conn, cid: int, source: str = "", limit: int = 100, offset: 
     return {"total": total, "rows": rows, "limit": limit, "offset": offset, "source": source}
 
 
+def resolve_attachment_containers(conn, cid: int) -> dict:
+    """Drop GOV.UK-Search-only *container* rows whose HTML-publication attachment(s) we already
+    hold, so they're not counted as coverage gaps for content we have under a different URL.
+
+    GOV.UK Search returns publication container pages (often little content of their own) whose
+    actual readable content is an ``html_publication`` attachment — and that attachment is
+    usually already in our corpus. For each still-``search`` row we now have a payload for, we
+    read its HTML attachments (``details.attachments`` html; url + ``https://www.gov.uk``). If
+    EVERY html attachment is already in the corpus, we drop the container row and re-tag each
+    attachment: ``both`` when it's in this category's deterministic shortlist, else ``search``
+    (GOV.UK-only). If any html attachment isn't in the corpus, the container is left alone.
+    Returns {containers_dropped, attachments_both, attachments_search}."""
+    from .extract import html_attachment_urls
+    shortlist_ids = {dict(r)["content_id"] for r in conn.execute(
+        f"SELECT content_id FROM category_shortlist_pages WHERE category_id = {_P}", (cid,)).fetchall()}
+    rows = conn.execute(
+        f"SELECT sp.url AS url, c.content AS content FROM category_search_pages sp "
+        f"JOIN content c ON c.url = sp.url "
+        f"WHERE sp.category_id = {_P} AND sp.source = 'search' AND c.content IS NOT NULL",
+        (cid,)).fetchall()
+    dropped = both = searched = 0
+    for r in rows:
+        d = dict(r)
+        try:
+            payload = json.loads(d["content"]) if isinstance(d["content"], str) else d["content"]
+        except Exception:
+            continue
+        atts = html_attachment_urls(payload or {})
+        if not atts:
+            continue
+        lookup = _content_lookup(conn, atts)
+        if not all(a in lookup for a in atts):
+            continue                              # some attachment not in corpus -> leave alone
+        for a in atts:
+            cidv, title, eff = lookup[a]
+            if (cidv or a) in shortlist_ids:      # in the deterministic shortlist -> upgrade to 'both'
+                cur = conn.execute(
+                    f"UPDATE category_search_pages SET source = 'both' "
+                    f"WHERE category_id = {_P} AND content_id = {_P} AND source = 'shortlister'",
+                    (cid, cidv))
+                both += 1
+            else:                                 # in the corpus but not the shortlist -> GOV.UK-only row
+                exists = conn.execute(
+                    f"SELECT 1 FROM category_search_pages WHERE category_id = {_P} AND url = {_P}",
+                    (cid, a)).fetchone()
+                if not exists:
+                    conn.execute(
+                        "INSERT INTO category_search_pages (category_id, url, content_id, title, "
+                        "document_type, source, phrases, corpus_phrases, computed_at) "
+                        f"VALUES ({_P}, {_P}, {_P}, {_P}, {_P}, 'search', NULL, NULL, {_P})",
+                        (cid, a, cidv, title, eff, cat.now_iso()))
+                    searched += 1
+        conn.execute(f"DELETE FROM category_search_pages WHERE category_id = {_P} AND url = {_P}",
+                     (cid, d["url"]))
+        dropped += 1
+    conn.commit()
+    return {"containers_dropped": dropped, "attachments_both": both, "attachments_search": searched}
+
+
 def pending_fetch_urls(conn, cid: int) -> List[str]:
     """GOV.UK-Search-only URLs for this category that aren't in the corpus yet — the ones to
     fetch so they gain content/content_id/search_text and become LLM-evaluable."""

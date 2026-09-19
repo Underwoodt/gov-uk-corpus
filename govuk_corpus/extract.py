@@ -170,3 +170,23 @@ def extract_child_links(payload: Dict[str, Any], parent_url: str) -> Tuple[List[
         seen.add(key)
         out.append((cu, relation))
     return out, binary_count
+
+
+def html_attachment_urls(payload: Dict[str, Any]) -> List[str]:
+    """Canonical URLs of a page's HTML attachments (its html_publication children) from
+    ``details.attachments`` (``attachment_type == "html"``). Each ``att.url`` is a site-
+    relative path, so ``https://www.gov.uk`` is prepended before canonicalising. De-duplicated,
+    order preserved. (File attachments — PDFs etc. — are ignored.)"""
+    details = payload.get("details") or {}
+    out: List[str] = []
+    seen = set()
+    for att in details.get("attachments") or []:
+        if att.get("attachment_type") != "html" or not att.get("url"):
+            continue
+        u = att["url"]
+        target = u if u.startswith("http") else "https://www.gov.uk" + u
+        cu = canonicalise(target) or target
+        if cu and cu not in seen:
+            seen.add(cu)
+            out.append(cu)
+    return out

@@ -1310,16 +1310,17 @@ async def api_govuk_fetch(request: Request, cid: int):
         conn.close()
         return JSONResponse({"error": "not found"}, status_code=404)
     urls = search_augment.pending_fetch_urls(conn, cid)[:_GOVUK_FETCH_CAP]
-    if not urls:
-        evaluable = search_augment.evaluable_search_only(conn, cid)
-        conn.close()
-        return JSONResponse({"fetched": 0, "pending": 0, "evaluable": evaluable})
 
     def work():
-        run_id = db.start_run(conn, stage="govuk-augment", scope=str(cid))
-        counters = stage_align.align_urls(conn, run_id, urls, source="govuk-search", stage="govuk-augment")
-        db.finish_run(conn, run_id, counters)
-        return counters, search_augment.refresh_content_ids(conn, cid)
+        counters = {}
+        if urls:
+            run_id = db.start_run(conn, stage="govuk-augment", scope=str(cid))
+            counters = stage_align.align_urls(conn, run_id, urls, source="govuk-search", stage="govuk-augment")
+            db.finish_run(conn, run_id, counters)
+        updated = search_augment.refresh_content_ids(conn, cid)
+        # Drop container rows whose html_publication attachment we already hold (re-tag it).
+        search_augment.resolve_attachment_containers(conn, cid)
+        return counters, updated
     try:
         counters, updated = await run_in_threadpool(work)
     except Exception as e:
@@ -1807,6 +1808,8 @@ def _background_hybrid_loop(cid: int, stop_event: threading.Event, status: dict)
                 status["fetched"] = status.get("fetched", 0) + (
                     counters.get("new", 0) + counters.get("changed", 0) + counters.get("unchanged", 0))
                 status["pending"] = len(search_augment.pending_fetch_urls(conn, cid))
+            # Drop container rows whose html_publication attachment we already hold (re-tag it).
+            status["resolved"] = search_augment.resolve_attachment_containers(conn, cid)
             status["evaluable"] = search_augment.evaluable_search_only(conn, cid)
         finally:
             conn.close()

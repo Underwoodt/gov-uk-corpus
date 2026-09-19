@@ -82,5 +82,80 @@ class TestAugmentedPages(unittest.TestCase):
         self.assertEqual(shortlister["govuk_keywords"], [])           # GOV.UK didn't return it
 
 
+class TestResolveAttachmentContainers(unittest.TestCase):
+    """A GOV.UK-only container page whose html_publication attachment we already hold is
+    dropped, and the attachment re-tagged (both if in the shortlist, else search)."""
+    CID = 9
+    ATT_REL = "/government/publications/foo/the-report"
+
+    def setUp(self):
+        import json
+        from govuk_corpus.canonical import canonicalise
+        self.conn = db.connect(":memory:")
+        db.init_db(self.conn)
+        self.att_url = canonicalise("https://www.gov.uk" + self.ATT_REL)
+        self.container_url = "https://www.gov.uk/government/publications/foo"
+        payload = {"details": {"attachments": [
+            {"attachment_type": "html", "url": self.ATT_REL},
+            {"attachment_type": "file", "url": "/x.pdf"},   # ignored
+        ]}}
+        # corpus: the attachment page (html_publication, content_id a1) and the container
+        for url, cidv, content in [(self.att_url, "a1", None),
+                                   (self.container_url, "cc", json.dumps(payload))]:
+            self.conn.execute(
+                "INSERT INTO content (url, content_id, document_type, is_redirect, content_hash, content) "
+                "VALUES (?,?,?,?,?,?)", (url, cidv, "html_publication", 0, "h", content))
+        self.conn.commit()
+
+    def tearDown(self):
+        self.conn.close()
+
+    def _search_rows(self):
+        return {dict(r)["url"]: dict(r)["source"] for r in self.conn.execute(
+            "SELECT url, source FROM category_search_pages WHERE category_id = ?", (self.CID,)).fetchall()}
+
+    def _seed(self, att_source):
+        # container as a GOV.UK-only row; attachment as whatever provenance compare left it
+        self.conn.execute(
+            "INSERT INTO category_search_pages (category_id, url, content_id, source) VALUES (?,?,?,?)",
+            (self.CID, self.container_url, "cc", "search"))
+        if att_source:
+            self.conn.execute(
+                "INSERT INTO category_search_pages (category_id, url, content_id, source) VALUES (?,?,?,?)",
+                (self.CID, self.att_url, "a1", att_source))
+        self.conn.commit()
+
+    def test_attachment_in_shortlist_upgrades_to_both(self):
+        self.conn.execute("INSERT INTO category_shortlist_pages (category_id, content_id, url) VALUES (?,?,?)",
+                          (self.CID, "a1", self.att_url))
+        self.conn.commit()
+        self._seed(att_source="shortlister")
+        out = search_augment.resolve_attachment_containers(self.conn, self.CID)
+        rows = self._search_rows()
+        self.assertNotIn(self.container_url, rows)          # container dropped
+        self.assertEqual(rows.get(self.att_url), "both")    # attachment upgraded
+        self.assertEqual(out["containers_dropped"], 1)
+        self.assertEqual(out["attachments_both"], 1)
+
+    def test_attachment_in_corpus_not_shortlist_tagged_search(self):
+        # attachment not in the shortlist and has no search row yet
+        self._seed(att_source=None)
+        out = search_augment.resolve_attachment_containers(self.conn, self.CID)
+        rows = self._search_rows()
+        self.assertNotIn(self.container_url, rows)          # container dropped
+        self.assertEqual(rows.get(self.att_url), "search")  # attachment added as GOV.UK-only
+        self.assertEqual(out["attachments_search"], 1)
+
+    def test_attachment_not_in_corpus_left_alone(self):
+        # remove the attachment page from the corpus -> not resolvable
+        self.conn.execute("DELETE FROM content WHERE url = ?", (self.att_url,))
+        self.conn.commit()
+        self._seed(att_source=None)
+        out = search_augment.resolve_attachment_containers(self.conn, self.CID)
+        rows = self._search_rows()
+        self.assertEqual(rows.get(self.container_url), "search")   # container untouched
+        self.assertEqual(out["containers_dropped"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()
