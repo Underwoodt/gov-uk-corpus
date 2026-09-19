@@ -182,7 +182,25 @@
           </ul>
         </div></details>
       <textarea id="keywords" name="keywords" rows="4">{{ v.keywords or '' }}</textarea>
-      <label class="check" style="margin-top:12px;">
+
+      <fieldset style="border:0;padding:0;margin:12px 0 0;">
+        <legend class="q" style="font-size:15px;">Where must a keyword appear?</legend>
+        <p class="hint" style="margin-top:2px;">A page's title and summary describe what it's <em>about</em>;
+          its body often just <em>mentions</em> a word in passing. Restricting to the title and summary removes
+          most incidental matches (for a common term like <code>food</code>, roughly 60–85% fewer pages).</p>
+        <label class="check" style="margin-top:4px;">
+          <input type="radio" name="keyword_scope" value="anywhere"
+            {{ 'checked' if (v.keyword_scope or 'anywhere') != 'title_desc' }}>
+          Anywhere in the page — title, summary <em>and</em> body <span class="secondary">(widest; the default)</span>
+        </label>
+        <label class="check" style="margin-top:6px;">
+          <input type="radio" name="keyword_scope" value="title_desc"
+            {{ 'checked' if (v.keyword_scope or 'anywhere') == 'title_desc' }}>
+          Title and summary only <span class="secondary">(stricter — fewer incidental matches)</span>
+        </label>
+      </fieldset>
+
+      <label class="check" style="margin-top:16px;">
         <input type="checkbox" name="hybrid_on_save" value="1" {{ 'checked' if v.hybrid_on_save }}>
         Run GOV.UK hybrid search on save
       </label>

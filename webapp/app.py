@@ -162,7 +162,8 @@ def _count_key(filters: dict) -> tuple:
     return (tuple(sorted(filters.get("organisations") or [])),
             tuple(sorted(filters.get("document_types") or [])),
             tuple(sorted(filters.get("keywords") or [])),
-            filters.get("match", "all"))
+            filters.get("match", "all"),
+            filters.get("keyword_scope", "anywhere"))
 
 
 def cached_count(conn, **filters) -> int:
@@ -500,6 +501,7 @@ def form_values(form) -> dict:
     d["document_type_slugs"] = "\n".join(s.strip() for s in form.getlist("document_type_slugs") if s.strip())
     d["include_child_orgs"] = form.get("include_child_orgs")  # checkbox: "on" or absent
     d["hybrid_on_save"] = form.get("hybrid_on_save")          # checkbox: run GOV.UK hybrid search on save
+    d["keyword_scope"] = form.get("keyword_scope")            # anywhere | title_desc (coerced in categories)
     d["description"] = cat.prettify(d.get("slug"))  # keep the Streamlit list name sensible
     return d
 
@@ -985,6 +987,7 @@ def _filters(category) -> dict:
         document_types=cat.parse_list(category.get("document_type_slugs")),
         keywords=cat.parse_list(category.get("keywords")),
         match="any",
+        keyword_scope=(category.get("keyword_scope") or "anywhere"),
     )
 
 
@@ -1013,7 +1016,8 @@ def _def_version(category: dict) -> str:
     (editing the AI context or owner doesn't invalidate)."""
     parts = "|".join([
         category.get("dept_slugs") or "", category.get("document_type_slugs") or "",
-        category.get("keywords") or "", str(category.get("include_child_orgs") or "")])
+        category.get("keywords") or "", str(category.get("include_child_orgs") or ""),
+        category.get("keyword_scope") or "anywhere"])
     return hashlib.md5(parts.encode("utf-8")).hexdigest()[:12]
 
 
@@ -1152,6 +1156,7 @@ def api_funnel(request: Request, cid: int, stage: str = "all"):
         kw = {k: filters[k] for k in applies}
         if "keywords" in kw:
             kw["match"] = "any"
+            kw["keyword_scope"] = filters["keyword_scope"]   # match the shortlist's scope
         n = cached_count(conn, **kw)
     _funnel_cache_write(conn, cid, def_v, corpus_v, stage, n)
     conn.close()
@@ -1191,6 +1196,8 @@ def api_audit_stats(request: Request, cid: int, stage: str = "keyword"):
     applies = _FUNNEL_STAGES[stage][1]     # which filters this stage applies
     kw = {k: filters[k] for k in applies}
     kw.setdefault("match", "any")
+    if "keywords" in kw:
+        kw["keyword_scope"] = filters["keyword_scope"]   # match the shortlist's scope
     try:
         out = audit_stats.stats(conn, **kw)
     except Exception as e:
@@ -1426,18 +1433,18 @@ def api_keyword_breakdown(request: Request, cid: int):
     filters = _effective_filters(conn, category)
     # Count each keyword within the materialised shortlist (a few thousand rows), not the
     # whole corpus — instant, and can't time out on common terms (import/export/transit).
-    terms = reporting.keyword_breakdown(conn, cid, filters["keywords"])
+    terms = reporting.keyword_breakdown(conn, cid, filters["keywords"], scope=filters["keyword_scope"])
     mcount = reporting.membership_count(conn, cid)
     computed_at = reporting.membership_computed_at(conn, cid)
     if reporting.has_matched_keywords(conn, cid):
         # Counts come from the stored per-page hits (same source as the row lozenges).
-        sql = reporting.matched_keywords_sql(cid) if filters["keywords"] else "-- No keywords set for this category."
+        sql = reporting.matched_keywords_sql(cid) if filters["keywords"] else "-- No keywords set for this shortlist."
     else:
         blocks = []
         for kw in filters["keywords"]:
-            ksql, kp = reporting.keyword_count_query(cid, kw)
+            ksql, kp = reporting.keyword_count_query(cid, kw, scope=filters["keyword_scope"])
             blocks.append(f"-- Count for keyword: {kw}\n{_display_sql(ksql, kp)};")
-        sql = "\n\n".join(blocks) if blocks else "-- No keywords set for this category."
+        sql = "\n\n".join(blocks) if blocks else "-- No keywords set for this shortlist."
     conn.close()
     pending = bool(filters["keywords"]) and mcount == 0
     return JSONResponse({"terms": terms, "sql": sql, "pending": pending, "computed_at": computed_at})
@@ -1458,10 +1465,10 @@ def api_keyword_overlap(request: Request, cid: int, n: int = 5):
     filters = _effective_filters(conn, category)
     mcount = reporting.membership_count(conn, cid)
     # Top-N keywords by their in-shortlist count (keyword_breakdown is sorted desc).
-    top = [t["keyword"] for t in reporting.keyword_breakdown(conn, cid, filters["keywords"])
-           if t["count"]][:n]
+    top = [t["keyword"] for t in reporting.keyword_breakdown(conn, cid, filters["keywords"],
+           scope=filters["keyword_scope"]) if t["count"]][:n]
     try:
-        data = reporting.keyword_overlap(conn, cid, top)
+        data = reporting.keyword_overlap(conn, cid, top, scope=filters["keyword_scope"])
     except Exception as e:
         conn.close()
         return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=500)
@@ -2833,7 +2840,8 @@ def _build_audit(cid: int, filters: dict) -> dict:
     conn = connect()
     try:
         return audit.build_audit(conn, cid, filters["organisations"],
-                                 filters["document_types"], filters["keywords"])
+                                 filters["document_types"], filters["keywords"],
+                                 keyword_scope=filters.get("keyword_scope", "anywhere"))
     finally:
         conn.close()
 
@@ -2874,7 +2882,8 @@ def download_audit(request: Request, cid: int, outcome: str = ""):
     filters = _effective_filters(conn, category)
     if filters["organisations"]:
         audit.build_audit(conn, cid, filters["organisations"],
-                          filters["document_types"], filters["keywords"])
+                          filters["document_types"], filters["keywords"],
+                          keyword_scope=filters.get("keyword_scope", "anywhere"))
     rows = audit.audit_rows(conn, cid, outcome=outcome or None)
     conn.close()
     buf = io.StringIO()

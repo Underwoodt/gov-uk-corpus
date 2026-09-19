@@ -164,18 +164,18 @@ def matched_keywords_sql(cid: int) -> str:
             f"SELECT matched_keywords FROM category_shortlist_pages WHERE category_id = {cid};")
 
 
-def keyword_count_query(cid: int, keyword: str, match: str = "any"):
+def keyword_count_query(cid: int, keyword: str, match: str = "any", scope: str = "anywhere"):
     """(sql, params) — how many pages in the materialised shortlist contain one keyword.
     Scoped to the shortlist (a few thousand rows), so it's fast and can't time out even
     for very common terms — unlike the old whole-corpus per-term count."""
-    clause, kwp = shortlist._keyword_clause([keyword], match, shortlist._IS_PG)
+    clause, kwp = shortlist._keyword_clause([keyword], match, shortlist._IS_PG, scope)
     sql = (f"SELECT COUNT(*) AS n FROM category_shortlist_pages m "
            f"JOIN content c ON c.url = m.url "
            f"WHERE m.category_id = {_P} AND {clause}")
     return sql, [cid] + list(kwp)
 
 
-def keyword_overlap(conn, cid: int, keywords, match: str = "any") -> dict:
+def keyword_overlap(conn, cid: int, keywords, match: str = "any", scope: str = "anywhere") -> dict:
     """Overlap of the given keywords within the materialised shortlist, as region counts for
     an UpSet/Venn. Region mask == the set of keywords a page matched (bit i = keywords[i]);
     the empty region (matches none) is dropped. Derives from the per-page keyword hits stored
@@ -190,7 +190,7 @@ def keyword_overlap(conn, cid: int, keywords, match: str = "any") -> dict:
         # Fallback: recompute from content with the per-keyword clause (pre-upgrade rows).
         parts, params = [], []
         for i, kw in enumerate(keywords):
-            clause, kwp = shortlist._keyword_clause([kw], match, shortlist._IS_PG)
+            clause, kwp = shortlist._keyword_clause([kw], match, shortlist._IS_PG, scope)
             parts.append(f"CASE WHEN {clause} THEN {1 << i} ELSE 0 END")
             params.extend(kwp)
         params.append(cid)
@@ -213,7 +213,7 @@ def keyword_overlap(conn, cid: int, keywords, match: str = "any") -> dict:
     return {"keywords": keywords, "regions": regions, "sql": matched_keywords_sql(cid)}
 
 
-def keyword_breakdown(conn, cid: int, keywords, match: str = "any") -> List[dict]:
+def keyword_breakdown(conn, cid: int, keywords, match: str = "any", scope: str = "anywhere") -> List[dict]:
     """Pages matching EACH keyword within the shortlist. Reads the stored per-page hits
     (single source of truth); falls back to a live per-keyword count for pre-upgrade rows."""
     keywords = list(keywords)
@@ -224,7 +224,7 @@ def keyword_breakdown(conn, cid: int, keywords, match: str = "any") -> List[dict
             out.append({"keyword": kw, "count": sum(1 for s in sets if kw in s)})
     else:
         for kw in keywords:
-            sql, params = keyword_count_query(cid, kw, match)
+            sql, params = keyword_count_query(cid, kw, match, scope)
             try:
                 n = conn.execute(sql, tuple(params)).fetchone()["n"]
             except Exception:

@@ -245,6 +245,11 @@ ALTER TABLE content ADD COLUMN IF NOT EXISTS search_tsv tsvector
       coalesce(title, '') || ' ' || coalesce(description, '') || ' ' || coalesce(search_text, ''))
   ) STORED;
 CREATE INDEX IF NOT EXISTS idx_content_search_tsv ON content USING GIN (search_tsv);
+-- Title/description-only keyword scope (a page's own summary of what it covers). Expression
+-- index so the stricter scope stays fast without a table-rewriting generated column. On a
+-- large existing DB, build this CONCURRENTLY first (see RUNBOOK) so startup finds it and skips.
+CREATE INDEX IF NOT EXISTS idx_content_titledesc_tsv ON content USING GIN (
+  to_tsvector('english', coalesce(title, '') || ' ' || coalesce(description, '')));
 
 -- Readability / plain-English analysis of the body text (populated by a later job).
 ALTER TABLE content ADD COLUMN IF NOT EXISTS reading_age real;          -- estimated reading age (years)
@@ -272,6 +277,7 @@ ALTER TABLE categories ADD COLUMN IF NOT EXISTS should_include_urls text;
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS should_exclude_urls text;
 -- Run the GOV.UK hybrid search (compare + fetch) as a background stage on save.
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS hybrid_on_save smallint DEFAULT 0;
+ALTER TABLE categories ADD COLUMN IF NOT EXISTS keyword_scope text DEFAULT 'anywhere';  -- keyword match scope: anywhere | title_desc
 
 -- Precomputed "input shortlist" size per category (organisations + document
 -- types, no keywords). Refreshed as the tidy-up phase of the nightly corpus

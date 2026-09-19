@@ -51,6 +51,7 @@ def _effective_filters(conn, category: dict) -> dict:
         document_types=cat.parse_list(category.get("document_type_slugs")),
         keywords=cat.parse_list(category.get("keywords")),
         match="any",
+        keyword_scope=(category.get("keyword_scope") or "anywhere"),
     )
 
 

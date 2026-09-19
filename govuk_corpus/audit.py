@@ -29,7 +29,7 @@ OUTCOME_INCLUDED = "included"
 
 
 def _build_select(organisations: Sequence[str], document_types: Sequence[str],
-                  keywords: Sequence[str]) -> Tuple[str, list]:
+                  keywords: Sequence[str], keyword_scope: str = "anywhere") -> Tuple[str, list]:
     """Rows in the org set, each tagged pass_dt / pass_kw. Params ordered
     document-type, keyword, organisation to match the SQL text."""
     params: list = []
@@ -41,7 +41,7 @@ def _build_select(organisations: Sequence[str], document_types: Sequence[str],
         dt_ok = "1=1"
 
     if keywords:
-        clause, kw_params = _keyword_clause(keywords, "any", _IS_PG)
+        clause, kw_params = _keyword_clause(keywords, "any", _IS_PG, keyword_scope)
         kw_ok = clause
         params.extend(kw_params)
     else:
@@ -73,14 +73,14 @@ def _outcome(pass_dt: int, pass_kw: int) -> str:
 
 def build_audit(conn, category_id: int, organisations: Sequence[str],
                 document_types: Sequence[str] = (), keywords: Sequence[str] = (),
-                batch: int = 1000) -> Dict[str, int]:
+                keyword_scope: str = "anywhere", batch: int = 1000) -> Dict[str, int]:
     """(Re)build the audit for one category. Requires organisations (the starting
     point). Returns counts by outcome."""
     if not organisations:
         raise ValueError("organisations are required — the audit starts at the organisation filter.")
 
     conn.execute(f"DELETE FROM category_audit WHERE category_id = {_P}", (category_id,))
-    sql, params = _build_select(organisations, document_types, keywords)
+    sql, params = _build_select(organisations, document_types, keywords, keyword_scope)
     ts = db.now_iso()
     counters: Dict[str, int] = {OUTCOME_INCLUDED: 0, OUTCOME_DOCTYPE: 0, OUTCOME_KEYWORD: 0, "total": 0}
 

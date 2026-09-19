@@ -26,7 +26,7 @@ FRESHNESS_BUCKETS = ["< 1 month", "1–3 months", "3 months–1 year",
                      "1–2 years", "> 2 years", "Unknown"]
 
 
-def _where(organisations, document_types, keywords, match):
+def _where(organisations, document_types, keywords, match, keyword_scope="anywhere"):
     """(where_sql, params) mirroring shortlist.build_query's predicates."""
     where, params = [], []
     if organisations:
@@ -38,7 +38,7 @@ def _where(organisations, document_types, keywords, match):
         where.append(shortlist.doctype_clause(document_types))   # html_publication -> parent's type
         params.extend(document_types)
     if keywords:
-        clause, kwp = shortlist._keyword_clause(keywords, match, _IS_PG)
+        clause, kwp = shortlist._keyword_clause(keywords, match, _IS_PG, keyword_scope)
         where.append(clause)
         params.extend(kwp)
     where.append("c.is_redirect = 0")
@@ -47,9 +47,9 @@ def _where(organisations, document_types, keywords, match):
 
 
 def stats(conn, *, organisations: Sequence[str] = (), document_types: Sequence[str] = (),
-          keywords: Sequence[str] = (), match: str = "any",
+          keywords: Sequence[str] = (), match: str = "any", keyword_scope: str = "anywhere",
           now: Optional[datetime] = None, sample_limit: int = 25000) -> Dict:
-    where_sql, wparams = _where(organisations, document_types, keywords, match)
+    where_sql, wparams = _where(organisations, document_types, keywords, match, keyword_scope)
     now = now or datetime.now(timezone.utc)
     iso = lambda days: (now - timedelta(days=days)).strftime("%Y-%m-%d")
     t1, t3, t12, t24 = iso(30), iso(91), iso(365), iso(730)

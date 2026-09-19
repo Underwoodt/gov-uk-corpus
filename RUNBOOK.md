@@ -200,6 +200,21 @@ sudo systemctl restart corpus-shortlist
 journalctl -u corpus-shortlist -n 30 --no-pager
 ```
 
+### Large new indexes — build CONCURRENTLY before the restart
+
+Schema init runs `CREATE INDEX IF NOT EXISTS …` at startup, which on the ~877k-row `content`
+table **locks writes while it builds**. For a big new index, build it CONCURRENTLY *first*
+(no lock), so the startup `IF NOT EXISTS` finds it and skips:
+
+```bash
+# Keyword "title/description only" match scope (added 2026-09-19):
+psql "$DATABASE_URL" -c "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_content_titledesc_tsv \
+  ON content USING GIN (to_tsvector('english', coalesce(title,'') || ' ' || coalesce(description,'')));"
+```
+
+Then `git pull` + restart as above. (The index is only needed for the stricter
+title/description keyword scope; org-scoped shortlists work without it, just slower.)
+
 ---
 
 ## Go-live before HTTPS is ready (deploy now, harden later)
