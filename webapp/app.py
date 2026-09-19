@@ -844,9 +844,11 @@ async def create_category(request: Request):
     if errors:
         return templates.TemplateResponse("form.html", _form_ctx(conn, request, None, data, errors))
     cid = cat.create_category(conn, data)
-    category_counts.refresh_one(conn, cid)  # keep the list's stored count fresh
+    category_counts.refresh_one(conn, cid)         # recompute the shortlist membership + count
+    evaluate.reconcile_to_shortlist(conn, cid)     # keep LLM results aligned (no-op for a new one)
     conn.close()
-    return RedirectResponse(url=str(request.url_for("edit_category_page", cid=cid)), status_code=303)
+    # Land on the Keyword Matching view (guc-0003a) so the saved shortlist is right there.
+    return RedirectResponse(url=str(request.url_for("preview_category_page", cid=cid)), status_code=303)
 
 
 @app.post("/categories/{cid}/copy")
@@ -894,9 +896,11 @@ async def update_category(request: Request, cid: int):
         merged = {**category, **data}
         return templates.TemplateResponse("form.html", _form_ctx(conn, request, category, merged, errors))
     cat.update_category(conn, cid, data)
-    category_counts.refresh_one(conn, cid)  # keep the list's stored count fresh
+    category_counts.refresh_one(conn, cid)         # recompute the shortlist membership + count
+    evaluate.reconcile_to_shortlist(conn, cid)     # retain valid LLM results, drop filtered-out
     conn.close()
-    return RedirectResponse(url=str(request.url_for("edit_category_page", cid=cid)), status_code=303)
+    # Land on the Keyword Matching view (guc-0003a) so the updated shortlist is right there.
+    return RedirectResponse(url=str(request.url_for("preview_category_page", cid=cid)), status_code=303)
 
 
 def _form_ctx(conn, request, category, values, errors) -> dict:

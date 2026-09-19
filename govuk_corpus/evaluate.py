@@ -298,6 +298,37 @@ def list_runs(conn, category_id: int) -> List[dict]:
     return [dict(r) for r in rows]
 
 
+def reconcile_to_shortlist(conn, category_id: int) -> dict:
+    """Keep a category's LLM evaluation results aligned with its (freshly recomputed)
+    shortlist membership after a definition change:
+
+      * retain results for pages still in the shortlist (matched by content_id, so a page
+        reached via a different url alias still counts),
+      * drop results for pages the new filters removed,
+      * new pages just aren't evaluated yet (the next run picks them up).
+
+    Then recompute each run's pages/kept/dropped so the displayed counts stay honest
+    (spend/token counters are left untouched — that cost was really incurred).
+    Assumes category_shortlist_pages has already been refreshed. Best-effort."""
+    conn.execute(
+        f"DELETE FROM evaluation_results "
+        f"WHERE run_id IN (SELECT run_id FROM evaluation_runs WHERE category_id = {_P}) "
+        f"AND NOT EXISTS ("
+        f"  SELECT 1 FROM content c "
+        f"  JOIN category_shortlist_pages m ON m.content_id = COALESCE(c.content_id, c.url) "
+        f"  WHERE c.url = evaluation_results.url AND m.category_id = {_P})",
+        (category_id, category_id))
+    conn.execute(
+        f"UPDATE evaluation_runs SET "
+        f"pages = (SELECT COUNT(*) FROM evaluation_results r WHERE r.run_id = evaluation_runs.run_id), "
+        f"kept = (SELECT COUNT(*) FROM evaluation_results r WHERE r.run_id = evaluation_runs.run_id AND r.keep = 1), "
+        f"dropped = (SELECT COUNT(*) FROM evaluation_results r WHERE r.run_id = evaluation_runs.run_id AND r.keep = 0) "
+        f"WHERE category_id = {_P}",
+        (category_id,))
+    conn.commit()
+    return {"ok": True}
+
+
 def run_chain(conn, run_id: str) -> List[dict]:
     """The inclusion → exclusion (→ …) chain of runs this run belongs to, ordered
     oldest-first (so the inclusion phase comes first). Runs are linked by
