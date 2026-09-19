@@ -203,17 +203,21 @@ journalctl -u corpus-shortlist -n 30 --no-pager
 ### Large new indexes — build CONCURRENTLY before the restart
 
 Schema init runs `CREATE INDEX IF NOT EXISTS …` at startup, which on the ~877k-row `content`
-table **locks writes while it builds**. For a big new index, build it CONCURRENTLY *first*
-(no lock), so the startup `IF NOT EXISTS` finds it and skips:
+table **locks writes while it builds**. So don't add a new index over a large table to the
+startup schema — build it CONCURRENTLY *first* (no lock), so the startup `IF NOT EXISTS` finds
+it and skips:
 
 ```bash
-# Keyword "title/description only" match scope (added 2026-09-19):
-psql "$DATABASE_URL" -c "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_content_titledesc_tsv \
-  ON content USING GIN (to_tsvector('english', coalesce(title,'') || ' ' || coalesce(description,'')));"
+psql "$DATABASE_URL" -c "CREATE INDEX CONCURRENTLY IF NOT EXISTS <name> ON content USING …;"
 ```
 
-Then `git pull` + restart as above. (The index is only needed for the stricter
-title/description keyword scope; org-scoped shortlists work without it, just slower.)
+Then `git pull` + restart as above.
+
+_Note: the stricter "title/description only" keyword scope deliberately has **no** dedicated
+index — keyword matching runs after the organisation filter narrows the set, so it's fast for
+the normal org-scoped case. If a keyword-only (no organisation) shortlist on that scope ever
+proves slow, add a GIN expression index on `to_tsvector('english', title || description)`
+concurrently using the recipe above._
 
 ---
 
