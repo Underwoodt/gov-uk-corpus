@@ -8,8 +8,8 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from govuk_corpus.text import (body_text, html_to_text, organisation_names,
-                               search_text, strip_phrases)
+from govuk_corpus.text import (ORG_MARKER, body_text, html_to_text, organisation_names,
+                               organisation_refs, search_text, strip_phrases)
 
 
 class TestHtmlToText(unittest.TestCase):
@@ -44,28 +44,36 @@ class TestBodyText(unittest.TestCase):
 
 class TestOrgNameStripping(unittest.TestCase):
     DEFRA = "Department for Environment, Food & Rural Affairs"
+    SLUG = "department-for-environment-food-rural-affairs"
 
     def _payload(self, body):
         return {"details": {"body": body},
-                "links": {"primary_publishing_organisation": [{"title": self.DEFRA}]}}
+                "links": {"primary_publishing_organisation": [
+                    {"title": self.DEFRA, "base_path": "/government/organisations/" + self.SLUG}]}}
 
     def test_organisation_names(self):
         p = {"links": {"primary_publishing_organisation": [{"title": self.DEFRA}],
                        "organisations": [{"title": "Environment Agency"}, {"title": ""}]}}
         self.assertEqual(organisation_names(p), [self.DEFRA, "Environment Agency"])
 
-    def test_strip_phrases_case_insensitive(self):
-        self.assertEqual(strip_phrases("A food policy from the DEPARTMENT FOR ENVIRONMENT, "
-                                       "FOOD & RURAL AFFAIRS today", [self.DEFRA]),
-                         "A food policy from the today")
+    def test_organisation_refs_include_title_and_slug(self):
+        self.assertEqual(organisation_refs(self._payload("")), [self.DEFRA, self.SLUG])
 
-    def test_search_text_removes_own_org_name(self):
-        # 'food' survives as genuine content; the org-name occurrence of 'food' is removed.
-        p = self._payload("<p>New food hygiene rules. Published by the "
-                          "Department for Environment, Food &amp; Rural Affairs.</p>")
+    def test_strip_phrases_marker(self):
+        out = strip_phrases("A food policy from the DEPARTMENT FOR ENVIRONMENT, FOOD & RURAL "
+                            "AFFAIRS today", [self.DEFRA], replacement=" " + ORG_MARKER + " ")
+        self.assertEqual(out, f"A food policy from the {ORG_MARKER} today")
+
+    def test_search_text_replaces_name_and_slug_with_marker(self):
+        # 'food' survives as genuine content; the org name AND slug become the marker.
+        p = self._payload("<p>New food hygiene rules from the Department for Environment, Food "
+                          "&amp; Rural Affairs. See /government/organisations/"
+                          "department-for-environment-food-rural-affairs.</p>")
         out = search_text(p)
         self.assertIn("food hygiene", out.lower())
+        self.assertIn(ORG_MARKER, out)
         self.assertNotIn("rural affairs", out.lower())
+        self.assertNotIn(self.SLUG, out)          # the bare slug is scrubbed too
 
     def test_search_text_keeps_body_when_no_org(self):
         self.assertEqual(search_text({"details": {"body": "<p>plain body</p>"}}), "plain body")
