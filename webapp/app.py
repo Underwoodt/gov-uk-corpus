@@ -1271,6 +1271,38 @@ def api_keyword_breakdown(request: Request, cid: int):
     return JSONResponse({"terms": terms, "sql": sql, "pending": pending, "computed_at": computed_at})
 
 
+@app.get("/api/categories/{cid}/keyword-overlap")
+def api_keyword_overlap(request: Request, cid: int, n: int = 5):
+    """Overlap of the top-N keywords within the materialised shortlist — region counts for
+    a Venn diagram. `n` (2-5) selects how many of the top keywords to include."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    n = max(2, min(int(n or 5), 5))
+    conn = connect()
+    category = cat.get_category(conn, cid)
+    if not category:
+        conn.close()
+        return JSONResponse({"error": "not found"}, status_code=404)
+    filters = _effective_filters(conn, category)
+    mcount = reporting.membership_count(conn, cid)
+    # Top-N keywords by their in-shortlist count (keyword_breakdown is sorted desc).
+    top = [t["keyword"] for t in reporting.keyword_breakdown(conn, cid, filters["keywords"])
+           if t["count"]][:n]
+    try:
+        data = reporting.keyword_overlap(conn, cid, top)
+    except Exception as e:
+        conn.close()
+        return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=500)
+    computed_at = reporting.membership_computed_at(conn, cid)
+    conn.close()
+    raw = data.pop("sql", None)
+    data["sql"] = _display_sql(raw[0], raw[1]) if isinstance(raw, tuple) else (raw or "")
+    data["available_keywords"] = len([t for t in filters["keywords"]])
+    data["pending"] = bool(filters["keywords"]) and mcount == 0
+    data["computed_at"] = computed_at
+    return JSONResponse(data)
+
+
 @app.get("/api/categories/{cid}/results")
 def api_results(request: Request, cid: int, limit: int = 10, offset: int = 0):
     if not authed(request):

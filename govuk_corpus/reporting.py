@@ -135,6 +135,30 @@ def keyword_count_query(cid: int, keyword: str, match: str = "any"):
     return sql, [cid] + list(kwp)
 
 
+def keyword_overlap(conn, cid: int, keywords, match: str = "any") -> dict:
+    """Overlap of the given keywords within the materialised shortlist, as region counts
+    for a Venn. For each shortlist page we compute a bitmask of which keywords it contains
+    (bit i = keywords[i]), then count pages per exact combination. Region mask == the set
+    of keywords a page matches; the empty region (mask 0, matches none) is dropped. One
+    grouped query over the (small) membership, so it's instant."""
+    keywords = list(keywords)
+    if not keywords:
+        return {"keywords": [], "regions": [], "sql": "-- No keywords."}
+    parts, params = [], []
+    for i, kw in enumerate(keywords):
+        clause, kwp = shortlist._keyword_clause([kw], match, shortlist._IS_PG)
+        parts.append(f"CASE WHEN {clause} THEN {1 << i} ELSE 0 END")
+        params.extend(kwp)
+    mask_expr = " + ".join(parts)
+    params.append(cid)
+    sql = (f"SELECT ({mask_expr}) AS mask, COUNT(*) AS n "
+           f"FROM category_shortlist_pages m JOIN content c ON c.url = m.url "
+           f"WHERE m.category_id = {_P} GROUP BY 1")   # membership is one row per content_id
+    regions = [{"mask": int(r["mask"]), "count": r["n"]}
+               for r in conn.execute(sql, tuple(params)).fetchall() if int(r["mask"]) != 0]
+    return {"keywords": keywords, "regions": regions, "sql": (sql, params)}
+
+
 def keyword_breakdown(conn, cid: int, keywords, match: str = "any") -> List[dict]:
     out = []
     for kw in keywords:
