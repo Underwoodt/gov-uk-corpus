@@ -27,6 +27,10 @@ _P = "%s" if db.__name__.endswith("db_pg") else "?"
 def _qkey(cid: int) -> str:
     return f"govuk_queries_{cid}"
 
+
+def _tkey(cid: int) -> str:
+    return f"govuk_thresholds_{cid}"
+
 # Effective document type without the JSON dig (parent_document_type is backfilled).
 _EFF = ("CASE WHEN c.document_type = 'html_publication' "
         "THEN COALESCE(NULLIF(c.parent_document_type, ''), c.document_type) "
@@ -74,13 +78,15 @@ def compare(conn, cid: int, keywords: Sequence[str], organisations: Sequence[str
     document_type, phrases}]}. `progress(done, total, pages)` is an optional per-phrase
     callback. Returns a summary dict."""
     keywords = [k for k in (keywords or []) if k]
-    results, query_urls = [], []
+    results, query_urls, thresholds = [], [], {}
     if keywords:
         data = search_fn(keywords, list(organisations or []), list(document_types or []), progress) or {}
         results = data.get("results", []) or []
         query_urls = data.get("query_urls", []) or []
-    # Persist the exact GOV.UK API queries used, for the expert "queries sent" box.
+        thresholds = data.get("thresholds", {}) or {}
+    # Persist the exact GOV.UK API queries used (expert box) and the threshold check.
     settings.set_setting(conn, _qkey(cid), json.dumps(query_urls))
+    settings.set_setting(conn, _tkey(cid), json.dumps(thresholds))
 
     # Canonicalise search links; keep first occurrence of each canonical url.
     search_urls: List[str] = []
@@ -145,11 +151,16 @@ def summary(conn, cid: int) -> dict:
         (cid,)).fetchone()
     total = sum(counts.values())
     q = settings.get_setting(conn, _qkey(cid))
+    t = settings.get_setting(conn, _tkey(cid))
     try:
         query_urls = json.loads(q) if q else []
     except Exception:
         query_urls = []
-    return {"counts": counts, "total": total, "query_urls": query_urls,
+    try:
+        thresholds = json.loads(t) if t else {}
+    except Exception:
+        thresholds = {}
+    return {"counts": counts, "total": total, "query_urls": query_urls, "thresholds": thresholds,
             "computed_at": (dict(computed_at)["t"] if computed_at else None)}
 
 

@@ -10,6 +10,9 @@
     .prov-search { background:#fbe5d6; color:#8a3b12; }        /* gap: GOV.UK Search only */
     .prov-both { background:#d9f2e4; color:var(--green-dark,#00703c); }
     .prov-shortlister { background:#e8f1fb; color:var(--dark-blue,#003078); }
+    /* GOV.UK threshold-hit warning (coverage may be truncated). */
+    .gc-warn { background:#fef7e0; border:1px solid #f2d888; border-left:4px solid #e0a800;
+      border-radius:6px; padding:10px 12px; margin:8px 0 0; font-size:14px; }
     /* Side-by-side breakdown panels with compact bars. auto-fit lets a single
        visible panel (e.g. no keywords) expand to full width. */
     .breakdowns { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));
@@ -300,6 +303,7 @@
           page <strong>Shortlister only</strong>, <strong>Both</strong>, or <strong>GOV.UK Search only</strong> — the
           last are pages our filters missed. <em>Fetch GOV.UK-only pages</em> pulls those into the corpus so the AI
           Pipeline evaluates them too. Stored until you re-run it.</p>
+        <div id="gc-threshold-warn" class="gc-warn" hidden></div>
         <div class="controls" id="gc-controls" style="align-items:center;gap:8px;" hidden>
           <span id="gc-summary" class="secondary"></span>
           <label class="secondary" style="margin-left:auto;font-size:14px;">Show
@@ -483,6 +487,24 @@
         const j = await (await fetch(`/api/categories/${CID}/augmented-pages?source=${encodeURIComponent(source)}&limit=${GC_PAGE}&offset=${gcOffset}`)).json();
         const sum = j.summary || {counts:{}, total:0};
         const c = sum.counts || {};
+        // Threshold check: warn if a configured cap truncated the GOV.UK result set.
+        const warn = document.getElementById("gc-threshold-warn"), th = sum.thresholds || {};
+        if (th.any_hit) {
+          const parts = [];
+          if (th.phrases_truncated)
+            parts.push(`${fmtInt(th.phrases_truncated)} keyword phrase(s) beyond the ${fmtInt(th.max_phrases)}-phrase limit were not searched`);
+          if ((th.capped_phrases || []).length) {
+            const names = th.capped_phrases.map(c => `${esc(c.phrase)} (${fmtInt(c.total)})`).join(", ");
+            parts.push(`${fmtInt(th.capped_phrases.length)} phrase(s) had more matches than the ${fmtInt(th.per_phrase_cap)}-page cap: ${names}`);
+          }
+          const raisable = th.per_phrase_cap < th.govuk_ceiling;
+          warn.innerHTML = `⚠ <strong>Coverage may be incomplete</strong> — ${parts.join("; ")}. `
+            + `So a "GOV.UK Search only" gap here may be a threshold limit, not a true search-technique difference. `
+            + (raisable
+                ? `Raise <code>GOVUK_PER_PHRASE</code> / <code>GOVUK_MAX_PHRASES</code> and re-run to confirm.`
+                : `Phrases capped at ${fmtInt(th.govuk_ceiling)} hit GOV.UK's own pagination ceiling (it can't return more).`);
+          warn.hidden = false;
+        } else { warn.hidden = true; }
         // Expert-only: the exact GOV.UK Search API queries we sent.
         const qbox = document.getElementById("gc-queries-box"), qpre = document.getElementById("gc-queries");
         const queries = sum.query_urls || [];

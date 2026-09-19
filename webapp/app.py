@@ -2100,9 +2100,25 @@ def _govuk_search_multi(phrases, organisations=(), document_types=(), progress=N
             progress(idx + 1, len(phrase_list), len(pages))
     doctype_list = sorted(({"type": t, "count": c} for t, c in doctypes.items()),
                           key=lambda x: (-x["count"], x["type"]))
+    # Threshold check: did any configured cap truncate the GOV.UK result set? If so, the
+    # "GOV.UK Search only" gap may be a limit artefact rather than a true search difference.
+    per_cap = min(_GOVUK_PER_PHRASE, 10000)
+    capped_phrases = [{"phrase": p["phrase"], "total": p["total"]}
+                      for p in per_phrase if (p.get("total") or 0) > per_cap]
+    phrases_truncated = max(0, len(phrases) - len(phrase_list))
+    thresholds = {
+        "max_phrases": _GOVUK_MAX_PHRASES,
+        "per_phrase_cap": per_cap,
+        "govuk_ceiling": 10000,
+        "phrases_submitted": len(phrases),
+        "phrases_searched": len(per_phrase),
+        "phrases_truncated": phrases_truncated,      # beyond GOVUK_MAX_PHRASES, never searched
+        "capped_phrases": capped_phrases,            # had more hits than we fetched per phrase
+        "any_hit": bool(phrases_truncated or capped_phrases),
+    }
     return {"results": list(pages.values()), "doctypes": doctype_list,
             "per_phrase": per_phrase, "query_urls": query_urls,
-            "per_phrase_cap": _GOVUK_PER_PHRASE}
+            "per_phrase_cap": _GOVUK_PER_PHRASE, "thresholds": thresholds}
 
 
 @app.get("/govuk-search", response_class=HTMLResponse)
