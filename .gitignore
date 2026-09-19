@@ -90,3 +90,19 @@ build/
 data/
 *.db-wal
 *.db-shm
+
+# Local scratch: ad-hoc data dumps, sitemaps and one-off tooling kept out of the repo
+Content SQL/
+catalogue-mgmt/
+categories2/
+categorymanager.zip
+scripts/
+sitemaps/
+sitemap_report.txt
+sitemap_import_report.txt
+# jobs/ is tracked; ignore only these local one-off scripts/notes in it
+jobs/SYNC-MISSING-README.md
+jobs/extract-json-fields.py
+jobs/fetch-redirect-destinations.py
+jobs/resolve-redirects.py
+jobs/sync-missing-content.py
