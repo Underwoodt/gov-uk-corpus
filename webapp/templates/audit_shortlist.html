@@ -77,8 +77,8 @@
           <div>
             <div class="secondary" style="font-weight:700;font-size:13px;margin-bottom:4px;">{{ section }}</div>
             {% for key, label, default_on, disabled, warning in section_fields %}{% if key != 'content' %}
-            <label class="check" style="display:block;font-size:14px;">
-              <input type="checkbox" class="audit-col" value="{{ key }}" {{ '' if key == 'url' else 'checked' }}> {{ label }}
+            <label class="check" style="display:block;font-size:14px;"{% if warning %} title="{{ warning }}"{% endif %}>
+              <input type="checkbox" class="audit-col" value="{{ key }}" {{ 'checked' if (default_on and key != 'url') else '' }}> {{ label }}{% if warning %} <span class="secondary" style="font-size:12px;">⚠</span>{% endif %}
             </label>
             {% endif %}{% endfor %}
           </div>

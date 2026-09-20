@@ -169,6 +169,22 @@ class TestShortlistResults(unittest.TestCase):
         self.assertEqual(got["g"]["last_update_band"], "< 1 month")
         self.assertEqual(got["h"]["last_update_band"], "1-2 years")
 
+    def test_export_new_content_columns(self):
+        from govuk_corpus.shortlist import export_rows, EXPORT_FIELDS
+        for k in ("gds_stars", "source", "last_seen_at", "search_text"):
+            self.assertIn(k, EXPORT_FIELDS)
+        self.conn.execute(
+            "INSERT INTO content (url, document_type, is_redirect, content_hash, search_text, "
+            "title, gds_stars, source, last_seen_at) "
+            "VALUES ('https://www.gov.uk/x','guidance',0,'h','slurry body text','X',4,'govuk-search','2026-09-20T00:00:00Z')")
+        self.conn.commit()
+        _keys, rows = export_rows(self.conn, ["url", "gds_stars", "source", "last_seen_at", "search_text"],
+                                  document_types=["guidance"], keywords=["slurry"])
+        r = next(x for x in rows if x["url"].endswith("/x"))
+        self.assertEqual(r["gds_stars"], 4)
+        self.assertEqual(r["source"], "govuk-search")
+        self.assertEqual(r["search_text"], "slurry body text")
+
     def test_org_breakdown_counts_per_org_with_overlap(self):
         from govuk_corpus.shortlist import org_breakdown
         # /a (slurry, guidance) is environment-agency in setUp; also tag it defra (overlap),

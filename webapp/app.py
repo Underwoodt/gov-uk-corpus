@@ -2590,30 +2590,102 @@ def download_run(request: Request, cid: int, run_id: str):
 # ---- download page (choose format + fields) -----------------------------
 # Grouped into sections for the download page. Each field: (key, label, default_on,
 # disabled, warning). 'url' is mandatory (disabled + on).
+# Category/run-scoped columns that aren't plain content fields — added to each row in Python
+# (see _enrich_audit_rows), not fetched by the shortlist SQL. key -> label.
+_VIRTUAL_FIELDS = {
+    "matched_keywords": "Matched keywords",
+    "inclusion_reason": "Inclusion reason",
+    "exclusion_reason": "Exclusion reason",
+}
+
 _DOWNLOAD_SECTIONS = [
     ("Content", [
         ("url", "URL", True, True, None),
         ("title", "Title", True, False, None),
-        ("document_type", "Document type", True, False, None),
         ("parent_document_type", "Parent document type", False, False,
          "for html_publication pages: the parent publication's type"),
+        ("search_text", "Body text (search_text)", False, False,
+         "warning: the full page text — can make the download very large"),
         ("content", "Content (raw JSON)", False, False, "warning: may make the download very large"),
     ]),
-    ("Ownership", [
+    ("Matching & AI decision", [
         ("organisations", "Organisations", False, False, "all linked organisation slugs"),
+        ("document_type", "Document type", True, False, None),
+        ("matched_keywords", "Matched keywords", False, False,
+         "the shortlist keywords this page matched"),
+        ("inclusion_reason", "Inclusion reason", False, False,
+         "from the latest AI run; blank for pages not evaluated"),
+        ("exclusion_reason", "Exclusion reason", False, False,
+         "from the latest AI run's exclusion pass"),
+    ]),
+    ("Ownership", [
         ("primary_org", "Primary publishing organisation", False, False, None),
     ]),
     ("Freshness", [
         ("first_published_at", "First published at", False, False, None),
         ("public_updated_at", "Public updated at", False, False, None),
+        ("last_seen_at", "Last seen (crawl)", False, False, None),
     ]),
     ("Quality attributes", [
         ("size", "Size", True, False, None),
         ("readability", "Readability score", False, False, None),
         ("gds_issues", "GDS number of issues", False, False, None),
         ("gds_findings", "GDS issues text", False, False, None),
+        ("gds_stars", "GDS stars", False, False, None),
+    ]),
+    ("Provenance", [
+        ("source", "Source / provenance", False, False, None),
     ]),
 ]
+
+
+def _all_audit_fields() -> set:
+    return set(shortlist.EXPORT_FIELDS) | set(_VIRTUAL_FIELDS)
+
+
+def _field_label(k: str) -> str:
+    return _VIRTUAL_FIELDS[k] if k in _VIRTUAL_FIELDS else shortlist.EXPORT_FIELDS[k][1]
+
+
+def _enrich_audit_rows(conn, cid: int, rows: list, keys: list) -> None:
+    """Add the category/run-scoped virtual columns (matched keywords, inclusion/exclusion
+    reason) to each row in place, for whichever are in `keys`. Reasons come from the shortlist's
+    latest inclusion run and its exclusion run; pages not evaluated get ''."""
+    need = [k for k in keys if k in _VIRTUAL_FIELDS]
+    urls = [r.get("url") for r in rows if r.get("url")]
+    if not need or not urls:
+        for r in rows:                       # still populate empty cells so columns render
+            for k in need:
+                r.setdefault(k, "")
+        return
+    P = shortlist._P
+
+    def _map(sql_head, id_val):
+        out = {}
+        for i in range(0, len(urls), 500):
+            ch = urls[i:i + 500]
+            ph = ",".join([P] * len(ch))
+            for row in conn.execute(sql_head + f" AND url IN ({ph})", tuple([id_val] + ch)).fetchall():
+                d = dict(row)
+                out[d["url"]] = d.get("val")
+        return out
+
+    if "matched_keywords" in need:
+        mk = _map(f"SELECT url, matched_keywords AS val FROM category_shortlist_pages "
+                  f"WHERE category_id = {P}", cid)
+        for r in rows:
+            r["matched_keywords"] = ", ".join(search_augment._load_list(mk.get(r.get("url"))))
+    if "inclusion_reason" in need or "exclusion_reason" in need:
+        inc = evaluate.latest_inclusion_run(conn, cid)
+        exc = evaluate.latest_exclusion_run(conn, inc) if inc else None
+        if "inclusion_reason" in need:
+            im = _map(f"SELECT url, reason AS val FROM evaluation_results WHERE run_id = {P}", inc) if inc else {}
+            for r in rows:
+                r["inclusion_reason"] = im.get(r.get("url")) or ""
+        if "exclusion_reason" in need:
+            em = _map(f"SELECT url, reason AS val FROM evaluation_results WHERE run_id = {P}", exc) if exc else {}
+            for r in rows:
+                r["exclusion_reason"] = em.get(r.get("url")) or ""
 
 
 # ---- results table (browse the shortlist with configurable columns) -----
@@ -2784,11 +2856,13 @@ def api_audit_shortlist(request: Request, cid: int, stage: str = "keyword",
         conn.close()
         return JSONResponse({"stage": stage, "no_data": True, "rows": [], "keys": [], "total": 0,
                              "message": "No AI evaluation run yet — run it on the Semantic Match tab first."})
-    keys_wanted = [f for f in fields if f in shortlist.EXPORT_FIELDS] or list(_AUDIT_DEFAULT_FIELDS)
+    keys_wanted = [f for f in fields if f in _all_audit_fields()] or list(_AUDIT_DEFAULT_FIELDS)
+    real_keys = [k for k in keys_wanted if k in shortlist.EXPORT_FIELDS]
     filters = _merge_extra(sq, (q or "").strip())
     try:
-        keys, esql, eparams = shortlist.export_query(keys_wanted, limit=limit, offset=offset, **filters)
+        _keys, esql, eparams = shortlist.export_query(real_keys, limit=limit, offset=offset, **filters)
         rows = [dict(r) for r in conn.execute(esql, tuple(eparams)).fetchall()]
+        _enrich_audit_rows(conn, cid, rows, keys_wanted)   # matched keywords + AI reasons
     except Exception as e:
         conn.close()
         return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=500)
@@ -2797,7 +2871,8 @@ def api_audit_shortlist(request: Request, cid: int, stage: str = "keyword",
     except Exception:
         total = None
     conn.close()
-    return JSONResponse({"stage": stage, "keys": keys, "rows": rows, "total": total,
+    # Return the full selection (real + virtual) as the column order for the display.
+    return JSONResponse({"stage": stage, "keys": keys_wanted, "rows": rows, "total": total,
                          "limit": limit, "offset": offset, "q": (q or "").strip(),
                          "sql": _display_sql(esql, eparams)})
 
@@ -2824,7 +2899,7 @@ def download_page(request: Request, cid: int, stage: str = "keyword",
             total = None
     # Columns come from the Audit shortlist selection (passed as ?fields=…); fall back
     # to the default set if the page is opened directly with none.
-    preselect = [f for f in fields if f in shortlist.EXPORT_FIELDS] or list(_AUDIT_DEFAULT_FIELDS)
+    preselect = [f for f in fields if f in _all_audit_fields()] or list(_AUDIT_DEFAULT_FIELDS)
     resp = templates.TemplateResponse("download.html", ctx(
         conn, request, category=category, total=total,
         stage=stage, stage_label=dict(_AUDIT_STAGES).get(stage, stage),
@@ -2851,9 +2926,14 @@ def export_category(request: Request, cid: int, format: str = "csv", stage: str 
     if sq is None:
         conn.close()
         return RedirectResponse(url=str(request.url_for("download_page", cid=cid)), status_code=303)
-    keys, rows = shortlist.export_rows(conn, fields, **_merge_extra(sq, ""))
+    wanted = [f for f in fields if f in _all_audit_fields()] or list(_AUDIT_DEFAULT_FIELDS)
+    real = [k for k in wanted if k in shortlist.EXPORT_FIELDS]
+    keys, rows = shortlist.export_rows(conn, real, **_merge_extra(sq, ""))   # keys: real, url-first
+    _enrich_audit_rows(conn, cid, rows, wanted)                              # matched keywords + AI reasons
     conn.close()
-    labels = [shortlist.EXPORT_FIELDS[k][1] for k in keys]
+    # Columns: the real fields (url first) then any selected virtual fields, in selection order.
+    keys = list(keys) + [k for k in wanted if k in _VIRTUAL_FIELDS and k not in keys]
+    labels = [_field_label(k) for k in keys]
     name = _safe_filename(filename, f"gov-uk-audit-shortlist-{_dl_stamp()}")
 
     if format == "json":
