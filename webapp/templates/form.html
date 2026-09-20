@@ -35,6 +35,15 @@
       opacity:.55; background:var(--surface-2,#f3f2f1); pointer-events:none; }
     .dt-disabled .chk-search { cursor:not-allowed; }
     .dt-hint-locked { color:var(--muted,#6b7477); }
+    /* Plain-English preview of what the keywords will match. */
+    .kw-explain { max-width:640px; margin:8px 0 0; border:1px solid var(--border-mid,#b1b4b6);
+      border-radius:6px; background:var(--surface-2,#f3f2f1); padding:6px 12px; font-size:14px; }
+    .kw-explain h4 { margin:6px 0; font-size:12px; text-transform:uppercase; letter-spacing:.04em;
+      color:var(--muted,#6b7477); font-weight:700; }
+    .kw-explain .kx { padding:6px 0; border-top:1px solid var(--border,#e6e6e6); }
+    .kw-explain .kx:first-of-type { border-top:0; }
+    .kw-explain .kx-plain { display:block; margin-top:1px; color:var(--text,#0b0c0c); }
+    .kw-explain .kx-q { display:block; margin-top:2px; font-family:monospace; font-size:12px; color:var(--muted,#6b7477); }
   </style>
 
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Shortlists</a>
@@ -185,6 +194,7 @@
           </ul>
         </div></details>
       <textarea id="keywords" name="keywords" rows="4">{{ v.keywords or '' }}</textarea>
+      <div id="kw-explain" class="kw-explain" hidden></div>
       <label class="check" style="margin-top:12px;">
         <input type="checkbox" name="hybrid_on_save" value="1" {{ 'checked' if v.hybrid_on_save }}>
         Run GOV.UK hybrid search on save
@@ -437,6 +447,37 @@
       dtList.addEventListener("change", function () { renderSelected(dtList, dtBox, DT_EMPTY); });
       renderSelected(dtList, dtBox, DT_EMPTY);   // show the saved selection immediately
       refresh();
+    })();
+
+    // Live plain-English preview of what the keywords will match after tokenisation.
+    (function () {
+      var ta = document.getElementById("keywords");
+      var panel = document.getElementById("kw-explain");
+      if (!ta || !panel) return;
+      function esc(s){ return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+      var timer = null, seq = 0;
+      async function run() {
+        if (!ta.value.trim()) { panel.hidden = true; panel.innerHTML = ""; return; }
+        var mine = ++seq;
+        try {
+          var r = await fetch("/api/keyword-explain", { method: "POST",
+            headers: { "Content-Type": "application/json" }, body: JSON.stringify({ keywords: ta.value }) });
+          var j = await r.json();
+          if (mine !== seq) return;                       // a newer keystroke won
+          var terms = (j && j.terms) || [];
+          if (!terms.length) { panel.hidden = true; return; }
+          panel.innerHTML = "<h4>What these keywords will match</h4>" + terms.map(function (t) {
+            return '<div class="kx"><strong>' + esc(t.term) + '</strong>'
+              + '<span class="kx-plain">' + esc(t.plain) + '</span>'
+              + (t.tsquery ? '<span class="kx-q">technical: ' + esc(t.tsquery) + '</span>' : '')
+              + '</div>';
+          }).join("");
+          panel.hidden = false;
+        } catch (e) { /* leave the last preview in place */ }
+      }
+      ta.addEventListener("input", function () { clearTimeout(timer); timer = setTimeout(run, 400); });
+      if (ta.value.trim()) run();                         // show immediately for an edited shortlist
     })();
   </script>
 {% endblock %}

@@ -39,8 +39,8 @@ from starlette.concurrency import run_in_threadpool
 from govuk_corpus import accounts, ai_models, audit
 from govuk_corpus import categories as cat
 from govuk_corpus import category_counts, category_transfer, feedback, guardrails, sessions
-from govuk_corpus import (audit_stats, category_interview, evaluate, extract, orgs,
-                          peak_schedule, pricing, readability, reporting, roles,
+from govuk_corpus import (audit_stats, category_interview, evaluate, extract, keyword_explain,
+                          orgs, peak_schedule, pricing, readability, reporting, roles,
                           search_augment, settings, shortlist, stage_align)
 from govuk_corpus import orgs as orgs_mod   # stable module handle (some routes take an `orgs` param)
 from govuk_corpus.backend import db
@@ -1479,6 +1479,21 @@ def api_keyword_overlap(request: Request, cid: int, n: int = 5):
     data["pending"] = bool(filters["keywords"]) and mcount == 0
     data["computed_at"] = computed_at
     return JSONResponse(data)
+
+
+@app.post("/api/keyword-explain")
+async def api_keyword_explain(request: Request):
+    """Plain-English preview of what the (unsaved) keyword text will match after tokenisation
+    — for the keyword box on the form. Body: {"keywords": "<textarea contents>"}."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    body = await request.json()
+    terms = cat.parse_list(str(body.get("keywords") or ""))
+    conn = connect()
+    try:
+        return JSONResponse({"terms": keyword_explain.explain_terms(conn, terms)})
+    finally:
+        conn.close()
 
 
 @app.get("/api/categories/{cid}/results")
