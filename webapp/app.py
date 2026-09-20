@@ -2203,10 +2203,11 @@ def sustainability_page(request: Request):
     conn = connect()
     try:
         data = sustainability.summary(conn)
+        resp = templates.TemplateResponse("sustainability.html", ctx(
+            conn, request, active_nav="sustainability", s=data))
     finally:
         conn.close()
-    return templates.TemplateResponse("sustainability.html", ctx(
-        connect(), request, active_nav="sustainability", s=data))
+    return resp
 
 
 @app.post("/api/govuk-search")

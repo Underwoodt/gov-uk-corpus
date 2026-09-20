@@ -33,6 +33,26 @@ FACTORS = {
     "embodied_uplift": (0.00, 0.00, 0.30),   # optional hardware-manufacturing uplift (off by default)
 }
 
+FACTOR_LABELS = {
+    "e_in_j_per_tok":  "Energy per input token",
+    "e_out_j_per_tok": "Energy per output token",
+    "cache_factor":    "Cached-token energy fraction",
+    "pue":             "Data-centre overhead (PUE)",
+    "water_l_per_kwh": "Water used per unit of energy",
+    "grid_kg_per_kwh": "Grid carbon intensity",
+    "embodied_uplift": "Hardware manufacturing uplift",
+}
+
+FACTOR_UNITS = {
+    "e_in_j_per_tok":  "joules / token",
+    "e_out_j_per_tok": "joules / token",
+    "cache_factor":    "× (share of full compute)",
+    "pue":             "× (multiplier)",
+    "water_l_per_kwh": "litres / kWh",
+    "grid_kg_per_kwh": "kg CO₂e / kWh",
+    "embodied_uplift": "× (added on top)",
+}
+
 FACTOR_NOTES = {
     "e_in_j_per_tok":  "Vendor disclosures + academic estimates vary widely (Google's 2025 per-prompt figure ≈ 0.24 Wh).",
     "e_out_j_per_tok": "Output tokens are roughly 3–10× the energy of input tokens.",
@@ -139,5 +159,6 @@ def summary(conn) -> dict:
                                          total["impact"]["point"]["water_l"],
                                          total["impact"]["point"]["co2_kg"]),
             "factor_version": FACTOR_VERSION,
-            "factors": [{"key": k, "point": v[0], "low": v[1], "high": v[2],
+            "factors": [{"key": k, "label": FACTOR_LABELS.get(k, k),
+                         "unit": FACTOR_UNITS.get(k, ""), "point": v[0], "low": v[1], "high": v[2],
                          "note": FACTOR_NOTES.get(k, "")} for k, v in FACTORS.items()]}

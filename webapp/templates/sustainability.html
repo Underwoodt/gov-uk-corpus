@@ -99,10 +99,12 @@
     as an editable config (<code>govuk_corpus/sustainability.py</code>) with a version stamp. Point value, then the
     low–high range used for the estimate above.</p>
   <div class="table-wrap"><table>
-    <thead><tr><th>Factor</th><th class="num">Point</th><th class="num">Low</th><th class="num">High</th><th>Note</th></tr></thead>
+    <thead><tr><th>Factor</th><th>Unit</th><th class="num">Point</th><th class="num">Low</th><th class="num">High</th><th>What it means</th></tr></thead>
     <tbody>
       {% for f in s.factors %}
-      <tr><td class="mono">{{ f.key }}</td><td class="num">{{ f.point }}</td><td class="num">{{ f.low }}</td>
+      <tr><td><div>{{ f.label }}</div><div class="mono secondary" style="font-size:12px;">{{ f.key }}</div></td>
+        <td class="secondary" style="font-size:13px;white-space:nowrap;">{{ f.unit }}</td>
+        <td class="num">{{ f.point }}</td><td class="num">{{ f.low }}</td>
         <td class="num">{{ f.high }}</td><td class="secondary" style="font-size:13px;">{{ f.note }}</td></tr>
       {% endfor %}
     </tbody>
