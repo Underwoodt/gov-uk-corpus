@@ -1149,8 +1149,8 @@ def shortlist_page(request: Request, cid: int, stage: str = "final", tab: str = 
     has_ai_run = evaluate.latest_inclusion_run(conn, cid) is not None
     return templates.TemplateResponse("audit_shortlist.html", ctx(
         conn, request, category=category, stage=stage,
-        initial_tab=("dashboard" if tab == "dashboard" else "shortlist"), stages=stages,
-        gds_check_meta=gds_check_meta, has_ai_run=has_ai_run,
+        initial_tab=(tab if tab in ("dashboard", "pipeline") else "shortlist"), stages=stages,
+        gds_check_meta=gds_check_meta, has_ai_run=has_ai_run, eval_max_docs=_max_docs(conn),
         audit_stages=_AUDIT_STAGES, audit_sections=_DOWNLOAD_SECTIONS))
 
 

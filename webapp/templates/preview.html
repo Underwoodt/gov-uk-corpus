@@ -243,83 +243,8 @@
     </section>
 
     <section id="tab-semantic" class="subpanel" role="tabpanel" hidden>
-    <h2 style="margin-top:10px;">AI evaluation pipeline (inclusion → exclusion)</h2>
-    <p class="hint" style="margin-top:-20px;">Ask the AI to judge each shortlisted page against this shortlist's
-      <em>Include</em> / <em>Exclude</em> context — keep or drop, with a score and reason. Each <strong>run</strong>
-      uses one fixed model (set in Settings), so you can start a new run after switching model and compare results
-      and cost. Runs in capped batches; uses API credit.</p>
-
-    {# Nested tabs: the active run's controls vs the history of all runs. #}
-    <div class="tabs" role="tablist" style="margin-bottom:20px;">
-      <a href="#" class="subtab2 current" data-subtab2="active" data-tabid="{{ page_ref }}b1" role="tab">Active Run</a>
-      <a href="#" class="subtab2" data-subtab2="history" data-tabid="{{ page_ref }}b2" role="tab" data-level="advanced">Run History</a>
-    </div>
-
-    <div id="tab2-active" class="subpanel2" role="tabpanel">
-      <div class="controls">
-        <button type="button" class="btn secondary-btn" id="run-bg"
-          title="Will only update new items in the query in the background.">Execute Active Run</button>
-        <button type="button" class="btn secondary-btn" id="stop-bg" hidden style="color:#d4351c;"
-          title="Click to stop the current active run. You can restart at any time by re-executing; it will restart where it left off.">Stop Run</button>
-        <span id="eval-status" class="secondary"></span>
-      </div>
-      <p class="hint" style="margin:8px 0 0;max-width:660px;">Each execution evaluates up to
-        <strong>{{ eval_max_docs }} pages</strong> per run (the limit set in Settings), and only items in the query
-        that haven't been evaluated yet. If more remain when it stops, execute again to continue where it left off.</p>
-      <p id="bg-note" class="hint" style="margin:8px 0 10px;" hidden>Running on the server — it keeps going even if you
-        leave this page. Come back any time to see progress.</p>
-      <p id="active-run-line" class="secondary" style="margin:0 0 10px;"></p>
-      <div id="eval-progress-wrap" hidden style="max-width:640px;margin:0 0 15px;">
-        <div style="height:18px;border:1px solid var(--grey-border);background:var(--white);">
-          <div id="eval-progress-bar" style="height:100%;width:0%;background:var(--blue);transition:width .2s;"></div>
-        </div>
-        <p id="eval-averages" class="secondary timing" style="margin:6px 0 0;"></p>
-      </div>
-
-      {# Summary of the active run's AI pipeline (phase chain), with its status. #}
-      <div id="active-summary" hidden style="margin-top:22px;">
-        <h3 style="margin:0 0 10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:19px;">
-          <span id="as-name"></span><span id="as-status" class="pill"></span>
-        </h3>
-        <div class="table-wrap">
-          <table style="font-size:14px;">
-            <thead><tr>
-              <th>Phase</th><th>Supplier</th><th>Model</th>
-              <th class="num">Pages</th><th class="num">Keep</th><th class="num">Drop</th>
-              <th class="num">Tokens in</th><th class="num">Tokens out</th><th class="num">Cost</th>
-            </tr></thead>
-            <tbody id="as-rows"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <div id="tab2-history" class="subpanel2" role="tabpanel" hidden>
-      <p style="margin:0 0 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-        <button type="button" class="btn secondary-btn" id="new-run"
-          title="You will need to execute this once setup.">Create New Run</button>
-        <span id="new-run-status" class="secondary"></span>
-      </p>
-      <div id="stalled-banner" class="sd-warn" style="margin:0 0 14px;" hidden>
-        <div class="hd">⚠ A run stopped before finishing and nothing is currently processing it</div>
-        <p style="margin:4px 0 8px;" id="stalled-detail"></p>
-        <button type="button" class="btn" id="complete-shortlist"
-          style="padding:6px 14px;">Complete the shortlist</button>
-        <span id="complete-status" class="secondary" style="margin-left:10px;"></span>
-      </div>
-      <p class="hint" style="margin-top:0;">Every run for this shortlist. Select a run's radio to make it the
-        <strong>active</strong> run (what <em>Execute Active Run</em> adds to); open a run's name for its per-page details.</p>
-      <table id="runs-table" hidden>
-        <thead><tr><th title="The run that Evaluate / background runs add to">Active</th>
-          <th>Name</th><th>Started</th><th>Elapsed</th>
-          <th class="num" title="Pages this run evaluated / the total in the current shortlist it works toward (the inclusion phase covers the whole shortlist; exclusion re-checks only the pages inclusion kept). A drift chip shows when they differ.">Pages</th><th class="num">Keep</th><th class="num">Drop</th>
-          <th class="num">Tokens in</th><th class="num">Tokens out</th><th class="num">Cost</th>
-          <th></th></tr></thead>
-        <tbody></tbody>
-      </table>
-      <p id="runs-empty" class="secondary" hidden>No runs yet. Start one on the <em>Active Run</em> tab.</p>
-      {{ sql_panel("runs-sql") }}
-    </div>
+      {% set ai_ref = page_ref ~ 'b' %}
+      {% include "_ai_pipeline.html" %}
     </section>
 
     <section id="tab-results" class="subpanel" role="tabpanel" hidden>
