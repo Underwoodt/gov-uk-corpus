@@ -2731,6 +2731,8 @@ _VIRTUAL_FIELDS = {
     "matched_keywords": "Matched keywords",
     "inclusion_reason": "Inclusion reason",
     "exclusion_reason": "Exclusion reason",
+    "inclusion_raw_reply": "Inclusion raw reply",
+    "exclusion_raw_reply": "Exclusion raw reply",
     "stage": "Stage",
     "decision": "Stage decision",
 }
@@ -2754,6 +2756,10 @@ _DOWNLOAD_SECTIONS = [
          "from the latest AI run; blank for pages not evaluated"),
         ("exclusion_reason", "Exclusion reason", False, False,
          "from the latest AI run's exclusion pass"),
+        ("inclusion_raw_reply", "Inclusion raw reply", False, False,
+         "warning: the model's verbatim inclusion reply — can be long"),
+        ("exclusion_raw_reply", "Exclusion raw reply", False, False,
+         "warning: the model's verbatim exclusion reply — can be long"),
         ("stage", "Stage", False, False,
          "the funnel stage / phase these rows are shown at (tags each row for the download)"),
         ("decision", "Stage decision", False, False,
@@ -2845,17 +2851,18 @@ def _enrich_audit_rows(conn, cid: int, rows: list, keys: list, stage: str = None
         for r in rows:
             key = url2key.get(r.get("url"), r.get("url"))
             r["matched_keywords"] = ", ".join(search_augment._load_list(key2kw.get(key)))
-    if "inclusion_reason" in need or "exclusion_reason" in need:
+    _phase_cols = {"inclusion_reason": "reason", "exclusion_reason": "reason",
+                   "inclusion_raw_reply": "raw_reply", "exclusion_raw_reply": "raw_reply"}
+    if any(k in need for k in _phase_cols):
         inc = evaluate.latest_inclusion_run(conn, cid)
         exc = evaluate.latest_exclusion_run(conn, inc) if inc else None
-        if "inclusion_reason" in need:
-            im = _map(f"SELECT url, reason AS val FROM evaluation_results WHERE run_id = {P}", inc) if inc else {}
+        for field, col in _phase_cols.items():
+            if field not in need:
+                continue
+            run_id = inc if field.startswith("inclusion") else exc
+            m = _map(f"SELECT url, {col} AS val FROM evaluation_results WHERE run_id = {P}", run_id) if run_id else {}
             for r in rows:
-                r["inclusion_reason"] = im.get(r.get("url")) or ""
-        if "exclusion_reason" in need:
-            em = _map(f"SELECT url, reason AS val FROM evaluation_results WHERE run_id = {P}", exc) if exc else {}
-            for r in rows:
-                r["exclusion_reason"] = em.get(r.get("url")) or ""
+                r[field] = m.get(r.get("url")) or ""
     if "decision" in need:
         # The AI verdict for each page — Keep / Drop / Unscored (a row with keep = NULL) — from
         # the run relevant to the stage: the inclusion run for include/excl_include, the exclusion
