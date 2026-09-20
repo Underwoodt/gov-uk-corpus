@@ -10,10 +10,26 @@
   <p class="lede" style="margin:0 0 30px;">A shortlist is a saved set of filters that finds GOV.UK pages
     about one topic. Choose a shortlist to retrieve or change it, or build a new one.</p>
 
+  {% set owner_list = categories | map(attribute='owner_email') | select | map('lower') | unique | sort | list %}
   <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:30px;">
-    <div>
-      <label class="secondary" for="cat-filter" style="display:block;margin-bottom:5px;">Search shortlists</label>
-      <input id="cat-filter" type="text" class="narrow" oninput="filterCats(this.value)">
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;">
+      <div>
+        <label class="secondary" for="cat-filter" style="display:block;margin-bottom:5px;">Search shortlists</label>
+        <input id="cat-filter" type="text" class="narrow" oninput="applyFilters()">
+      </div>
+      <div>
+        <label class="secondary" for="owner-scope" style="display:block;margin-bottom:5px;">Owner</label>
+        <select id="owner-scope" style="font:inherit;padding:7px 8px;border:2px solid var(--black);border-radius:4px;">
+          <option value="mine">My shortlists</option>
+          <option value="all">All owners</option>
+        </select>
+      </div>
+      <div>
+        <label class="secondary" for="owner-filter" style="display:block;margin-bottom:5px;">Filter by owner email</label>
+        <input id="owner-filter" type="search" class="narrow" list="owner-emails"
+          placeholder="type an email…" autocomplete="off" oninput="applyFilters()">
+        <datalist id="owner-emails">{% for o in owner_list %}<option value="{{ o }}">{% endfor %}</datalist>
+      </div>
     </div>
     <a class="btn" href="{{ url_for('new_category_page') }}">Build a new shortlist</a>
   </div>
@@ -29,7 +45,7 @@
     </tr></thead>
     <tbody>
       {% for c in categories %}
-      <tr data-name="{{ (c.display_name ~ ' ' ~ (c.slug or '')) | lower }}">
+      <tr data-name="{{ (c.display_name ~ ' ' ~ (c.slug or '')) | lower }}" data-owner="{{ (c.owner_email or '')|lower }}">
         <td>
           <a class="name-link" href="{{ url_for('edit_category_page', cid=c.id) }}">{{ c.display_name }}</a>
           {% if c.slug %}<span class="sub mono">{{ c.slug }}</span>{% endif %}
@@ -60,15 +76,34 @@
   {% endif %}
 
   <script>
-    function filterCats(q) {
-      q = q.trim().toLowerCase();
+    var MY_EMAIL = "{{ (user.email if user else '')|lower }}";
+    function applyFilters() {
+      var q = (document.getElementById('cat-filter').value || '').trim().toLowerCase();
+      var scope = document.getElementById('owner-scope').value;          // mine | all
+      var oq = (document.getElementById('owner-filter').value || '').trim().toLowerCase();
       var rows = document.querySelectorAll('#cat-table tbody tr'), shown = 0;
       rows.forEach(function (r) {
-        var hit = !q || r.getAttribute('data-name').indexOf(q) !== -1;
+        var name = r.getAttribute('data-name') || '';
+        var owner = r.getAttribute('data-owner') || '';
+        var nameHit = !q || name.indexOf(q) !== -1;
+        var ownerHit;
+        if (oq) ownerHit = owner.indexOf(oq) !== -1;                     // explicit email filter wins
+        else if (scope === 'mine') ownerHit = !!MY_EMAIL && owner === MY_EMAIL;
+        else ownerHit = true;                                            // all owners
+        var hit = nameHit && ownerHit;
         r.hidden = !hit; if (hit) shown++;
       });
       document.getElementById('count-line').textContent =
         shown + (shown === 1 ? ' shortlist' : ' shortlists');
     }
+    (function () {
+      // Default to "My shortlists" when we know the signed-in email; otherwise show all.
+      var scope = document.getElementById('owner-scope');
+      if (scope) {
+        scope.value = MY_EMAIL ? 'mine' : 'all';
+        scope.addEventListener('change', applyFilters);
+      }
+      applyFilters();
+    })();
   </script>
 {% endblock %}
