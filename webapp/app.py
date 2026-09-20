@@ -361,8 +361,14 @@ def _ai_config_for_phase(conn, phase: str) -> dict:
 
 
 def _ai_reply(config: dict, system: str, prompt: str) -> dict:
-    """Single-turn convenience wrapper over _ai_chat."""
-    return _ai_chat(config, system, [{"role": "user", "content": prompt}])
+    """Single-turn convenience wrapper over _ai_chat (used by the page evaluator).
+
+    Uses a generous max_tokens so a reasoning model (e.g. deepseek-v4-pro) has room to reason
+    AND emit the short JSON verdict. At 1024 the reasoning could consume the whole budget on a
+    hard page, returning an empty or truncated reply that then couldn't be parsed. Override with
+    AI_EVAL_MAX_TOKENS if needed."""
+    return _ai_chat(config, system, [{"role": "user", "content": prompt}],
+                    max_tokens=int(os.getenv("AI_EVAL_MAX_TOKENS", "4096")))
 
 
 def _ai_chat(config: dict, system: str, messages: list, max_tokens: int = 1024) -> dict:
