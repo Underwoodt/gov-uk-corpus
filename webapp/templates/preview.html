@@ -83,7 +83,7 @@
          their runs exist. #}
       {% set stage_names = {'all':'All Pages','org':'Matched Orgs','doctype':'Matched Doc Type','keyword':'Contains Keywords'} %}
       <table id="funnel">
-      <thead><tr><th>Labels</th><th class="num">Next Stage</th><th class="num">Rejected</th><th class="num">Time</th></tr></thead>
+      <thead><tr><th>Labels</th><th class="num">Next Stage</th><th class="num">Rejected</th><th class="num">Time</th><th class="num">Cost</th></tr></thead>
       <tbody>
         {% for s in stages %}
         <tr data-stage="{{ s.stage }}">
@@ -95,10 +95,13 @@
           <td class="num val"><span class="spinner"></span></td>
           <td class="num rejected"></td>
           <td class="num timing"></td>
+          <td class="num cost secondary" title="Deterministic filters use no AI, so they cost nothing.">N/A</td>
         </tr>
         {% endfor %}
-        <tr data-stage="incl" hidden><td>Included by AI</td><td class="num val"></td><td class="num rejected"></td><td class="num timing"></td></tr>
-        <tr data-stage="excl" hidden><td>Shortlist</td><td class="num val"></td><td class="num rejected"></td><td class="num timing"></td></tr>
+        <tr data-stage="incl" hidden><td>Included by AI</td><td class="num val"></td><td class="num rejected"></td><td class="num timing"></td>
+          <td class="num cost" title="Total AI spend on the inclusion pass for this shortlist (all runs).">${{ '%.4f'|format(ai_cost.incl) }}</td></tr>
+        <tr data-stage="excl" hidden><td>Shortlist</td><td class="num val"></td><td class="num rejected"></td><td class="num timing"></td>
+          <td class="num cost" title="Total AI spend on the exclusion pass for this shortlist (all runs).">${{ '%.4f'|format(ai_cost.excl) }}</td></tr>
       </tbody>
       </table>
     </div>

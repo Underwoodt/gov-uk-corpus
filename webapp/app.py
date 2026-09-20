@@ -1094,10 +1094,23 @@ def preview_category_page(request: Request, cid: int):
                   + f"{_pretty(sel_sql, sel_params)};")
     pretty = "\n\n".join(blocks)
     eval_max_docs = _max_docs(conn)
+    # Total AI spend accrued to this shortlist, split by phase for the two AI funnel rows
+    # (deterministic stages have no AI cost). Sums every run, not just the active one.
+    ai_incl = ai_excl = 0.0
+    for r in conn.execute(
+            f"SELECT phase, COALESCE(SUM(cost), 0) AS c FROM evaluation_runs "
+            f"WHERE category_id = {shortlist._P} GROUP BY phase", (cid,)).fetchall():
+        d = dict(r)
+        c = float(d.get("c") or 0)
+        if "exclusion" in (d.get("phase") or "").lower():
+            ai_excl += c
+        else:
+            ai_incl += c
+    ai_cost = {"incl": ai_incl, "excl": ai_excl, "total": ai_incl + ai_excl}
     conn.close()
     return templates.TemplateResponse("preview.html", ctx(
         connect(), request, category=category, sql=pretty, stages=stages,
-        eval_max_docs=eval_max_docs))
+        eval_max_docs=eval_max_docs, ai_cost=ai_cost))
 
 
 @app.get("/categories/{cid}/shortlist", response_class=HTMLResponse)
