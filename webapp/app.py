@@ -2534,10 +2534,21 @@ def api_run_results(request: Request, cid: int, run_id: str, keep: str = ""):
         return JSONResponse({"error": "auth"}, status_code=401)
     k = int(keep) if keep in ("0", "1") else None
     conn = connect()
-    rsql, rparams = evaluate.run_results_query(run_id, keep=k, limit=500)
-    out = {"run": evaluate.get_run(conn, run_id),
-           "rows": evaluate.run_results(conn, run_id, keep=k, limit=500),
-           "sql": _display_sql(rsql, rparams)}
+    run = evaluate.get_run(conn, run_id)
+    # An exclusion run carries source_run_id = its inclusion run; join it so each row shows both
+    # the inclusion reason (why it was kept in Phase 1) and the exclusion reason (Phase 2).
+    src = run.get("source_run_id") if run else None
+    rows = evaluate.run_results(conn, run_id, keep=k, limit=500, source_run_id=src)
+    for r in rows:
+        if src:                                   # exclusion run: this reason = exclusion
+            r["incl_reason"] = r.get("src_reason")
+            r["excl_reason"] = r.get("reason")
+        else:                                     # inclusion run: no exclusion pass here
+            r["incl_reason"] = r.get("reason")
+            r["excl_reason"] = None
+        r.pop("src_reason", None)
+    rsql, rparams = evaluate.run_results_query(run_id, keep=k, limit=500, source_run_id=src)
+    out = {"run": run, "rows": rows, "sql": _display_sql(rsql, rparams)}
     conn.close()
     return JSONResponse(out)
 
@@ -2560,14 +2571,18 @@ def download_run(request: Request, cid: int, run_id: str):
     if not authed(request):
         return login_redirect(request)
     conn = connect()
-    rows = evaluate.run_results(conn, run_id)
+    run = evaluate.get_run(conn, run_id)
+    src = run.get("source_run_id") if run else None
+    rows = evaluate.run_results(conn, run_id, source_run_id=src)
     conn.close()
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["url", "decision", "score", "reason"])
+    w.writerow(["url", "decision", "score", "inclusion_reason", "exclusion_reason"])
     for r in rows:
         decision = "keep" if r["keep"] == 1 else "drop" if r["keep"] == 0 else "unparseable"
-        w.writerow([r["url"], decision, r["score"], r["reason"]])
+        incl = r.get("src_reason") if src else r.get("reason")
+        excl = r.get("reason") if src else ""
+        w.writerow([r["url"], decision, r["score"], incl, excl])
     return Response(buf.getvalue(), media_type="text/csv",
                     headers={"Content-Disposition": f'attachment; filename="gov-uk-funnel-pages-{_dl_stamp()}.csv"'})
 

@@ -558,20 +558,34 @@ def compare(conn, base_run: str, other_run: str) -> Dict[str, int]:
             "dropped": row["dropped"] or 0, "disagree": row["disagree"] or 0}
 
 
-def run_results_query(run_id: str, keep: Optional[int] = None, limit: Optional[int] = None):
-    """(sql, params) for a run's per-page results — so the page can show the SQL it ran."""
-    sql = f"SELECT url, keep, score, reason FROM evaluation_results WHERE run_id = {_P}"
-    params: list = [run_id]
+def run_results_query(run_id: str, keep: Optional[int] = None, limit: Optional[int] = None,
+                      source_run_id: Optional[str] = None):
+    """(sql, params) for a run's per-page results — so the page can show the SQL it ran. When
+    `source_run_id` is given (an exclusion run's inclusion run), also return that run's reason
+    for the same page as `src_reason`, so the inclusion and exclusion reasons can be shown side
+    by side."""
+    if source_run_id:
+        p = "r."
+        sql = (f"SELECT r.url AS url, r.keep AS keep, r.score AS score, r.reason AS reason, "
+               f"s.reason AS src_reason FROM evaluation_results r "
+               f"LEFT JOIN evaluation_results s ON s.run_id = {_P} AND s.url = r.url "
+               f"WHERE r.run_id = {_P}")
+        params: list = [source_run_id, run_id]
+    else:
+        p = ""
+        sql = f"SELECT url, keep, score, reason, NULL AS src_reason FROM evaluation_results WHERE run_id = {_P}"
+        params = [run_id]
     if keep is not None:
-        sql += f" AND keep = {_P}"
+        sql += f" AND {p}keep = {_P}"
         params.append(keep)
-    sql += " ORDER BY score DESC NULLS LAST, url" if _IS_PG else " ORDER BY score DESC, url"
+    sql += (f" ORDER BY {p}score DESC NULLS LAST, {p}url" if _IS_PG
+            else f" ORDER BY {p}score DESC, {p}url")
     if limit:
         sql += f" LIMIT {int(limit)}"
     return sql, params
 
 
 def run_results(conn, run_id: str, keep: Optional[int] = None,
-                limit: Optional[int] = None) -> List[dict]:
-    sql, params = run_results_query(run_id, keep=keep, limit=limit)
+                limit: Optional[int] = None, source_run_id: Optional[str] = None) -> List[dict]:
+    sql, params = run_results_query(run_id, keep=keep, limit=limit, source_run_id=source_run_id)
     return [dict(r) for r in conn.execute(sql, tuple(params)).fetchall()]

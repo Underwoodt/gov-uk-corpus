@@ -295,7 +295,7 @@
           <a href="#" id="rr-csv">Download CSV</a>
         </div>
         <table id="run-results">
-          <thead><tr><th>Page</th><th>Decision</th><th>Confidence</th><th class="num">Score</th><th>Reason</th></tr></thead>
+          <thead><tr><th>Page</th><th>Decision</th><th>Confidence</th><th class="num">Score</th><th>Inclusion reason</th><th>Exclusion reason</th></tr></thead>
           <tbody></tbody>
         </table>
         {{ sql_panel("run-results-sql") }}
@@ -1127,7 +1127,8 @@
           `<td>${decisionText(row.keep)}</td>` +
           `<td>${confidence(row.score)}</td>` +
           `<td class="num">${scoreText(row.score)}</td>` +
-          `<td>${esc(row.reason || "")}</td>`;
+          `<td>${esc(row.incl_reason || "—")}</td>` +
+          `<td>${esc(row.excl_reason || "—")}</td>`;
         tbody.appendChild(tr);
       }
     }
