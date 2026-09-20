@@ -25,8 +25,8 @@
 
   <div class="tabs">
     <a href="{{ url_for('edit_category_page', cid=category.id) }}">Filter Parameters</a>
-    <a href="{{ url_for('preview_category_page', cid=category.id) }}">Preview and run</a>
-    <a href="{{ url_for('shortlist_page', cid=category.id) }}">Audit Results</a>
+    <a href="{{ url_for('shortlist_page', cid=category.id) }}">Shortlist</a>
+    <a href="{{ url_for('preview_category_page', cid=category.id) }}">Explainability</a>
     <a href="{{ url_for('performance_page', cid=category.id) }}" data-level="advanced">Run performance</a>
     <span class="current">URL check</span>
   </div>

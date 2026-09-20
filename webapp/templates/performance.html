@@ -8,8 +8,8 @@
 
   <div class="tabs">
     <a href="{{ url_for('edit_category_page', cid=category.id) }}">Filter Parameters</a>
-    <a href="{{ url_for('preview_category_page', cid=category.id) }}">Preview and run</a>
-    <a href="{{ url_for('shortlist_page', cid=category.id) }}">Audit Results</a>
+    <a href="{{ url_for('shortlist_page', cid=category.id) }}">Shortlist</a>
+    <a href="{{ url_for('preview_category_page', cid=category.id) }}">Explainability</a>
     <span class="current">Run performance</span>
     <a href="{{ url_for('url_check_page', cid=category.id) }}">URL check</a>
   </div>
@@ -25,7 +25,7 @@
     </div>
 
     <p id="perf-empty" class="secondary" hidden>No runs yet — evaluate the shortlist on the
-      <a href="{{ url_for('preview_category_page', cid=category.id) }}">Preview and run</a> tab first.</p>
+      <a href="{{ url_for('preview_category_page', cid=category.id) }}">Explainability</a> tab first.</p>
 
     <table id="perf-table">
       <thead><tr><th>Run characteristic</th><th>Run 1</th><th>Run 2</th><th>Run 3</th></tr></thead>

@@ -2,7 +2,7 @@
 {% from "_sql.html" import sql_panel %}
 {% set page_ref = "guc-0004" %}
 {% block page_id %}{{ page_ref }}{% endblock %}
-{% block title %}{{ category.display_name }} — audit results{% endblock %}
+{% block title %}{{ category.display_name }} — shortlist{% endblock %}
 {% block content %}
   <style>
     .stage-pills { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 20px; }
@@ -44,8 +44,8 @@
 
   <div class="tabs">
     <a href="{{ url_for('edit_category_page', cid=category.id) }}">Filter Parameters</a>
-    <a href="{{ url_for('preview_category_page', cid=category.id) }}">Preview and run</a>
-    <span class="current">Audit Results</span>
+    <span class="current">Shortlist</span>
+    <a href="{{ url_for('preview_category_page', cid=category.id) }}">Explainability</a>
     <a href="{{ url_for('performance_page', cid=category.id) }}" data-level="advanced">Run performance</a>
     <a href="{{ url_for('url_check_page', cid=category.id) }}">URL check</a>
   </div>
@@ -57,7 +57,7 @@
     </div>
 
     <section id="tab-shortlist" class="subpanel" role="tabpanel">
-      <h2 style="margin-top:10px;">Audit results</h2>
+      <h2 style="margin-top:10px;">Shortlist</h2>
       <p class="hint" style="margin-top:-14px;">Browse and extract the pages at any stage of the funnel. Choose a
         stage and the fields to show; the same fields pre-fill the download (customise it there).</p>
       <div class="controls" style="align-items:center;gap:12px;">

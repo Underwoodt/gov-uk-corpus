@@ -3,7 +3,7 @@
 {% block title %}Download{% endblock %}
 {% block content %}
 
-  <a class="back" href="{{ url_for('shortlist_page', cid=category.id) }}">‹ Back to audit results</a>
+  <a class="back" href="{{ url_for('shortlist_page', cid=category.id) }}">‹ Back to shortlist</a>
 
   <h1 style="margin:20px 0 5px;">Download shortlist</h1>
   <p class="secondary" style="margin:0 0 25px;">{{ category.display_name }}
@@ -31,7 +31,7 @@
 
     <p class="secondary" style="max-width:640px;">
       Downloads the <strong>{{ preselect|length }}</strong> column{{ '' if preselect|length == 1 else 's' }} selected on the
-      <a href="{{ url_for('shortlist_page', cid=category.id) }}">Audit results</a> — change the selection there.
+      <a href="{{ url_for('shortlist_page', cid=category.id) }}">Shortlist</a> — change the selection there.
     </p>
 
     <button class="btn" type="submit">Download</button>

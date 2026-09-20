@@ -2,7 +2,7 @@
 {% from "_sql.html" import sql_panel %}
 {% set page_ref = "guc-0003" %}
 {% block page_id %}{{ page_ref }}{% endblock %}
-{% block title %}{{ category.display_name }} — preview{% endblock %}
+{% block title %}{{ category.display_name }} — explainability{% endblock %}
 {% block content %}
   <style>
     /* Provenance lozenges for GOV.UK Search coverage. */
@@ -53,12 +53,14 @@
   </style>
 
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Shortlists</a>
-  <h1 style="margin:20px 0 20px;">{{ category.display_name }}</h1>
+  <h1 style="margin:20px 0 6px;">{{ category.display_name }}</h1>
+  <p class="lede" style="margin:0 0 20px;max-width:820px;">Explainability — how this shortlist was reached: which
+    keywords matched, how GOV.UK Search compares, and how each stage of the pipeline added or removed pages.</p>
 
   <div class="tabs">
     <a href="{{ url_for('edit_category_page', cid=category.id) }}">Filter Parameters</a>
-    <span class="current">Preview and run</span>
-    <a href="{{ url_for('shortlist_page', cid=category.id) }}">Audit Results</a>
+    <a href="{{ url_for('shortlist_page', cid=category.id) }}">Shortlist</a>
+    <span class="current">Explainability</span>
     <a href="{{ url_for('performance_page', cid=category.id) }}" data-level="advanced">Run performance</a>
     <a href="{{ url_for('url_check_page', cid=category.id) }}">URL check</a>
   </div>
