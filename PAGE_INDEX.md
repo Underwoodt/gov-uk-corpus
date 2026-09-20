@@ -18,7 +18,7 @@ we can pin the report to an exact page.
 
 ## Next free serial
 
-**`guc-0022`** ← assign this to the next new page, then increment this line.
+**`guc-0023`** ← assign this to the next new page, then increment this line.
 
 ## How it's wired (so the rule is automatic)
 
@@ -62,6 +62,7 @@ we can pin the report to an exact page.
 | guc-0019 | GOV.UK search | `govuk_search.html` | `GET /govuk-search`, `GET /api/govuk-search` | Active |
 | guc-0020 | User administration (admin) | `admin_users.html` | `GET /admin/users`, `POST /admin/users` (accounts mode) | Active |
 | guc-0021 | Updating category (post-save rebuild) | `rebuilding.html` | `GET /categories/{id}/rebuilding`, `POST /api/categories/{id}/refresh-shortlist`, `POST /api/categories/{id}/reconcile-eval` | Active |
+| guc-0022 | Sustainability dashboard (modelled AI impact) | `sustainability.html` | `GET /sustainability` | Active |
 
 ## Sub-tab IDs
 

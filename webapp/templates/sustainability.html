@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block page_id %}guc-0022{% endblock %}
+{% block title %}Sustainability{% endblock %}
+{% block content %}
+  {% macro energy(kwh) %}{% set wh = kwh * 1000 %}{% if wh < 1000 %}{{ '%.0f'|format(wh) }} Wh{% else %}{{ '%.2f'|format(kwh) }} kWh{% endif %}{% endmacro %}
+  {% macro water(l) %}{% if l < 1 %}{{ '%.0f'|format(l * 1000) }} mL{% else %}{{ '%.2f'|format(l) }} L{% endif %}{% endmacro %}
+  {% macro co2(kg) %}{% if kg < 1 %}{{ '%.0f'|format(kg * 1000) }} g{% else %}{{ '%.2f'|format(kg) }} kg{% endif %}{% endmacro %}
+  {% macro num(n) %}{{ '{:,.0f}'.format(n or 0) }}{% endmacro %}
+
+  <style>
+    .sd-cards { display:flex; flex-wrap:wrap; gap:14px; margin:18px 0 8px; }
+    .sd-card { flex:1 1 180px; min-width:170px; border:1px solid var(--border-mid,#b1b4b6); border-radius:10px;
+      padding:14px 16px; background:var(--white,#fff); }
+    .sd-card .lab { font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted,#6b7477); font-weight:700; }
+    .sd-card .big { font-size:26px; font-weight:700; margin:4px 0 2px; font-variant-numeric:tabular-nums; }
+    .sd-card .rng { font-size:12px; color:var(--muted,#6b7477); }
+    .sd-eq { display:flex; flex-wrap:wrap; gap:10px 22px; margin:6px 0 4px; }
+    .sd-eq .e { font-size:14px; } .sd-eq .e b { font-size:18px; font-variant-numeric:tabular-nums; }
+    .sd-eq .e span { color:var(--muted,#6b7477); }
+    .sd table { font-size:14px; width:100%; } .sd .num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .sd h2 { font-size:19px; margin:26px 0 8px; }
+    .sd .caveat { background:#fef7e0; border:1px solid #f2d888; border-left:4px solid #e0a800; border-radius:6px;
+      padding:10px 12px; font-size:14px; max-width:820px; }
+    .sd .modelled { display:inline-block; font-size:12px; font-weight:700; color:#8a6d00; background:#fff4cc;
+      border-radius:999px; padding:2px 10px; vertical-align:middle; }
+  </style>
+
+  <div class="sd">
+  <h1 style="margin:16px 0 4px;">Sustainability <span class="modelled" title="Providers don't meter per-request energy — these are estimates.">modelled estimate</span></h1>
+  <p class="lede" style="margin:0 0 6px;max-width:820px;">The energy, water and carbon of this service's AI runs — estimated
+    from what each run measured (tokens, cost, pages), converted with an editable table of factors. Figures are a
+    <strong>range</strong>, not a precise number.</p>
+  <p class="secondary" style="margin:0 0 4px;">{{ num(s.total.runs) }} AI run{{ '' if s.total.runs == 1 else 's' }}
+    · {{ num(s.total.pages) }} pages evaluated · {{ num(s.total.kept) }} kept · factors v{{ s.factor_version }}</p>
+
+  {% set pt = s.total.impact.point %}{% set lo = s.total.impact.low %}{% set hi = s.total.impact.high %}
+  <div class="sd-cards">
+    <div class="sd-card"><div class="lab">Cost</div><div class="big">${{ '%.2f'|format(s.total.cost) }}</div>
+      <div class="rng">across all runs</div></div>
+    <div class="sd-card"><div class="lab">Energy</div><div class="big">{{ energy(pt.kwh) }}</div>
+      <div class="rng">{{ energy(lo.kwh) }} – {{ energy(hi.kwh) }}</div></div>
+    <div class="sd-card"><div class="lab">Water</div><div class="big">{{ water(pt.water_l) }}</div>
+      <div class="rng">{{ water(lo.water_l) }} – {{ water(hi.water_l) }}</div></div>
+    <div class="sd-card"><div class="lab">Carbon (CO₂e)</div><div class="big">{{ co2(pt.co2_kg) }}</div>
+      <div class="rng">{{ co2(lo.co2_kg) }} – {{ co2(hi.co2_kg) }}</div></div>
+  </div>
+
+  <h2>To put that in context</h2>
+  <div class="sd-eq">
+    {% for e in s.equivalences %}
+    <span class="e"><b>{{ '%.1f'|format(e.value) if e.value < 100 else '{:,.0f}'.format(e.value) }}</b>
+      {{ e.label }} <span>· {{ e.note }}</span></span>
+    {% endfor %}
+  </div>
+
+  <h2>Efficiency</h2>
+  <div class="table-wrap"><table>
+    <tbody>
+      <tr><td>Cost per page processed</td><td class="num">{{ ('$%.4f'|format(s.derived.cost_per_page)) if s.derived.cost_per_page is not none else '—' }}</td></tr>
+      <tr><td>Cost per <strong>included</strong> page (per useful result)</td><td class="num">{{ ('$%.4f'|format(s.derived.cost_per_included)) if s.derived.cost_per_included is not none else '—' }}</td></tr>
+      <tr><td>Energy per page</td><td class="num">{{ energy(s.derived.kwh_per_page) if s.derived.kwh_per_page is not none else '—' }}</td></tr>
+      <tr><td>CO₂e per page</td><td class="num">{{ ('%.2f g'|format(s.derived.co2_g_per_page)) if s.derived.co2_g_per_page is not none else '—' }}</td></tr>
+      <tr><td>Tokens per page</td><td class="num">{{ num(s.derived.tokens_per_page) if s.derived.tokens_per_page is not none else '—' }}</td></tr>
+      <tr><td>Cached input share (prompt caching saves cost + energy)</td><td class="num">{{ ('%.0f%%'|format(s.derived.cached_share * 100)) if s.derived.cached_share is not none else '—' }}</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>By model</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Model</th><th class="num">Runs</th><th class="num">Tokens in</th><th class="num">Tokens out</th>
+      <th class="num">Cost</th><th class="num">Energy</th><th class="num">CO₂e</th></tr></thead>
+    <tbody>
+      {% for m in s.by_model %}
+      <tr><td>{{ m.provider }} / {{ m.model }}</td><td class="num">{{ num(m.runs) }}</td>
+        <td class="num">{{ num(m.intok) }}</td><td class="num">{{ num(m.outtok) }}</td>
+        <td class="num">${{ '%.2f'|format(m.cost) }}</td><td class="num">{{ energy(m.impact.point.kwh) }}</td>
+        <td class="num">{{ co2(m.impact.point.co2_kg) }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+
+  <h2>By stage</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Stage</th><th class="num">Runs</th><th class="num">Pages</th><th class="num">Cost</th>
+      <th class="num">Energy</th><th class="num">CO₂e</th></tr></thead>
+    <tbody>
+      {% for p in s.by_phase %}
+      <tr><td>{{ p.phase }}</td><td class="num">{{ num(p.runs) }}</td><td class="num">{{ num(p.pages) }}</td>
+        <td class="num">${{ '%.2f'|format(p.cost) }}</td><td class="num">{{ energy(p.impact.point.kwh) }}</td>
+        <td class="num">{{ co2(p.impact.point.co2_kg) }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+
+  <h2>Assumptions (factor table v{{ s.factor_version }})</h2>
+  <p class="secondary" style="margin:0 0 6px;max-width:820px;">These are contested and change fast, so they're kept
+    as an editable config (<code>govuk_corpus/sustainability.py</code>) with a version stamp. Point value, then the
+    low–high range used for the estimate above.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Factor</th><th class="num">Point</th><th class="num">Low</th><th class="num">High</th><th>Note</th></tr></thead>
+    <tbody>
+      {% for f in s.factors %}
+      <tr><td class="mono">{{ f.key }}</td><td class="num">{{ f.point }}</td><td class="num">{{ f.low }}</td>
+        <td class="num">{{ f.high }}</td><td class="secondary" style="font-size:13px;">{{ f.note }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+
+  <h2>How to read this</h2>
+  <div class="caveat">
+    Figures are <strong>modelled, not metered</strong> — providers don't expose per-request energy. Water and carbon
+    depend heavily on the data-centre region; the numbers above use the assumptions in the factor table, shown as a
+    range rather than a single value. Older runs stay comparable because the factor set is versioned.
+  </div>
+  </div>
+{% endblock %}
