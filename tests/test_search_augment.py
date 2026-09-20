@@ -77,6 +77,17 @@ class TestAugmentedPages(unittest.TestCase):
         self.assertTrue(by["https://www.gov.uk/a"])          # in corpus
         self.assertFalse(by["https://www.gov.uk/c"])         # not fetched
 
+    def test_loaded_filter(self):
+        self.conn.execute("INSERT INTO content (url, content_id, is_redirect, content_hash) "
+                          "VALUES (?,?,?,?)", ("https://www.gov.uk/a", "c1", 0, "h"))
+        self.conn.commit()
+        in_corpus = search_augment.augmented_pages(self.conn, 7, loaded="in")
+        self.assertEqual([r["url"] for r in in_corpus["rows"]], ["https://www.gov.uk/a"])
+        self.assertEqual(in_corpus["total"], 1)
+        missing = search_augment.augmented_pages(self.conn, 7, loaded="missing")
+        self.assertEqual(missing["total"], 3)
+        self.assertNotIn("https://www.gov.uk/a", [r["url"] for r in missing["rows"]])
+
     def test_rows_carry_both_keyword_sets(self):
         out = search_augment.augmented_pages(self.conn, 7)
         by_url = {r["url"]: r for r in out["rows"]}

@@ -329,6 +329,13 @@
               <option value="shortlister">Shortlister only</option>
             </select>
           </label>
+          <label class="secondary" style="font-size:14px;">Corpus
+            <select id="gc-loaded" style="font:inherit;padding:3px 6px;border:2px solid var(--black);border-radius:4px;margin-left:4px;">
+              <option value="">All</option>
+              <option value="in">In Corpus</option>
+              <option value="missing">Missing From Corpus</option>
+            </select>
+          </label>
         </div>
         <div style="overflow-x:auto;margin-top:8px;">
           <table id="gc-table" style="font-size:14px;width:100%;">
@@ -504,7 +511,7 @@
     const PROV = { search: ["prov-search","GOV.UK Search only"], both: ["prov-both","Both"],
                    shortlister: ["prov-shortlister","Shortlister only"] };
     function provLozenge(s){ const p = PROV[s] || ["prov-shortlister", s]; return `<span class="prov ${p[0]}">${esc(p[1])}</span>`; }
-    function loadedLozenge(loaded){ return loaded ? `<span class="ld ld-yes">Loaded</span>` : `<span class="ld ld-no">Unloaded</span>`; }
+    function loadedLozenge(loaded){ return loaded ? `<span class="ld ld-yes">In Corpus</span>` : `<span class="ld ld-no">Missing From Corpus</span>`; }
     // Comment header for the expert query box: each configured threshold as BREACHED / not breached.
     function gcThresholdComments(th) {
       const yn = b => b ? "BREACHED" : "not breached";
@@ -526,9 +533,10 @@
     async function loadCoverage() {
       const tbody = document.getElementById("gc-rows"), status = document.getElementById("gc-status");
       const source = document.getElementById("gc-source").value;
+      const loaded = document.getElementById("gc-loaded").value;
       tbody.innerHTML = `<tr><td colspan="7" class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr>`;
       try {
-        const j = await (await fetch(`/api/categories/${CID}/augmented-pages?source=${encodeURIComponent(source)}&limit=${GC_PAGE}&offset=${gcOffset}&q=${encodeURIComponent(gcQuery)}`)).json();
+        const j = await (await fetch(`/api/categories/${CID}/augmented-pages?source=${encodeURIComponent(source)}&loaded=${encodeURIComponent(loaded)}&limit=${GC_PAGE}&offset=${gcOffset}&q=${encodeURIComponent(gcQuery)}`)).json();
         const sum = j.summary || {counts:{}, total:0};
         const c = sum.counts || {};
         // Threshold check: warn if a configured cap truncated the GOV.UK result set.
@@ -670,6 +678,7 @@
       finally { btn.disabled = false; btn.textContent = label; }
     });
     document.getElementById("gc-source").addEventListener("change", () => { gcOffset = 0; loadCoverage(); });
+    document.getElementById("gc-loaded").addEventListener("change", () => { gcOffset = 0; loadCoverage(); });
     // Type-ahead title filter — debounced, filters the whole stored set server-side.
     let gcSearchTimer = null;
     document.getElementById("gc-search").addEventListener("input", (e) => {

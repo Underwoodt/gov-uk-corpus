@@ -190,9 +190,10 @@ def has_comparison(conn, cid: int) -> bool:
 
 
 def augmented_pages(conn, cid: int, source: str = "", limit: int = 100, offset: int = 0,
-                    q: str = "") -> dict:
-    """A page of the augmented shortlist, optionally filtered to one source and/or a title
-    substring `q` (case-insensitive, over the WHOLE stored set — not just this page)."""
+                    q: str = "", loaded: str = "") -> dict:
+    """A page of the augmented shortlist, optionally filtered to one source, a title substring
+    `q` (case-insensitive, over the WHOLE stored set), and/or corpus status `loaded`
+    ('in' = in the corpus, 'missing' = not fetched yet)."""
     where = [f"sp.category_id = {_P}"]
     params: list = [cid]
     if source in ("shortlister", "both", "search"):
@@ -202,9 +203,14 @@ def augmented_pages(conn, cid: int, source: str = "", limit: int = 100, offset: 
     if q:
         where.append(f"LOWER(sp.title) LIKE LOWER({_P})")
         params.append("%" + q + "%")
+    if loaded == "in":
+        where.append("c.url IS NOT NULL")
+    elif loaded == "missing":
+        where.append("c.url IS NULL")
     wsql = " AND ".join(where)
+    join = "category_search_pages sp LEFT JOIN content c ON c.url = sp.url"
     total = conn.execute(
-        f"SELECT COUNT(*) AS n FROM category_search_pages sp WHERE {wsql}", tuple(params)).fetchone()["n"]
+        f"SELECT COUNT(*) AS n FROM {join} WHERE {wsql}", tuple(params)).fetchone()["n"]
     # Order: search-only first (the gaps), then both, then shortlister; url within.
     order = ("CASE sp.source WHEN 'search' THEN 0 WHEN 'both' THEN 1 ELSE 2 END, sp.url"
              if not source else "sp.url")
@@ -215,7 +221,7 @@ def augmented_pages(conn, cid: int, source: str = "", limit: int = 100, offset: 
         f"sp.document_type AS document_type, sp.source AS source, sp.phrases AS phrases, "
         f"sp.corpus_phrases AS corpus_phrases, "
         f"CASE WHEN c.url IS NOT NULL THEN 1 ELSE 0 END AS loaded "
-        f"FROM category_search_pages sp LEFT JOIN content c ON c.url = sp.url "
+        f"FROM {join} "
         f"WHERE {wsql} ORDER BY {order} LIMIT {_P} OFFSET {_P}",
         tuple(params) + (limit, offset)).fetchall()]
     for r in rows:
