@@ -185,7 +185,57 @@ def summary(conn) -> dict:
             "equivalences": equivalences(total["impact"]["point"]["kwh"],
                                          total["impact"]["point"]["water_l"],
                                          total["impact"]["point"]["co2_kg"]),
+            "data_issues": data_issues(conn),
             "factor_version": FACTOR_VERSION,
             "factors": [{"key": k, "label": FACTOR_LABELS.get(k, k),
                          "unit": FACTOR_UNITS.get(k, ""), "point": v[0], "low": v[1], "high": v[2],
                          "note": FACTOR_NOTES.get(k, "")} for k, v in FACTORS.items()]}
+
+
+def data_issues(conn) -> list:
+    """Runs that logged a cost but no token usage (in + out = 0).
+
+    Their spend can't be tied to any tokens, so it is left out of the per-1M averages and
+    surfaced here for repair — the usage was likely never captured from the provider response.
+    Read-only: this reports the runs, it does not modify them."""
+    tok = "(COALESCE(in_tokens,0)+COALESCE(out_tokens,0))"
+    rows = conn.execute(
+        f"SELECT run_id, category_id, COALESCE(provider,'?') AS provider, "
+        f"COALESCE(model,'?') AS model, COALESCE(phase,'—') AS phase, "
+        f"COALESCE(cost,0) AS cost, COALESCE(pages,0) AS pages "
+        f"FROM evaluation_runs WHERE COALESCE(cost,0) > 0 AND {tok} = 0 "
+        f"ORDER BY cost DESC").fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["cost"], d["pages"] = float(d.get("cost") or 0), int(d.get("pages") or 0)
+        out.append(d)
+    return out
+
+
+def main() -> None:
+    """CLI: list evaluation runs that recorded a cost but no token counts."""
+    import argparse
+    ap = argparse.ArgumentParser(
+        description="Flag evaluation_runs that logged a cost but no token usage (in+out = 0).")
+    ap.add_argument("--db", default="data/pilot.db", help="SQLite path (ignored for Postgres)")
+    args = ap.parse_args()
+    conn = db.connect(args.db)
+    try:
+        issues = data_issues(conn)
+    finally:
+        pass
+    if not issues:
+        print("No zero-token cost runs found.")
+        return
+    total = sum(i["cost"] for i in issues)
+    print(f"{len(issues)} run(s) recorded a cost but no token counts "
+          f"(total ${total:.2f} of untracked spend):\n")
+    for i in issues:
+        print(f"  {i['run_id']:24}  {i['provider']}/{i['model']:20}  {i['phase']:22}  "
+              f"${i['cost']:.4f}  pages={i['pages']:<5}  category={i['category_id']}")
+    conn.close()
+
+
+if __name__ == "__main__":
+    main()
