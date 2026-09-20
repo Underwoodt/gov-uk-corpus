@@ -1131,10 +1131,11 @@ def shortlist_page(request: Request, cid: int, stage: str = "final", tab: str = 
     stages = [(s, _FUNNEL_STAGES[s][0]) for s in ("all", "org", "doctype", "keyword")]  # dashboard levels
     gds_check_meta = [{"name": c.name, "weight": c.weight, "reason": c.reason}
                       for c in readability.CHECKS]
+    has_ai_run = evaluate.latest_inclusion_run(conn, cid) is not None
     return templates.TemplateResponse("audit_shortlist.html", ctx(
         conn, request, category=category, stage=stage,
         initial_tab=("dashboard" if tab == "dashboard" else "shortlist"), stages=stages,
-        gds_check_meta=gds_check_meta,
+        gds_check_meta=gds_check_meta, has_ai_run=has_ai_run,
         audit_stages=_AUDIT_STAGES, audit_sections=_DOWNLOAD_SECTIONS))
 
 
