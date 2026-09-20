@@ -310,7 +310,6 @@
           <span>
             <a href="#" id="gc-download" style="font-size:14px;" hidden>Download CSV</a>
             <button type="button" class="btn secondary-btn" id="gc-fetch" style="margin-left:12px;padding:4px 12px;font-size:14px;" hidden>Fetch GOV.UK-only pages</button>
-            <button type="button" class="btn secondary-btn" id="gc-run" style="margin-left:12px;padding:4px 12px;font-size:14px;">Compare with GOV.UK Search</button>
             <button type="button" class="btn secondary-btn" id="gc-stop" style="margin-left:8px;padding:4px 12px;font-size:14px;color:#d4351c;" hidden>Stop</button>
           </span>
         </div>
@@ -318,7 +317,7 @@
           shortlist's keywords through the GOV.UK Search API (scoped to this shortlist's organisations and document types) and tags every
           page <strong>Shortlister only</strong>, <strong>Both</strong>, or <strong>GOV.UK Search only</strong> — the
           last are pages our filters missed. <em>Fetch GOV.UK-only pages</em> pulls those into the corpus so the AI
-          Pipeline evaluates them too. Stored until you re-run it.</p>
+          Pipeline evaluates them too. This runs automatically each time the shortlist is saved.</p>
         <div id="gc-threshold-warn" class="gc-warn" hidden></div>
         <div class="controls" id="gc-controls" style="align-items:center;gap:8px;flex-wrap:wrap;" hidden>
           <input id="gc-search" type="search" placeholder="Filter titles…" autocomplete="off"
@@ -586,7 +585,7 @@
           document.getElementById("gc-controls").hidden = true;
           document.getElementById("gc-download").hidden = true;
           document.getElementById("gc-pager").hidden = true;
-          tbody.innerHTML = `<tr><td colspan="8" class="secondary" style="padding:10px 6px;">Not run yet — click “Compare with GOV.UK Search”.</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="8" class="secondary" style="padding:10px 6px;">Not run yet — save the shortlist to run the GOV.UK hybrid search.</td></tr>`;
           status.textContent = ""; return;
         }
         document.getElementById("gc-controls").hidden = false;
@@ -634,18 +633,17 @@
       return "Working…";
     }
     async function gcPoll() {
-      const status = document.getElementById("gc-status"), btn = document.getElementById("gc-run");
+      const status = document.getElementById("gc-status");
       let s;
       try { s = await (await fetch(`/api/categories/${CID}/hybrid-bg/status`)).json(); }
       catch (e) { return; }
       if (s.running) {
-        btn.disabled = true; status.style.color = "";
+        status.style.color = "";
         document.getElementById("gc-stop").hidden = false;
         status.innerHTML = '<span class="spinner"></span> ' + esc(gcHybridMessage(s));
         if (!gcPollTimer) gcPollTimer = setInterval(gcPoll, 3000);
       } else {
         if (gcPollTimer) { clearInterval(gcPollTimer); gcPollTimer = null; }
-        btn.disabled = false;
         document.getElementById("gc-stop").hidden = true;
         if (s.error) { status.style.color = "var(--red,#d4351c)"; status.textContent = "Error: " + s.error; }
         else if (s.finished_at) {
@@ -656,16 +654,6 @@
         gcOffset = 0; await loadCoverage();
       }
     }
-    document.getElementById("gc-run").addEventListener("click", async () => {
-      const btn = document.getElementById("gc-run"), status = document.getElementById("gc-status");
-      btn.disabled = true; status.style.color = ""; status.innerHTML = '<span class="spinner"></span> Starting GOV.UK hybrid search…';
-      try {
-        const r = await fetch(`/api/categories/${CID}/hybrid-bg/start`, { method: "POST" });
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok || j.error) throw new Error(j.error || ("HTTP " + r.status));
-        gcPoll();
-      } catch (e) { btn.disabled = false; status.style.color = "var(--red,#d4351c)"; status.textContent = "Error: " + (e.message || e); }
-    });
     document.getElementById("gc-stop").addEventListener("click", async () => {
       document.getElementById("gc-stop").disabled = true;
       try { await fetch(`/api/categories/${CID}/hybrid-bg/stop`, { method: "POST" }); } catch (e) {}
