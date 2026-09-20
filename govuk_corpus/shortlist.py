@@ -392,18 +392,47 @@ def membership_rows(conn, **filters) -> List[Tuple[str, str]]:
     return [(r["content_id"], r["url"]) for r in conn.execute(sql, tuple(params)).fetchall()]
 
 
+def _canonical_urls(conn, content_ids: Sequence[str]) -> dict:
+    """{content_id: canonical url} for real (UUID) content ids that map to several urls.
+
+    A page can have several urls under one content_id — a guide's chapters, or a renamed
+    publication's old and new slugs. We store keyword hits (and show the page) under ONE of
+    them; pick the *canonical* one = the shortest fetched, non-redirect url (a guide's base is
+    shorter than its chapters; a page's current slug is usually shorter than an old one),
+    tie-broken lexicographically. Content-id-less pages (url fallback keys, starting 'http')
+    have a single url, so they are skipped and keep it."""
+    ids = [c for c in dict.fromkeys(content_ids) if c and not str(c).startswith("http")]
+    out: dict = {}
+    for i in range(0, len(ids), 500):
+        ch = ids[i:i + 500]
+        ph = ",".join([_P] * len(ch))
+        for r in conn.execute(
+                f"SELECT c.content_id AS cid, c.url AS url FROM content c "
+                f"WHERE c.content_id IN ({ph}) AND c.is_redirect = 0 AND c.content_hash IS NOT NULL",
+                tuple(ch)).fetchall():
+            d = dict(r)
+            cid, url = d["cid"], d["url"]
+            cur = out.get(cid)
+            if cur is None or (len(url), url) < (len(cur), cur):
+                out[cid] = url
+    return out
+
+
 def membership_rows_with_hits(conn, **filters) -> List[Tuple[str, str, List[str]]]:
     """[(content_id, url, [matched keywords])] — distinct pages plus which of the category's
     keywords each page matched, computed with the same clause used for membership. The matched
-    list is empty when there are no keywords."""
+    list is empty when there are no keywords. The representative url is the page's *canonical*
+    url (see _canonical_urls), so stored hits sit on the url people recognise and every alias
+    of a page resolves to the same row."""
     keywords = list(filters.get("keywords") or [])
     sql, params = build_query(membership=True, keyword_hits=True, **filters)
-    out: List[Tuple[str, str, List[str]]] = []
+    rows: List[list] = []
     for r in conn.execute(sql, tuple(params)).fetchall():
         d = dict(r)
         matched = [keywords[i] for i in range(len(keywords)) if d.get(f"kw_{i}")]
-        out.append((d["content_id"], d["url"], matched))
-    return out
+        rows.append([d["content_id"], d["url"], matched])
+    canon = _canonical_urls(conn, [row[0] for row in rows])
+    return [(row[0], canon.get(row[0], row[1]), row[2]) for row in rows]
 
 
 def org_breakdown(conn, *, organisations: Sequence[str], document_types: Sequence[str] = (),
