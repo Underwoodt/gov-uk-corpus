@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import time
 import uuid
 from typing import Dict, List, Optional, Sequence
@@ -62,19 +61,75 @@ def build_prompt(inclusion: str, exclusion: str, title: str, description: str,
     )
 
 
-def parse_decision(text: str) -> Optional[Dict]:
-    """Parse the model reply into {keep, score, reason}, or None if unparseable."""
+def _iter_json_spans(text: str):
+    """Yield each top-level balanced ``{...}`` substring, string/escape aware — so a ``}``
+    inside a quoted value doesn't end the span, and reasoning prose around the object is
+    skipped rather than swept in."""
+    depth = 0
+    start = -1
+    in_str = False
+    esc = False
+    for i, ch in enumerate(text):
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}" and depth > 0:
+            depth -= 1
+            if depth == 0 and start >= 0:
+                yield text[start:i + 1]
+                start = -1
+
+
+def _extract_json_object(text: str, prefer_keys=("keep",)) -> Optional[Dict]:
+    """The model's decision object, recovered even when wrapped in reasoning/prose.
+
+    Tries the whole reply first, then each balanced ``{...}`` span it contains, and returns the
+    LAST valid object that carries an expected key — a reasoning model tends to emit its verdict
+    after the reasoning. Replaces a greedy first-'{'-to-last-'}' regex that grabbed prose (and
+    any stray braces in it) and then failed to parse."""
     if not text:
         return None
     t = text.strip()
     if t.startswith("```"):
         t = t.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-    m = re.search(r"\{.*\}", t, re.DOTALL)
-    if m:
-        t = m.group(0)
+    candidates: List[Dict] = []
     try:
-        d = json.loads(t)
+        obj = json.loads(t)                       # clean reply: whole thing is the object
+        if isinstance(obj, dict):
+            candidates.append(obj)
     except (ValueError, TypeError):
+        pass
+    if not candidates:                            # prose-wrapped: scan for embedded objects
+        for span in _iter_json_spans(t):
+            try:
+                obj = json.loads(span)
+            except (ValueError, TypeError):
+                continue
+            if isinstance(obj, dict):
+                candidates.append(obj)
+    if not candidates:
+        return None
+    for obj in reversed(candidates):
+        if any(k in obj for k in prefer_keys):
+            return obj
+    return candidates[-1]
+
+
+def parse_decision(text: str) -> Optional[Dict]:
+    """Parse the model reply into {keep, score, reason}, or None if unparseable."""
+    d = _extract_json_object(text, prefer_keys=("keep",))
+    if d is None:
         return None
     keep = d.get("keep")
     try:
@@ -129,17 +184,8 @@ def build_exclusion_prompt(name: str, inclusion: str, exclusion: str,
 def parse_exclusion(text: str) -> Optional[Dict]:
     """Parse an exclusion reply into a save_page decision {keep, score, reason}, tagging
     the reason with the exclusion_hit category. None if unparseable/missing verdict."""
-    if not text:
-        return None
-    t = text.strip()
-    if t.startswith("```"):
-        t = t.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-    m = re.search(r"\{.*\}", t, re.DOTALL)
-    if m:
-        t = m.group(0)
-    try:
-        d = json.loads(t)
-    except (ValueError, TypeError):
+    d = _extract_json_object(text, prefer_keys=("keep",))
+    if d is None:
         return None
     keep = d.get("keep")
     if keep is None:
