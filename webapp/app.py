@@ -2747,10 +2747,34 @@ def _enrich_audit_rows(conn, cid: int, rows: list, keys: list) -> None:
         return out
 
     if "matched_keywords" in need:
-        mk = _map(f"SELECT url, matched_keywords AS val FROM category_shortlist_pages "
-                  f"WHERE category_id = {P}", cid)
+        # Keyword hits are stored once per page, under its representative URL (MIN over all the
+        # page's alias URLs). But a row here can carry a *different* alias — e.g. the AI kept one
+        # chapter of a multi-URL guide, so the row's URL is that chapter, not the guide's base.
+        # Joining on the exact URL then misses the stored hits. Resolve by content_id instead
+        # (the same COALESCE(content_id, url) key membership dedupes on), so every alias of a
+        # page inherits its hits.
+        url2key = {}
+        for i in range(0, len(urls), 500):
+            ch = urls[i:i + 500]
+            ph = ",".join([P] * len(ch))
+            for row in conn.execute(
+                    f"SELECT url, COALESCE(content_id, url) AS k FROM content WHERE url IN ({ph})",
+                    tuple(ch)).fetchall():
+                d = dict(row)
+                url2key[d["url"]] = d["k"]
+        keys = list({v for v in url2key.values()})
+        key2kw = {}
+        for i in range(0, len(keys), 500):
+            ch = keys[i:i + 500]
+            ph = ",".join([P] * len(ch))
+            for row in conn.execute(
+                    f"SELECT content_id AS k, matched_keywords AS val FROM category_shortlist_pages "
+                    f"WHERE category_id = {P} AND content_id IN ({ph})", tuple([cid] + ch)).fetchall():
+                d = dict(row)
+                key2kw[d["k"]] = d.get("val")
         for r in rows:
-            r["matched_keywords"] = ", ".join(search_augment._load_list(mk.get(r.get("url"))))
+            key = url2key.get(r.get("url"), r.get("url"))
+            r["matched_keywords"] = ", ".join(search_augment._load_list(key2kw.get(key)))
     if "inclusion_reason" in need or "exclusion_reason" in need:
         inc = evaluate.latest_inclusion_run(conn, cid)
         exc = evaluate.latest_exclusion_run(conn, inc) if inc else None
