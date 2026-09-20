@@ -89,30 +89,32 @@ class TestAugmentedPages(unittest.TestCase):
         self.assertNotIn("https://www.gov.uk/a", [r["url"] for r in missing["rows"]])
 
     def test_es_score_returned_and_min_score_filter(self):
+        # /c is GOV.UK-only (source 'search') and weak; /b is 'both' but also weak.
         self.conn.execute("UPDATE category_search_pages SET es_score=? WHERE url=?",
-                          (0.05, "https://www.gov.uk/c"))     # strong GOV.UK match
+                          (0.005, "https://www.gov.uk/c"))    # search-only, weak
         self.conn.execute("UPDATE category_search_pages SET es_score=? WHERE url=?",
-                          (0.005, "https://www.gov.uk/b"))    # weak GOV.UK match
+                          (0.004, "https://www.gov.uk/b"))    # both, weak
         self.conn.commit()
         by = {r["url"]: r["es_score"] for r in search_augment.augmented_pages(self.conn, 7)["rows"]}
-        self.assertAlmostEqual(by["https://www.gov.uk/c"], 0.05)
+        self.assertAlmostEqual(by["https://www.gov.uk/c"], 0.005)
         out = search_augment.augmented_pages(self.conn, 7, min_score=0.01)
         urls = {r["url"] for r in out["rows"]}
-        self.assertIn("https://www.gov.uk/c", urls)           # 0.05 >= 0.01 -> kept
-        self.assertNotIn("https://www.gov.uk/b", urls)        # 0.005 < 0.01 -> dropped
-        self.assertIn("https://www.gov.uk/a", urls)           # no score -> kept
+        self.assertNotIn("https://www.gov.uk/c", urls)        # GOV.UK-only, below -> dropped
+        self.assertIn("https://www.gov.uk/b", urls)           # 'both' below -> KEPT (our filter found it)
+        self.assertIn("https://www.gov.uk/a", urls)           # shortlister -> kept
 
     def test_filtered_summary_tracks_min_score(self):
         self.conn.execute("UPDATE category_search_pages SET es_score=? WHERE url=?",
-                          (0.005, "https://www.gov.uk/b"))   # both, weak
+                          (0.004, "https://www.gov.uk/b"))   # both, weak
         self.conn.execute("UPDATE category_search_pages SET es_score=? WHERE url=?",
-                          (0.05, "https://www.gov.uk/c"))    # search, strong
+                          (0.005, "https://www.gov.uk/c"))   # search-only, weak
         self.conn.commit()
         self.assertEqual(search_augment.filtered_summary(self.conn, 7)["counts"],
                          {"shortlister": 2, "both": 1, "search": 1})
-        # min_score drops the weak 'both' (0.005); NULL-score shortlisters are kept
+        # min_score drops only the weak GOV.UK-ONLY row; 'both' and shortlister are untouched,
+        # so shortlister+both stays equal to the deterministic shortlist size.
         fs = search_augment.filtered_summary(self.conn, 7, min_score=0.01)
-        self.assertEqual(fs["counts"], {"shortlister": 2, "both": 0, "search": 1})
+        self.assertEqual(fs["counts"], {"shortlister": 2, "both": 1, "search": 0})
 
     def test_rows_carry_both_keyword_sets(self):
         out = search_augment.augmented_pages(self.conn, 7)

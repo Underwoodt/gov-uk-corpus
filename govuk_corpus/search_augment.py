@@ -223,7 +223,11 @@ def _where_clause(cid: int, source: str = "", q: str = "", loaded: str = "",
         where.append("c.url IS NULL")
     ms = _coerce_score(min_score)
     if ms > 0:
-        where.append(f"(sp.es_score IS NULL OR sp.es_score >= {_P})")
+        # The relevance threshold only weeds GOV.UK-Search-ONLY rows (the false-positive
+        # candidates). 'shortlister'/'both' pages are in our deterministic shortlist because our
+        # own filters matched the keywords, so a low GOV.UK es_score must NOT drop them —
+        # otherwise shortlister+both would stop equalling the shortlist size.
+        where.append(f"(sp.source <> 'search' OR sp.es_score IS NULL OR sp.es_score >= {_P})")
         params.append(ms)
     return " AND ".join(where), params
 
@@ -254,7 +258,8 @@ def augmented_pages(conn, cid: int, source: str = "", limit: int = 100, offset: 
     """A page of the augmented shortlist, optionally filtered to one source, a title substring
     `q` (case-insensitive, over the WHOLE stored set), corpus status `loaded`
     ('in' = in the corpus, 'missing' = not fetched yet), and/or a minimum GOV.UK relevance
-    `min_score` (rows WITH an es_score below it are dropped; rows with no score are kept)."""
+    `min_score` (drops GOV.UK-Search-ONLY rows with an es_score below it; shortlister/both are
+    never dropped by it)."""
     wsql, params = _where_clause(cid, source, q, loaded, min_score)
     join = _JOIN
     total = conn.execute(
