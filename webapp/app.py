@@ -2731,6 +2731,7 @@ _VIRTUAL_FIELDS = {
     "matched_keywords": "Matched keywords",
     "inclusion_reason": "Inclusion reason",
     "exclusion_reason": "Exclusion reason",
+    "stage": "Stage",
 }
 
 _DOWNLOAD_SECTIONS = [
@@ -2752,6 +2753,8 @@ _DOWNLOAD_SECTIONS = [
          "from the latest AI run; blank for pages not evaluated"),
         ("exclusion_reason", "Exclusion reason", False, False,
          "from the latest AI run's exclusion pass"),
+        ("stage", "Stage", False, False,
+         "the funnel stage / phase these rows are shown at (tags each row for the download)"),
     ]),
     ("Ownership", [
         ("primary_org", "Primary publishing organisation", False, False, None),
@@ -2782,11 +2785,14 @@ def _field_label(k: str) -> str:
     return _VIRTUAL_FIELDS[k] if k in _VIRTUAL_FIELDS else shortlist.EXPORT_FIELDS[k][1]
 
 
-def _enrich_audit_rows(conn, cid: int, rows: list, keys: list) -> None:
+def _enrich_audit_rows(conn, cid: int, rows: list, keys: list, stage_label: str = None) -> None:
     """Add the category/run-scoped virtual columns (matched keywords, inclusion/exclusion
-    reason) to each row in place, for whichever are in `keys`. Reasons come from the shortlist's
-    latest inclusion run and its exclusion run; pages not evaluated get ''."""
+    reason, stage) to each row in place, for whichever are in `keys`. Reasons come from the
+    shortlist's latest inclusion run and its exclusion run; pages not evaluated get ''."""
     need = [k for k in keys if k in _VIRTUAL_FIELDS]
+    if "stage" in need:                          # constant per view — tags each row with its stage
+        for r in rows:
+            r["stage"] = stage_label or ""
     urls = [r.get("url") for r in rows if r.get("url")]
     if not need or not urls:
         for r in rows:                       # still populate empty cells so columns render
@@ -3035,7 +3041,8 @@ def api_audit_shortlist(request: Request, cid: int, stage: str = "keyword",
     try:
         _keys, esql, eparams = shortlist.export_query(real_keys, limit=limit, offset=offset, **filters)
         rows = [dict(r) for r in conn.execute(esql, tuple(eparams)).fetchall()]
-        _enrich_audit_rows(conn, cid, rows, keys_wanted)   # matched keywords + AI reasons
+        _enrich_audit_rows(conn, cid, rows, keys_wanted,   # matched keywords + AI reasons + stage
+                           stage_label=dict(_AUDIT_STAGES).get(stage, stage))
     except Exception as e:
         conn.close()
         return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=500)
@@ -3102,7 +3109,8 @@ def export_category(request: Request, cid: int, format: str = "csv", stage: str 
     wanted = [f for f in fields if f in _all_audit_fields()] or list(_AUDIT_DEFAULT_FIELDS)
     real = [k for k in wanted if k in shortlist.EXPORT_FIELDS]
     keys, rows = shortlist.export_rows(conn, real, **_merge_extra(sq, ""))   # keys: real, url-first
-    _enrich_audit_rows(conn, cid, rows, wanted)                              # matched keywords + AI reasons
+    _enrich_audit_rows(conn, cid, rows, wanted,                              # matched keywords + AI reasons + stage
+                       stage_label=dict(_AUDIT_STAGES).get(stage, stage))
     conn.close()
     # Columns: the real fields (url first) then any selected virtual fields, in selection order.
     keys = list(keys) + [k for k in wanted if k in _VIRTUAL_FIELDS and k not in keys]
