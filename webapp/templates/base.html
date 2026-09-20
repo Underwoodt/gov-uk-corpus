@@ -10,8 +10,10 @@
 <body>
   <script>
     // Apply the saved UI display level (Profile page) as early as possible, before the
-    // page paints, so higher-level elements don't flash in. Unset => everything shows.
-    (function () { try { var l = localStorage.getItem("ui_level"); if (l) document.documentElement.setAttribute("data-ui-level", l); } catch (e) {} })();
+    // page paints, so higher-level elements don't flash in. If no level has been chosen yet
+    // (e.g. a user's first login), default to Simple and remember it, so people start on the
+    // uncluttered view and can opt into more detail on the Profile page.
+    (function () { try { var l = localStorage.getItem("ui_level"); if (!l) { l = "simple"; localStorage.setItem("ui_level", l); } document.documentElement.setAttribute("data-ui-level", l); } catch (e) {} })();
   </script>
   <script>
     // CSRF: echo the sb_csrf cookie in an X-CSRF-Token header on every same-origin

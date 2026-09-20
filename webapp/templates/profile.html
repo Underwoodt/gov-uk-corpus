@@ -77,9 +77,9 @@
 
   <script>
     // The display level is stored per-browser and applied as a data-ui-level attribute on
-    // <html>; CSS hides elements marked for a higher level (see govuk.css). Unset = Admin
-    // (everything shows), so nothing is hidden until a lower level is chosen.
-    function currentLevel() { try { return localStorage.getItem("ui_level") || "admin"; } catch (e) { return "admin"; } }
+    // <html>; CSS hides elements marked for a higher level (see govuk.css). New users default
+    // to Simple (set on first login in base.html); they can pick a higher level here.
+    function currentLevel() { try { return localStorage.getItem("ui_level") || "simple"; } catch (e) { return "simple"; } }
     function apply(level) {
       document.documentElement.setAttribute("data-ui-level", level);
       try { localStorage.setItem("ui_level", level); } catch (e) {}
