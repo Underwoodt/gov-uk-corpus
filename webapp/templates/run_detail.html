@@ -123,13 +123,20 @@
     (neither kept nor dropped).</p>
   <div class="table-wrap">
     <table style="font-size:14px;">
-      <thead><tr><th>Phase</th><th>Page</th><th>Reason</th></tr></thead>
+      <thead><tr><th>Phase</th><th>Page</th><th>Reason</th><th>Raw model reply</th></tr></thead>
       <tbody>
         {% for u in unparsed %}
         <tr>
           <td>{{ u.phase or '—' }}</td>
-          <td><a href="{{ u.url }}">{{ u.url }}</a></td>
+          <td><a href="{{ u.url }}" target="_blank" rel="noopener">{{ u.url }}</a></td>
           <td class="secondary">{{ u.reason or 'unparseable model reply' }}</td>
+          <td class="secondary">
+            {% if u.raw_reply %}
+            <details><summary style="cursor:pointer;">show reply</summary>
+              <pre style="white-space:pre-wrap;word-break:break-word;max-width:520px;margin:6px 0 0;font-size:12px;">{{ u.raw_reply }}</pre>
+            </details>
+            {% else %}<span class="secondary">—</span>{% endif %}
+          </td>
         </tr>
         {% endfor %}
       </tbody>

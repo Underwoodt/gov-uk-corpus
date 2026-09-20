@@ -48,6 +48,9 @@ def connect(_path: Optional[str] = None, statement_timeout_ms: Optional[int] = N
 def init_db(conn) -> None:
     with open(_SCHEMA_PATH, encoding="utf-8") as fh:
         conn.execute(fh.read())
+    # Lightweight, idempotent column migrations for tables that already exist on prod
+    # (CREATE TABLE IF NOT EXISTS above is a no-op for them, so new columns need ALTER).
+    conn.execute("ALTER TABLE evaluation_results ADD COLUMN IF NOT EXISTS raw_reply text")
     conn.commit()
 
 

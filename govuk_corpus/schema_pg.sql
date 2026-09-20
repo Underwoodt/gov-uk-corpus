@@ -157,6 +157,7 @@ CREATE TABLE IF NOT EXISTS evaluation_results (
     keep         smallint,
     score        real,
     reason       text,
+    raw_reply    text,          -- the model's raw reply, kept verbatim for debugging (esp. unparseable ones)
     ms           integer,
     created_at   text,
     PRIMARY KEY (run_id, url)

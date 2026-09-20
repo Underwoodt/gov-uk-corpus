@@ -1637,14 +1637,16 @@ def _run_evaluation(cid: int, limit: int) -> dict:
                 # time and shows on the Run detail 'Not parsed' list) and carry on.
                 evaluate.save_page(conn, run_id, cid, r["url"],
                                    {"keep": None, "score": None,
-                                    "reason": f"skipped after AI error: {str(res['error'])[:300]}"}, ms)
+                                    "reason": f"skipped after AI error: {str(res['error'])[:300]}"}, ms,
+                                   raw_reply=res.get("reply") or res.get("error"))
                 skipped += 1
                 done += 1
                 continue
             consec_err = 0
             decision = (evaluate.parse_exclusion(res.get("reply", "")) if is_exclusion
                         else evaluate.parse_decision(res.get("reply", "")))
-            evaluate.save_page(conn, run_id, cid, r["url"], decision, ms)
+            evaluate.save_page(conn, run_id, cid, r["url"], decision, ms,
+                               raw_reply=res.get("reply"))
             evaluate.set_actual_model(conn, run_id, res.get("actual_model"))
             c = res.get("cost_usd") or 0.0
             evaluate.add_run_cost(conn, run_id, c, res.get("input_tokens"), res.get("output_tokens"),
@@ -1764,6 +1766,63 @@ def _background_eval_loop(cid: int, stop_event: threading.Event, status: dict) -
         status["finished_at"] = db.now_iso()
 
 
+def _spawn_bg_eval(cid: int) -> dict:
+    """Start the background evaluation thread for a category (or return the one already
+    running). Thread-safe. Returns {'already_running': bool, 'status': <status dict>}."""
+    with _bg_lock:
+        ent = _bg_evals.get(cid)
+        if ent and ent["status"].get("running"):
+            return {"already_running": True, "status": ent["status"]}
+        stop_event = threading.Event()
+        status = {"running": True, "done": 0, "skipped": 0, "cost": 0.0, "phase": None,
+                  "remaining": None, "run_id": None, "stopped": None, "error": None,
+                  "started_at": db.now_iso(), "finished_at": None}
+        t = threading.Thread(target=_background_eval_loop, args=(cid, stop_event, status), daemon=True)
+        _bg_evals[cid] = {"thread": t, "stop": stop_event, "status": status}
+        t.start()
+        return {"already_running": False, "status": status}
+
+
+def _resume_stalled_runs() -> None:
+    """Re-drive any category whose ACTIVE evaluation run is unfinished. The background
+    driver lives only in memory, so a deploy/crash/restart strands an in-progress run —
+    the DB row stays 'in progress' with nothing pushing it forward (and Phase 2 never
+    auto-advances). Called once on startup. Best-effort: never blocks or fails startup.
+    Disable by setting 'auto_resume_runs' = '0'."""
+    log = logging.getLogger("assistant")
+    try:
+        conn = connect()
+        try:
+            if (settings.get_setting(conn, "auto_resume_runs", "1") or "1") == "0":
+                return
+            rows = conn.execute(
+                "SELECT DISTINCT category_id FROM evaluation_runs "
+                "WHERE finished_at IS NULL AND category_id IS NOT NULL").fetchall()
+            cids = []
+            for r in rows:
+                cid = int(dict(r)["category_id"])
+                active = _active_run(conn, cid)
+                run = evaluate.get_run(conn, active) if active else None
+                # Only re-drive a run that was genuinely interrupted mid-flight — i.e. its
+                # ACTIVE run is unfinished AND already made progress. A pages=0 unfinished
+                # run is indistinguishable from a created-but-never-started draft, so we
+                # leave those for the user to start rather than resurrecting abandoned drafts.
+                if run and not run.get("finished_at") and (run.get("pages") or 0) > 0:
+                    cids.append(cid)
+        finally:
+            conn.close()
+    except Exception as e:
+        log.warning("auto-resume: could not scan for stalled runs: %s", e)
+        return
+    for cid in cids:
+        try:
+            res = _spawn_bg_eval(cid)
+            if not res.get("already_running"):
+                log.info("auto-resumed stalled evaluation on startup (cid=%s)", cid)
+        except Exception as e:
+            log.warning("auto-resume failed for cid=%s: %s", cid, e)
+
+
 @app.post("/api/categories/{cid}/evaluate-bg/start")
 async def api_bg_eval_start(request: Request, cid: int):
     if not authed(request):
@@ -1773,18 +1832,10 @@ async def api_bg_eval_start(request: Request, cid: int):
     conn.close()
     if not ok:
         return JSONResponse({"error": "not found"}, status_code=404)
-    with _bg_lock:
-        ent = _bg_evals.get(cid)
-        if ent and ent["status"].get("running"):
-            return JSONResponse({"already_running": True, "status": ent["status"]})
-        stop_event = threading.Event()
-        status = {"running": True, "done": 0, "skipped": 0, "cost": 0.0, "phase": None,
-                  "remaining": None, "run_id": None, "stopped": None, "error": None,
-                  "started_at": db.now_iso(), "finished_at": None}
-        t = threading.Thread(target=_background_eval_loop, args=(cid, stop_event, status), daemon=True)
-        _bg_evals[cid] = {"thread": t, "stop": stop_event, "status": status}
-        t.start()
-    return JSONResponse({"started": True, "status": status})
+    res = _spawn_bg_eval(cid)
+    if res.get("already_running"):
+        return JSONResponse({"already_running": True, "status": res["status"]})
+    return JSONResponse({"started": True, "status": res["status"]})
 
 
 @app.get("/api/categories/{cid}/evaluate-bg/status")
@@ -3504,3 +3555,7 @@ def _startup():
     conn = connect()
     db.init_db(conn)
     conn.close()
+    # Re-drive any evaluation run left mid-flight by the previous process (deploy/crash),
+    # so a restart doesn't silently strand a run 'in progress'. Budget-capped; opt out via
+    # the 'auto_resume_runs' setting.
+    _resume_stalled_runs()

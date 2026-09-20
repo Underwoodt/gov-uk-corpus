@@ -26,6 +26,11 @@ def connect(db_path: str, statement_timeout_ms: Optional[int] = None) -> sqlite3
 def init_db(conn: sqlite3.Connection) -> None:
     with open(_SCHEMA_PATH, encoding="utf-8") as fh:
         conn.executescript(fh.read())
+    # Idempotent column migrations for pre-existing tables (SQLite ADD COLUMN has no
+    # IF NOT EXISTS, so check pragma first).
+    have = {r[1] for r in conn.execute("PRAGMA table_info(evaluation_results)")}
+    if "raw_reply" not in have:
+        conn.execute("ALTER TABLE evaluation_results ADD COLUMN raw_reply TEXT")
     conn.commit()
 
 

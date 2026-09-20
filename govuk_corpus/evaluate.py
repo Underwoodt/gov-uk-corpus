@@ -246,14 +246,17 @@ def run_candidates(conn, run_id: str, category_id: int, limit: int, *,
 
 
 def save_page(conn, run_id: str, category_id: int, url: str,
-              decision: Optional[Dict], ms: int) -> None:
+              decision: Optional[Dict], ms: int, raw_reply: Optional[str] = None) -> None:
     keep = decision.get("keep") if decision else None
     score = decision.get("score") if decision else None
     reason = decision.get("reason") if decision else "unparseable model reply"
+    # Keep the model's raw reply verbatim so an unparseable/odd decision can be debugged
+    # later (capped so a runaway reply can't bloat the row).
+    raw = (raw_reply or "")[:8000] or None
     conn.execute(
-        f"INSERT INTO evaluation_results (run_id, category_id, url, keep, score, reason, ms, created_at) "
-        f"VALUES ({_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P})",
-        (run_id, category_id, url, keep, score, reason, ms, db.now_iso()))
+        f"INSERT INTO evaluation_results (run_id, category_id, url, keep, score, reason, raw_reply, ms, created_at) "
+        f"VALUES ({_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P})",
+        (run_id, category_id, url, keep, score, reason, raw, ms, db.now_iso()))
     # update run totals
     kept = 1 if keep == 1 else 0
     dropped = 1 if keep == 0 else 0
@@ -390,7 +393,7 @@ def unparsed_results(conn, run_ids: Sequence[str]) -> List[dict]:
         return []
     ph = ",".join([_P] * len(ids))
     rows = conn.execute(
-        f"SELECT run_id, url, reason FROM evaluation_results "
+        f"SELECT run_id, url, reason, raw_reply FROM evaluation_results "
         f"WHERE keep IS NULL AND run_id IN ({ph}) ORDER BY url", tuple(ids)).fetchall()
     return [dict(r) for r in rows]
 
