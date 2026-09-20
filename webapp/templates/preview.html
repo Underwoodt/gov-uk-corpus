@@ -17,6 +17,10 @@
     .kw-corpus { background:#eef3ff; color:var(--dark-blue,#003078); border-color:#cfe0f7; }  /* corpus term */
     .kw-govuk { background:#fdeee2; color:#8a3b12; border-color:#f3d6bf; }                     /* GOV.UK term */
     .kw-none { color:var(--muted,#6b7477); font-size:12px; }
+    /* In-corpus status: is this URL loaded into our corpus yet? */
+    .ld { display:inline-block; font-size:12px; font-weight:700; padding:2px 9px; border-radius:999px; white-space:nowrap; }
+    .ld-yes { background:#d9f2e4; color:var(--green-dark,#00703c); }
+    .ld-no { background:#f3f2f1; color:var(--muted,#6b7477); }
     /* GOV.UK threshold-hit warning (coverage may be truncated). */
     .gc-warn { background:#fef7e0; border:1px solid #f2d888; border-left:4px solid #e0a800;
       border-radius:6px; padding:10px 12px; margin:8px 0 0; font-size:14px; }
@@ -328,7 +332,7 @@
         </div>
         <div style="overflow-x:auto;margin-top:8px;">
           <table id="gc-table" style="font-size:14px;width:100%;">
-            <thead><tr><th>Source</th><th>Title</th><th>Document type</th>
+            <thead><tr><th>Source</th><th>In corpus</th><th>Title</th><th>Document type</th>
               <th>Corpus terms</th><th>GOV.UK terms</th><th>URL</th></tr></thead>
             <tbody id="gc-rows"></tbody>
           </table>
@@ -500,6 +504,7 @@
     const PROV = { search: ["prov-search","GOV.UK Search only"], both: ["prov-both","Both"],
                    shortlister: ["prov-shortlister","Shortlister only"] };
     function provLozenge(s){ const p = PROV[s] || ["prov-shortlister", s]; return `<span class="prov ${p[0]}">${esc(p[1])}</span>`; }
+    function loadedLozenge(loaded){ return loaded ? `<span class="ld ld-yes">Loaded</span>` : `<span class="ld ld-no">Unloaded</span>`; }
     // Comment header for the expert query box: each configured threshold as BREACHED / not breached.
     function gcThresholdComments(th) {
       const yn = b => b ? "BREACHED" : "not breached";
@@ -521,7 +526,7 @@
     async function loadCoverage() {
       const tbody = document.getElementById("gc-rows"), status = document.getElementById("gc-status");
       const source = document.getElementById("gc-source").value;
-      tbody.innerHTML = `<tr><td colspan="6" class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr>`;
       try {
         const j = await (await fetch(`/api/categories/${CID}/augmented-pages?source=${encodeURIComponent(source)}&limit=${GC_PAGE}&offset=${gcOffset}&q=${encodeURIComponent(gcQuery)}`)).json();
         const sum = j.summary || {counts:{}, total:0};
@@ -565,7 +570,7 @@
           document.getElementById("gc-controls").hidden = true;
           document.getElementById("gc-download").hidden = true;
           document.getElementById("gc-pager").hidden = true;
-          tbody.innerHTML = `<tr><td colspan="6" class="secondary" style="padding:10px 6px;">Not run yet — click “Compare with GOV.UK Search”.</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="7" class="secondary" style="padding:10px 6px;">Not run yet — click “Compare with GOV.UK Search”.</td></tr>`;
           status.textContent = ""; return;
         }
         document.getElementById("gc-controls").hidden = false;
@@ -584,12 +589,13 @@
         tbody.innerHTML = rows.length ? rows.map(r =>
           `<tr>` +
             `<td>${provLozenge(r.source)}</td>` +
+            `<td>${loadedLozenge(r.loaded)}</td>` +
             `<td><a href="${esc(r.url)}">${esc(r.title || r.url)}</a></td>` +
             `<td>${esc(r.document_type || "—")}</td>` +
             `<td>${kwLozenges(r.corpus_keywords, "kw-corpus")}</td>` +
             `<td>${kwLozenges(r.govuk_keywords, "kw-govuk")}</td>` +
             `<td><a href="${esc(r.url)}" class="mono" style="font-size:13px;">${esc(r.url)}</a></td>` +
-          `</tr>`).join("") : `<tr><td colspan="6" class="secondary" style="padding:10px 6px;">No pages for this filter.</td></tr>`;
+          `</tr>`).join("") : `<tr><td colspan="7" class="secondary" style="padding:10px 6px;">No pages for this filter.</td></tr>`;
         const from = rows.length ? gcOffset + 1 : 0, to = gcOffset + rows.length;
         document.getElementById("gc-range").textContent = `${fmtInt(from)}–${fmtInt(to)} of ${fmtInt(total)}`;
         document.getElementById("gc-prev").disabled = gcOffset <= 0;

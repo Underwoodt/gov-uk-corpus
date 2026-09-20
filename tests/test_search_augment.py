@@ -68,6 +68,15 @@ class TestAugmentedPages(unittest.TestCase):
         self.assertEqual(out["total"], 0)
         self.assertEqual(out["rows"], [])
 
+    def test_loaded_flag(self):
+        # A row whose url is in the corpus is 'loaded'; one that isn't is not.
+        self.conn.execute("INSERT INTO content (url, content_id, is_redirect, content_hash) "
+                          "VALUES (?,?,?,?)", ("https://www.gov.uk/a", "c1", 0, "h"))
+        self.conn.commit()
+        by = {r["url"]: r["loaded"] for r in search_augment.augmented_pages(self.conn, 7)["rows"]}
+        self.assertTrue(by["https://www.gov.uk/a"])          # in corpus
+        self.assertFalse(by["https://www.gov.uk/c"])         # not fetched
+
     def test_rows_carry_both_keyword_sets(self):
         out = search_augment.augmented_pages(self.conn, 7)
         by_url = {r["url"]: r for r in out["rows"]}

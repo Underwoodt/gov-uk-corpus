@@ -193,29 +193,36 @@ def augmented_pages(conn, cid: int, source: str = "", limit: int = 100, offset: 
                     q: str = "") -> dict:
     """A page of the augmented shortlist, optionally filtered to one source and/or a title
     substring `q` (case-insensitive, over the WHOLE stored set — not just this page)."""
-    where = [f"category_id = {_P}"]
+    where = [f"sp.category_id = {_P}"]
     params: list = [cid]
     if source in ("shortlister", "both", "search"):
-        where.append(f"source = {_P}")
+        where.append(f"sp.source = {_P}")
         params.append(source)
     q = (q or "").strip()
     if q:
-        where.append(f"LOWER(title) LIKE LOWER({_P})")
+        where.append(f"LOWER(sp.title) LIKE LOWER({_P})")
         params.append("%" + q + "%")
     wsql = " AND ".join(where)
     total = conn.execute(
-        f"SELECT COUNT(*) AS n FROM category_search_pages WHERE {wsql}", tuple(params)).fetchone()["n"]
+        f"SELECT COUNT(*) AS n FROM category_search_pages sp WHERE {wsql}", tuple(params)).fetchone()["n"]
     # Order: search-only first (the gaps), then both, then shortlister; url within.
-    order = ("CASE source WHEN 'search' THEN 0 WHEN 'both' THEN 1 ELSE 2 END, url"
-             if not source else "url")
+    order = ("CASE sp.source WHEN 'search' THEN 0 WHEN 'both' THEN 1 ELSE 2 END, sp.url"
+             if not source else "sp.url")
+    # `loaded` = the url is present in our corpus (fetched). LEFT JOIN so search-only pages we
+    # haven't fetched come back as not loaded.
     rows = [dict(r) for r in conn.execute(
-        f"SELECT url, content_id, title, document_type, source, phrases, corpus_phrases "
-        f"FROM category_search_pages WHERE {wsql} ORDER BY {order} LIMIT {_P} OFFSET {_P}",
+        f"SELECT sp.url AS url, sp.content_id AS content_id, sp.title AS title, "
+        f"sp.document_type AS document_type, sp.source AS source, sp.phrases AS phrases, "
+        f"sp.corpus_phrases AS corpus_phrases, "
+        f"CASE WHEN c.url IS NOT NULL THEN 1 ELSE 0 END AS loaded "
+        f"FROM category_search_pages sp LEFT JOIN content c ON c.url = sp.url "
+        f"WHERE {wsql} ORDER BY {order} LIMIT {_P} OFFSET {_P}",
         tuple(params) + (limit, offset)).fetchall()]
     for r in rows:
         # GOV.UK matched keywords (comma-joined) and corpus matched keywords (JSON) -> arrays.
         r["govuk_keywords"] = [p.strip() for p in (r.get("phrases") or "").split(",") if p.strip()]
         r["corpus_keywords"] = _load_list(r.get("corpus_phrases"))
+        r["loaded"] = bool(r.get("loaded"))
     return {"total": total, "rows": rows, "limit": limit, "offset": offset, "source": source}
 
 
