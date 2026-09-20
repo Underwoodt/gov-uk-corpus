@@ -12,6 +12,10 @@
       letter-spacing:.05em; color:var(--dark-blue,#003078); margin-bottom:4px; }
     .explain-summary .es-lead { margin:0; font-size:16px; line-height:1.5; }
     .explain-summary .es-outcome { margin:8px 0 0; font-size:15px; line-height:1.5; color:#33475b; }
+    /* Runs table "Pages" cell: evaluated / current-shortlist target, with a drift chip. */
+    .pg-sub { color:var(--muted,#6b7477); font-weight:400; }
+    .pg-drift { display:inline-block; margin-left:6px; font-size:11px; font-weight:700; padding:0 6px;
+      border-radius:999px; background:#fdf0e6; color:#8a4b12; vertical-align:middle; cursor:help; }
     /* Provenance lozenges for GOV.UK Search coverage. */
     .prov { display:inline-block; font-size:12px; font-weight:700; padding:2px 9px; border-radius:999px; white-space:nowrap; }
     .prov-search { background:#fbe5d6; color:#8a3b12; }        /* gap: GOV.UK Search only */
@@ -293,7 +297,7 @@
       <table id="runs-table" hidden>
         <thead><tr><th title="The run that Evaluate / background runs add to">Active</th>
           <th>Name</th><th>Started</th><th>Elapsed</th>
-          <th class="num">Pages</th><th class="num">Keep</th><th class="num">Drop</th>
+          <th class="num" title="Pages this run evaluated / the total in the current shortlist it works toward (the inclusion phase covers the whole shortlist; exclusion re-checks only the pages inclusion kept). A drift chip shows when they differ.">Pages</th><th class="num">Keep</th><th class="num">Drop</th>
           <th class="num">Tokens in</th><th class="num">Tokens out</th><th class="num">Cost</th>
           <th></th></tr></thead>
         <tbody></tbody>
@@ -1007,6 +1011,23 @@
       return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
     }
 
+    // "Pages" cell: evaluated / current-shortlist target. When they drift (finished run whose
+    // shortlist has since changed, or a run stopped before finishing), show the delta as a chip
+    // so X/Y isn't misread as "over 100%".
+    function pagesCell(r) {
+      const p = fmtInt(r.pages);
+      if (r.target == null) return p;
+      const t = fmtInt(r.target);
+      const drift = (Number(r.pages) || 0) - (Number(r.target) || 0);
+      if (!drift) return `${p} <span class="pg-sub">/ ${t}</span>`;
+      const sign = drift > 0 ? "+" : "−", mag = fmtInt(Math.abs(drift));
+      const tip = drift > 0
+        ? `This run evaluated ${p} pages; the shortlist now holds ${t} — ${mag} fewer than when it ran.`
+        : `This run evaluated ${p} of ${t} pages in the current shortlist — ${mag} not covered (stopped early, or the shortlist has since grown).`;
+      return `<span title="${esc(tip)}">${p} <span class="pg-sub">/ ${t}</span></span>`
+           + ` <span class="pg-drift" title="${esc(tip)}">${sign}${mag}</span>`;
+    }
+
     async function loadRuns() {
       const j = await (await fetch(`/api/categories/${CID}/runs`)).json();
       if (window.setSqlPanel) setSqlPanel("runs-sql", j.sql);
@@ -1028,7 +1049,7 @@
           `title="Open run details">${esc(r.name || r.run_id)}</a></td>` +
           `<td>${fmtDate(r.started_at)}</td>` +
           `<td class="num timing">${fmtElapsed(r.started_at, r.finished_at)}</td>` +
-          `<td class="num">${fmtInt(r.pages)}${r.target != null ? " / " + fmtInt(r.target) : ""}</td>` +
+          `<td class="num">${pagesCell(r)}</td>` +
           `<td class="num">${fmtInt(r.kept)}</td>` +
           `<td class="num">${fmtInt(r.dropped)}</td>` +
           `<td class="num">${fmtInt(r.in_tokens)}</td>` +
