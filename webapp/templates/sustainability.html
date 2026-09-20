@@ -28,6 +28,7 @@
     .sd-eq li b { font-size:15px; color:var(--text,#0b0c0c); font-variant-numeric:tabular-nums; }
     .sd table { font-size:14px; width:100%; } .sd .num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
     .sd .gdiv { border-left:2px solid var(--border-mid,#b1b4b6); }
+    .sd .flag { color:#b3600a; font-weight:700; text-decoration:none; cursor:help; margin-left:2px; border-bottom:1px dotted #b3600a; }
     .sd h2 { font-size:19px; margin:26px 0 8px; }
     .sd .caveat { background:#fef7e0; border:1px solid #f2d888; border-left:4px solid #e0a800; border-radius:6px;
       padding:10px 12px; font-size:14px; max-width:820px; }
@@ -80,7 +81,9 @@
     </thead>
     <tbody>
       {% for m in s.by_model %}
-      <tr><td>{{ m.provider }} / {{ m.model }}</td><td class="num">{{ num(m.runs) }}</td>
+      {% set untracked = (m.untracked_runs or 0) | int %}
+      <tr><td>{{ m.provider }} / {{ m.model }}{% if untracked %}<abbr class="flag" title="{{ untracked }} run{{ '' if untracked == 1 else 's' }} recorded a cost (${{ '%.2f'|format(m.untracked_cost) }}) but no token counts — excluded from the per-1M averages.">*</abbr>{% endif %}</td>
+        <td class="num">{{ num(m.runs) }}</td>
         <td class="num">{{ num(m.intok) }}</td><td class="num">{{ num(m.outtok) }}</td>
         <td class="num">${{ '%.2f'|format(m.cost) }}</td><td class="num">{{ energy(m.impact.point.kwh) }}</td>
         <td class="num">{{ co2(m.impact.point.co2_kg) }}</td>
@@ -94,7 +97,9 @@
       {% endfor %}
     </tbody>
   </table></div>
-  <p class="secondary" style="margin:2px 0 0;font-size:12px;">“Per 1M tokens” normalises for run volume so models compare like-for-like (total tokens = input + output).</p>
+  <p class="secondary" style="margin:2px 0 0;font-size:12px;">“Per 1M tokens” normalises for run volume so models compare like-for-like (total tokens = input + output).
+    Its <strong>Cost</strong> uses only runs that recorded token counts, so spend with no usage data behind it can't distort the average.
+    {% if s.by_model | selectattr('untracked_runs') | list %}<span class="flag">*</span> marks a model with such runs.{% endif %}</p>
 
   <h2>By stage</h2>
   <div class="table-wrap"><table>

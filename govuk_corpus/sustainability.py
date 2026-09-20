@@ -109,13 +109,19 @@ def equivalences(kwh: float, water_l: float, co2_kg: float) -> list:
 
 def _per_mtok(d: dict) -> Optional[Dict[str, float]]:
     """Average cost / energy / water / CO₂ per one million tokens processed (in + out).
-    Lets you compare models like-for-like regardless of how much each was run."""
+    Lets you compare models like-for-like regardless of how much each was run.
+
+    Cost uses ``metered_cost`` — the cost of runs that actually recorded token counts — so a
+    run that logged a cost but no tokens (missing usage data) can't distort the average by
+    attributing its spend to a tiny denominator. Energy/water/CO₂ are already token-derived, so
+    a zero-token run contributes nothing to them anyway."""
     toks = float(d.get("intok") or 0) + float(d.get("outtok") or 0)
     if toks <= 0:
         return None
     scale = 1_000_000.0 / toks
     pt = d["impact"]["point"]
-    return {"cost": d["cost"] * scale, "kwh": pt["kwh"] * scale,
+    metered = d.get("metered_cost", d["cost"])
+    return {"cost": metered * scale, "kwh": pt["kwh"] * scale,
             "water_l": pt["water_l"] * scale, "co2_kg": pt["co2_kg"] * scale}
 
 
@@ -141,14 +147,22 @@ def summary(conn) -> dict:
 
     def _grouped(select_cols: str, group_by: str) -> list:
         rows = []
+        # `metered_cost` / `untracked_*` split cost by whether the run recorded any tokens, so
+        # per-1M averages can ignore cost that has no usage data behind it (CASE, not FILTER,
+        # for sqlite/postgres portability).
+        tok_expr = "(COALESCE(in_tokens,0)+COALESCE(out_tokens,0))"
         for r in conn.execute(
                 f"SELECT {select_cols}, COUNT(*) AS runs, COALESCE(SUM(cost),0) AS cost, "
                 f"COALESCE(SUM(in_tokens),0) AS intok, COALESCE(SUM(out_tokens),0) AS outtok, "
                 f"COALESCE(SUM(hit_tokens),0) AS hit, COALESCE(SUM(miss_tokens),0) AS miss, "
-                f"COALESCE(SUM(pages),0) AS pages, COALESCE(SUM(kept),0) AS kept "
+                f"COALESCE(SUM(pages),0) AS pages, COALESCE(SUM(kept),0) AS kept, "
+                f"COALESCE(SUM(CASE WHEN {tok_expr}>0 THEN cost ELSE 0 END),0) AS metered_cost, "
+                f"COALESCE(SUM(CASE WHEN {tok_expr}=0 AND cost>0 THEN 1 ELSE 0 END),0) AS untracked_runs, "
+                f"COALESCE(SUM(CASE WHEN {tok_expr}=0 AND cost>0 THEN cost ELSE 0 END),0) AS untracked_cost "
                 f"FROM evaluation_runs GROUP BY {group_by} ORDER BY SUM(cost) DESC").fetchall():
             d = dict(r)
-            for k in ("cost", "intok", "outtok", "hit", "miss", "pages", "kept"):
+            for k in ("cost", "intok", "outtok", "hit", "miss", "pages", "kept",
+                      "metered_cost", "untracked_runs", "untracked_cost"):
                 d[k] = float(d.get(k) or 0)
             d["impact"] = impact(d["intok"], d["outtok"], d["hit"], d["miss"])
             d["per_mtok"] = _per_mtok(d)
