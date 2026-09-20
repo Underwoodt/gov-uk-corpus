@@ -2732,6 +2732,7 @@ _VIRTUAL_FIELDS = {
     "inclusion_reason": "Inclusion reason",
     "exclusion_reason": "Exclusion reason",
     "stage": "Stage",
+    "decision": "Stage decision",
 }
 
 _DOWNLOAD_SECTIONS = [
@@ -2755,6 +2756,8 @@ _DOWNLOAD_SECTIONS = [
          "from the latest AI run's exclusion pass"),
         ("stage", "Stage", False, False,
          "the funnel stage / phase these rows are shown at (tags each row for the download)"),
+        ("decision", "Stage decision", False, False,
+         "the AI verdict for the page — Keep / Drop / Unscored (from the run relevant to the stage)"),
     ]),
     ("Ownership", [
         ("primary_org", "Primary publishing organisation", False, False, None),
@@ -2785,14 +2788,16 @@ def _field_label(k: str) -> str:
     return _VIRTUAL_FIELDS[k] if k in _VIRTUAL_FIELDS else shortlist.EXPORT_FIELDS[k][1]
 
 
-def _enrich_audit_rows(conn, cid: int, rows: list, keys: list, stage_label: str = None) -> None:
+def _enrich_audit_rows(conn, cid: int, rows: list, keys: list, stage: str = None) -> None:
     """Add the category/run-scoped virtual columns (matched keywords, inclusion/exclusion
-    reason, stage) to each row in place, for whichever are in `keys`. Reasons come from the
-    shortlist's latest inclusion run and its exclusion run; pages not evaluated get ''."""
+    reason, stage, decision) to each row in place, for whichever are in `keys`. Reasons come
+    from the shortlist's latest inclusion run and its exclusion run; pages not evaluated get ''.
+    `stage` is the audit stage KEY (drives the stage label and which run the decision reads)."""
     need = [k for k in keys if k in _VIRTUAL_FIELDS]
     if "stage" in need:                          # constant per view — tags each row with its stage
+        stage_label = dict(_AUDIT_STAGES).get(stage, stage) or ""
         for r in rows:
-            r["stage"] = stage_label or ""
+            r["stage"] = stage_label
     urls = [r.get("url") for r in rows if r.get("url")]
     if not need or not urls:
         for r in rows:                       # still populate empty cells so columns render
@@ -2851,6 +2856,27 @@ def _enrich_audit_rows(conn, cid: int, rows: list, keys: list, stage_label: str 
             em = _map(f"SELECT url, reason AS val FROM evaluation_results WHERE run_id = {P}", exc) if exc else {}
             for r in rows:
                 r["exclusion_reason"] = em.get(r.get("url")) or ""
+    if "decision" in need:
+        # The AI verdict for each page — Keep / Drop / Unscored (a row with keep = NULL) — from
+        # the run relevant to the stage: the inclusion run for include/excl_include, the exclusion
+        # run for final/excl_final, and the page's furthest disposition on a deterministic stage.
+        inc = evaluate.latest_inclusion_run(conn, cid)
+        exc = evaluate.latest_exclusion_run(conn, inc) if inc else None
+        inc_keep = _map(f"SELECT url, keep AS val FROM evaluation_results WHERE run_id = {P}", inc) if inc else {}
+        exc_keep = _map(f"SELECT url, keep AS val FROM evaluation_results WHERE run_id = {P}", exc) if exc else {}
+        def _verdict(km, u):
+            if u not in km:
+                return ""                        # page not evaluated at this stage
+            k = km[u]
+            return "Keep" if k == 1 else "Drop" if k == 0 else "Unscored"
+        for r in rows:
+            u = r.get("url")
+            if stage in ("include", "excl_include"):
+                r["decision"] = _verdict(inc_keep, u)
+            elif stage in ("final", "excl_final"):
+                r["decision"] = _verdict(exc_keep if exc else inc_keep, u)
+            else:                                # deterministic stage → furthest AI disposition
+                r["decision"] = _verdict(exc_keep, u) if u in exc_keep else _verdict(inc_keep, u)
 
 
 # ---- results table (browse the shortlist with configurable columns) -----
@@ -3041,8 +3067,7 @@ def api_audit_shortlist(request: Request, cid: int, stage: str = "keyword",
     try:
         _keys, esql, eparams = shortlist.export_query(real_keys, limit=limit, offset=offset, **filters)
         rows = [dict(r) for r in conn.execute(esql, tuple(eparams)).fetchall()]
-        _enrich_audit_rows(conn, cid, rows, keys_wanted,   # matched keywords + AI reasons + stage
-                           stage_label=dict(_AUDIT_STAGES).get(stage, stage))
+        _enrich_audit_rows(conn, cid, rows, keys_wanted, stage=stage)   # kw + reasons + stage + decision
     except Exception as e:
         conn.close()
         return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=500)
@@ -3109,8 +3134,7 @@ def export_category(request: Request, cid: int, format: str = "csv", stage: str 
     wanted = [f for f in fields if f in _all_audit_fields()] or list(_AUDIT_DEFAULT_FIELDS)
     real = [k for k in wanted if k in shortlist.EXPORT_FIELDS]
     keys, rows = shortlist.export_rows(conn, real, **_merge_extra(sq, ""))   # keys: real, url-first
-    _enrich_audit_rows(conn, cid, rows, wanted,                              # matched keywords + AI reasons + stage
-                       stage_label=dict(_AUDIT_STAGES).get(stage, stage))
+    _enrich_audit_rows(conn, cid, rows, wanted, stage=stage)   # kw + reasons + stage + decision
     conn.close()
     # Columns: the real fields (url first) then any selected virtual fields, in selection order.
     keys = list(keys) + [k for k in wanted if k in _VIRTUAL_FIELDS and k not in keys]
