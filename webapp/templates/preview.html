@@ -5,6 +5,13 @@
 {% block title %}{{ category.display_name }} — explainability{% endblock %}
 {% block content %}
   <style>
+    /* Plain-English summary panel at the top of the Explainability tab. */
+    .explain-summary { background:#eef3f8; border:1px solid #c9d7e6; border-left:4px solid var(--blue,#1d70b8);
+      border-radius:8px; padding:12px 16px; margin:0 0 22px; max-width:900px; }
+    .explain-summary .es-tag { display:inline-block; font-size:11px; font-weight:700; text-transform:uppercase;
+      letter-spacing:.05em; color:var(--dark-blue,#003078); margin-bottom:4px; }
+    .explain-summary .es-lead { margin:0; font-size:16px; line-height:1.5; }
+    .explain-summary .es-outcome { margin:8px 0 0; font-size:15px; line-height:1.5; color:#33475b; }
     /* Provenance lozenges for GOV.UK Search coverage. */
     .prov { display:inline-block; font-size:12px; font-weight:700; padding:2px 9px; border-radius:999px; white-space:nowrap; }
     .prov-search { background:#fbe5d6; color:#8a3b12; }        /* gap: GOV.UK Search only */
@@ -66,6 +73,23 @@
   </div>
 
   <div class="tabpanel">
+    <!-- Plain-English summary: the recipe (server-rendered from the filters) plus the live
+         outcome numbers (filled by updateExplainSummary() once the funnel + runs load). -->
+    {% set kws = filters.keywords if filters else [] %}
+    {% set n_orgs = (filters.organisations | length) if filters else 0 %}
+    {% set n_dts = (filters.document_types | length) if filters else 0 %}
+    <section class="explain-summary" aria-label="Plain-English summary">
+      <span class="es-tag">In plain English</span>
+      <p class="es-lead">This shortlist looks across
+        <strong>{{ ('all of GOV.UK' if n_orgs == 0 else (n_orgs ~ ' organisation' ~ ('' if n_orgs == 1 else 's'))) }}</strong>
+        and <strong>{{ ('every type of page' if n_dts == 0 else (n_dts ~ ' page type' ~ ('' if n_dts == 1 else 's'))) }}</strong>,
+        keeping pages that mention
+        {% if kws %}<strong>{% for k in kws[:6] %}“{{ k }}”{% if not loop.last %}, {% endif %}{% endfor %}{% if kws|length > 6 %} and {{ kws|length - 6 }} more{% endif %}</strong>{% else %}<strong>any content</strong>{% endif %}.
+        Matching pages are then reviewed by AI — first to include anything relevant, then to remove edge
+        cases — to reach the final shortlist.</p>
+      <p class="es-outcome" id="explain-outcome">Working out the numbers…</p>
+    </section>
+
     <!-- Selection funnel: shown above the sub-tabs, so it's visible for both modes. -->
     <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;">
       <h2 style="margin:0;">Selection funnel</h2>
@@ -421,6 +445,7 @@
       loadVenn();               // keyword-overlap Venn
       loadKwPages();            // 'pages in this shortlist'
       // Hybrid Search coverage loads lazily when its tab is opened (see show()).
+      updateExplainSummary();   // plain-English summary at the top of the tab
     }
 
     // ---- Keyword overlap (UpSet plot) ----
@@ -847,6 +872,27 @@
     // (so log(a+b) ≠ log(a)+log(b) doesn't leave gaps). Widths are indicative.
     let sankeyLLM = null;   // {inclKept, inclDropped, exclKept, exclDropped} or null
     const sankeyCounts = {};
+    // Plain-English outcome line: composed from whatever numbers have loaded so far (the
+    // deterministic funnel counts, then the AI run once it arrives). Called after runFunnel()
+    // and after loadRuns().
+    function updateExplainSummary() {
+      const el = document.getElementById("explain-outcome");
+      if (!el) return;
+      const all = sankeyCounts["all"], matched = sankeyCounts["keyword"];
+      const parts = [];
+      if (matched == null) { el.textContent = "Working out the numbers…"; return; }
+      if (all != null)
+        parts.push(`Of about ${fmtInt(all)} pages in the corpus, the filters keep <strong>${fmtInt(matched)}</strong> that match.`);
+      else
+        parts.push(`The filters keep <strong>${fmtInt(matched)}</strong> matching pages.`);
+      if (sankeyLLM && sankeyLLM.exclKept != null)
+        parts.push(`The AI then reviewed those — keeping ${fmtInt(sankeyLLM.inclKept)} as relevant and removing edge cases — for a final shortlist of <strong>${fmtInt(sankeyLLM.exclKept)}</strong>.`);
+      else if (sankeyLLM)
+        parts.push(`The AI then reviewed those and kept <strong>${fmtInt(sankeyLLM.inclKept)}</strong> for the shortlist.`);
+      else
+        parts.push(`No AI review has run yet, so the shortlist is these <strong>${fmtInt(matched)}</strong> keyword-matched pages.`);
+      el.innerHTML = parts.join(" ");
+    }
     function drawSankey() {
       const svg = document.getElementById("sankey");
       if (!svg || ["org", "doctype", "keyword"].some(k => sankeyCounts[k] == null)) return;
@@ -1036,6 +1082,7 @@
       fillFunnelAiRow("excl", excl);
       drawSankey();
       loadActiveSummary();
+      updateExplainSummary();   // refresh the plain-English summary with the AI numbers
     }
 
     // Active Run summary: the active run's phase chain + status (complete /

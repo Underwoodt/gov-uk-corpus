@@ -1119,7 +1119,7 @@ def preview_category_page(request: Request, cid: int):
     conn.close()
     return templates.TemplateResponse("preview.html", ctx(
         connect(), request, category=category, sql=pretty, stages=stages,
-        eval_max_docs=eval_max_docs, ai_cost=ai_cost))
+        eval_max_docs=eval_max_docs, ai_cost=ai_cost, filters=filters))
 
 
 @app.get("/categories/{cid}/shortlist", response_class=HTMLResponse)
