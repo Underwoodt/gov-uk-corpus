@@ -193,12 +193,21 @@ def has_comparison(conn, cid: int) -> bool:
     return row is not None
 
 
-def augmented_pages(conn, cid: int, source: str = "", limit: int = 100, offset: int = 0,
-                    q: str = "", loaded: str = "", min_score: float = 0.0) -> dict:
-    """A page of the augmented shortlist, optionally filtered to one source, a title substring
-    `q` (case-insensitive, over the WHOLE stored set), corpus status `loaded`
-    ('in' = in the corpus, 'missing' = not fetched yet), and/or a minimum GOV.UK relevance
-    `min_score` (rows WITH an es_score below it are dropped; rows with no score are kept)."""
+_JOIN = "category_search_pages sp LEFT JOIN content c ON c.url = sp.url"
+
+
+def _coerce_score(min_score) -> float:
+    try:
+        return max(0.0, float(min_score or 0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _where_clause(cid: int, source: str = "", q: str = "", loaded: str = "",
+                  min_score: float = 0.0):
+    """(where_sql, params) shared by the list and the summary, over `_JOIN`. `loaded`:
+    'in' = present in corpus, 'missing' = not; `min_score`: drop rows WITH an es_score below
+    it (rows with no score are kept)."""
     where = [f"sp.category_id = {_P}"]
     params: list = [cid]
     if source in ("shortlister", "both", "search"):
@@ -212,15 +221,42 @@ def augmented_pages(conn, cid: int, source: str = "", limit: int = 100, offset: 
         where.append("c.url IS NOT NULL")
     elif loaded == "missing":
         where.append("c.url IS NULL")
-    try:
-        min_score = float(min_score or 0)
-    except (TypeError, ValueError):
-        min_score = 0.0
-    if min_score > 0:
+    ms = _coerce_score(min_score)
+    if ms > 0:
         where.append(f"(sp.es_score IS NULL OR sp.es_score >= {_P})")
-        params.append(min_score)
-    wsql = " AND ".join(where)
-    join = "category_search_pages sp LEFT JOIN content c ON c.url = sp.url"
+        params.append(ms)
+    return " AND ".join(where), params
+
+
+def filtered_summary(conn, cid: int, q: str = "", min_score: float = 0.0) -> dict:
+    """Per-source counts (+ evaluable / pending) over the SAME narrowing thresholds as the
+    list — the minimum GOV.UK relevance and the title search — so the sums at the top of the
+    page track the threshold. Source and corpus-status view filters are NOT applied (the sums
+    stay a full per-source breakdown). Recomputed on every list load."""
+    counts = {"shortlister": 0, "both": 0, "search": 0}
+    wsql, params = _where_clause(cid, "", q, "", min_score)
+    for r in conn.execute(
+            f"SELECT sp.source AS s, COUNT(*) AS n FROM {_JOIN} WHERE {wsql} GROUP BY sp.source",
+            tuple(params)).fetchall():
+        d = dict(r)
+        if d["s"] in counts:
+            counts[d["s"]] = d["n"]
+    ew, ep = _where_clause(cid, "search", q, "in", min_score)       # GOV.UK-only, in corpus
+    evaluable = conn.execute(f"SELECT COUNT(*) AS n FROM {_JOIN} WHERE {ew}", tuple(ep)).fetchone()["n"]
+    pw, pp = _where_clause(cid, "search", q, "missing", min_score)  # GOV.UK-only, not fetched
+    pending = conn.execute(f"SELECT COUNT(*) AS n FROM {_JOIN} WHERE {pw}", tuple(pp)).fetchone()["n"]
+    return {"counts": counts, "total": sum(counts.values()), "evaluable": evaluable,
+            "pending_fetch": pending}
+
+
+def augmented_pages(conn, cid: int, source: str = "", limit: int = 100, offset: int = 0,
+                    q: str = "", loaded: str = "", min_score: float = 0.0) -> dict:
+    """A page of the augmented shortlist, optionally filtered to one source, a title substring
+    `q` (case-insensitive, over the WHOLE stored set), corpus status `loaded`
+    ('in' = in the corpus, 'missing' = not fetched yet), and/or a minimum GOV.UK relevance
+    `min_score` (rows WITH an es_score below it are dropped; rows with no score are kept)."""
+    wsql, params = _where_clause(cid, source, q, loaded, min_score)
+    join = _JOIN
     total = conn.execute(
         f"SELECT COUNT(*) AS n FROM {join} WHERE {wsql}", tuple(params)).fetchone()["n"]
     # Order: search-only first (the gaps), then both, then shortlister; url within.

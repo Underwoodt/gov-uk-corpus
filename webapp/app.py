@@ -1288,9 +1288,13 @@ def api_augmented_pages(request: Request, cid: int, source: str = "", limit: int
     try:
         out = search_augment.augmented_pages(conn, cid, source=source, limit=limit, offset=offset,
                                              q=q, loaded=loaded, min_score=min_score)
-        summary = search_augment.summary(conn, cid)
-        summary["evaluable"] = search_augment.evaluable_search_only(conn, cid)
-        summary["pending_fetch"] = len(search_augment.pending_fetch_urls(conn, cid))
+        summary = search_augment.summary(conn, cid)   # query_urls, thresholds, computed_at, global total
+        # The top-of-page sums track the narrowing thresholds (min relevance + title search),
+        # recomputed each load; total stays global so the "not run yet" check still works.
+        fs = search_augment.filtered_summary(conn, cid, q=q, min_score=min_score)
+        summary["counts"] = fs["counts"]
+        summary["evaluable"] = fs["evaluable"]
+        summary["pending_fetch"] = fs["pending_fetch"]
         out["summary"] = summary
         return JSONResponse(out)
     finally:
