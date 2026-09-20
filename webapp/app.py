@@ -2896,6 +2896,8 @@ _AUDIT_STAGES = [
     ("keyword", "Keyword (Input Shortlist)"),
     ("include", "Included (LLM inclusion keeps)"),
     ("final", "Final (after exclusion / adjudication)"),
+    ("excl_include", "Excluded by inclusion (Phase 1 drops)"),
+    ("excl_final", "Excluded by exclusion (Phase 2 drops)"),
 ]
 _AUDIT_STAGE_KEYS = [k for k, _ in _AUDIT_STAGES]
 _AUDIT_DEFAULT_FIELDS = [k for _, fs in _DOWNLOAD_SECTIONS for (k, l, d, dis, w) in fs if d]
@@ -2916,10 +2918,22 @@ def _stage_query(conn, category, stage):
     inc = evaluate.latest_inclusion_run(conn, category["id"])
     if not inc:
         return None
-    run_id = (evaluate.latest_exclusion_run(conn, inc) if stage == "final" else None) or inc
+    exc = evaluate.latest_exclusion_run(conn, inc)
+    # Pick which run and which decision (kept vs dropped) the stage shows. The two excl_*
+    # stages surface the pages a phase EXCLUDED (keep = 0) — the phase the page was dropped at.
+    if stage == "final":
+        run_id, keep = (exc or inc), 1                # final shortlist = exclusion keeps
+    elif stage == "excl_include":
+        run_id, keep = inc, 0                         # dropped by the inclusion phase
+    elif stage == "excl_final":
+        if not exc:
+            return None                               # no exclusion run yet → nothing dropped there
+        run_id, keep = exc, 0                         # dropped by the exclusion phase
+    else:                                             # "include"
+        run_id, keep = inc, 1                         # inclusion keeps
     return dict(organisations=(), document_types=(), keywords=(), match="any",
                 extra_where=f"c.url IN (SELECT url FROM evaluation_results "
-                            f"WHERE run_id = {shortlist._P} AND keep = 1)",
+                            f"WHERE run_id = {shortlist._P} AND keep = {int(keep)})",
                 extra_params=[run_id])
 
 
