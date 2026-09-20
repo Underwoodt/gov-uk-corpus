@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block page_id %}guc-0002{% endblock %}
-{% block title %}{{ 'Change' if is_edit else 'Build' }} shortlist{% endblock %}
+{% block title %}{{ form_title if is_edit else 'Build shortlist' }}{% endblock %}
 {% block content %}
   <style>
     .chk-search { width:100%; max-width:520px; box-sizing:border-box; padding:8px 10px;
@@ -48,7 +48,7 @@
 
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Shortlists</a>
 
-  <h1 style="margin:20px 0 20px;">{{ 'Change Shortlist' if is_edit else 'Build a New Shortlist' }}</h1>
+  <h1 style="margin:20px 0 20px;">{{ form_title }}</h1>
   <p class="lede" style="margin:0 0 20px;">A shortlist is a saved set of filters that finds GOV.UK pages
     about one topic. These filters build the shortlist, which you can then retrieve.</p>
 

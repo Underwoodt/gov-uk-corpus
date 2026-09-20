@@ -972,6 +972,8 @@ def _form_ctx(conn, request, category, values, errors) -> dict:
         conn, request,
         is_edit=category is not None,
         category=category,
+        # When editing, title the page with the shortlist's own name; new shortlists get the generic label.
+        form_title=(cat.display_name(category) if category else "Build a New Shortlist"),
         action=(str(request.url_for("update_category", cid=category["id"])) if category
                 else str(request.url_for("create_category"))),
         v=values or {},
