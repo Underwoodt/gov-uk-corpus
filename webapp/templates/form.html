@@ -101,12 +101,12 @@
     </div>
 
     <div class="field">
-      <label class="q" for="slug">Name for this shortlist</label>
-      <p class="hint">Lowercase letters, numbers, hyphens and underscores, for example
-        <code>farm-slurry-storage</code>.</p>
-      <input id="slug" name="slug" type="text" class="narrow" placeholder="farm-slurry-storage"
-        value="{{ v.slug or '' }}" {{ 'readonly style=background:#f3f2f1' if is_edit else '' }}>
-      {% if is_edit %}<p class="hint">The name is fixed once created, so results stay comparable.</p>{% endif %}
+      <label class="q" for="name">Name</label>
+      <p class="hint">A short, friendly name for this shortlist — any text. Shown in the list and
+        turned into a filename for exports. You can change it any time.</p>
+      <input id="name" name="description" type="text" maxlength="100" placeholder="Farm slurry storage"
+        value="{{ v.description or '' }}">
+      {% if is_edit and v.slug %}<p class="hint">Export filename: <code>{{ v.slug }}</code> (updates when you rename).</p>{% endif %}
     </div>
 
     <div class="field">
@@ -254,6 +254,10 @@
       var raw; try { raw = sessionStorage.getItem("category_prefill"); } catch (e) {}
       if (!raw) return;
       var f; try { f = JSON.parse(raw); } catch (e) { return; }
+      // The assistant sends a `slug`; the Name field is free text — derive a readable name from it.
+      if (f.description == null && f.slug) {
+        f.description = String(f.slug).replace(/[-_]+/g, " ").replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+      }
       function setByName(name, val) {
         var boxes = document.querySelectorAll('input[type="checkbox"][name="' + name + '"]');
         if (boxes.length) {                              // checkbox group (Organisations / Page Types)
@@ -265,7 +269,7 @@
         var el = document.getElementById(name) || document.querySelector('[name="' + name + '"]');
         if (el && !el.readOnly) el.value = val;
       }
-      ["slug","owner_email","dept_slugs","document_type_slugs","keywords","inclusion_context",
+      ["description","owner_email","dept_slugs","document_type_slugs","keywords","inclusion_context",
        "exclusion_context","adjudication_hints_keep","adjudication_hints_drop"].forEach(function (k) {
         if (f[k] != null) setByName(k, f[k]);
       });

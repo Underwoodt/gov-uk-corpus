@@ -40,7 +40,7 @@ class TestValidation(unittest.TestCase):
 
     def test_description_too_long(self):
         errs = cat.validate(_valid_data(description="x" * 101))
-        self.assertTrue(any("Description must be 100" in e for e in errs))
+        self.assertTrue(any("Name must be 100" in e for e in errs))
 
     def test_multi_word_keyword_phrase_allowed(self):
         # No word-count limit: multi-word terms are valid (they match as an adjacent phrase).

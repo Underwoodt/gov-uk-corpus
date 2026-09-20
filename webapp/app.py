@@ -493,14 +493,22 @@ def login_redirect(request: Request) -> RedirectResponse:
 def form_values(form) -> dict:
     """Flatten a submitted form into a category data dict."""
     d = {k: (form.get(k) or "").strip() for k in
-         ("slug", "owner_email", "keywords", "inclusion_context", "exclusion_context",
+         ("owner_email", "keywords", "inclusion_context", "exclusion_context",
           "adjudication_hints_keep", "adjudication_hints_drop")}
     # Organisations and Page Types are multi-selects — collect every selected slug.
     d["dept_slugs"] = "\n".join(s.strip() for s in form.getlist("dept_slugs") if s.strip())
     d["document_type_slugs"] = "\n".join(s.strip() for s in form.getlist("document_type_slugs") if s.strip())
     d["include_child_orgs"] = form.get("include_child_orgs")  # checkbox: "on" or absent
     d["hybrid_on_save"] = form.get("hybrid_on_save")          # checkbox: run GOV.UK hybrid search on save
-    d["description"] = cat.prettify(d.get("slug"))  # keep the Streamlit list name sensible
+    # Name is a free-text field (stored in `description`). The slug is derived from it and used
+    # only for export filenames. Fall back to a submitted slug (the assistant sends one) if the
+    # Name is empty, deriving a readable Name from it.
+    name = (form.get("description") or "").strip()
+    slug_in = (form.get("slug") or "").strip()
+    if not name and slug_in:
+        name = cat.prettify(slug_in)
+    d["description"] = name
+    d["slug"] = cat.slugify(name) or slug_in
     return d
 
 
@@ -696,7 +704,7 @@ def list_categories_page(request: Request, flash: str = ""):
     # running a live corpus COUNT per row on this hot page.
     counts = category_counts.get_counts(conn)
     for r in rows:
-        r["display_name"] = r.get("slug") and cat.prettify(r["slug"]) or (r.get("description") or "Untitled")
+        r["display_name"] = cat.display_name(r)
         r["updated"] = (r.get("updated_at") or r.get("created_at") or "")[:10] or "—"
         hit = counts.get(int(r["id"]))
         r["pages_kept"] = "{:,}".format(hit["pages_kept"]) if hit and hit["pages_kept"] is not None else "—"
@@ -896,8 +904,7 @@ async def update_category(request: Request, cid: int):
     if not category:
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
     form = await request.form()
-    data = form_values(form)
-    data["slug"] = category.get("slug")  # name is fixed after creation
+    data = form_values(form)   # Name (and its derived slug) are editable now
     errors = cat.validate(data) + _slug_errors(conn, data)
     if errors:
         merged = {**category, **data}
@@ -921,7 +928,7 @@ def rebuild_category_page(request: Request, cid: int):
     if not category:
         conn.close()
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
-    category["display_name"] = cat.prettify(category.get("slug")) or (category.get("description") or "Untitled")
+    category["display_name"] = cat.display_name(category)
     resp = templates.TemplateResponse("rebuilding.html", ctx(
         conn, request, category=category, hybrid_on_save=bool(category.get("hybrid_on_save"))))
     conn.close()
@@ -1063,7 +1070,7 @@ def preview_category_page(request: Request, cid: int):
     category = cat.get_category(conn, cid)
     if not category:
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
-    category["display_name"] = cat.prettify(category.get("slug")) or (category.get("description") or "Untitled")
+    category["display_name"] = cat.display_name(category)
     filters = _effective_filters(conn, category)
     # The specific filter values applied at each funnel step (for the collapsed rows).
     stage_value_key = {"all": None, "org": "organisations",
@@ -1125,7 +1132,7 @@ def shortlist_page(request: Request, cid: int, stage: str = "final", tab: str = 
     category = cat.get_category(conn, cid)
     if not category:
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
-    category["display_name"] = cat.prettify(category.get("slug")) or (category.get("description") or "Untitled")
+    category["display_name"] = cat.display_name(category)
     if stage not in _AUDIT_STAGE_KEYS:
         stage = "final"
     stages = [(s, _FUNNEL_STAGES[s][0]) for s in ("all", "org", "doctype", "keyword")]  # dashboard levels
@@ -1582,7 +1589,7 @@ def _run_evaluation(cid: int, limit: int) -> dict:
         filters = _effective_filters(conn, category)
         inclusion = category.get("inclusion_context") or ""
         exclusion = category.get("exclusion_context") or ""
-        name = cat.prettify(category.get("slug")) or (category.get("description") or "the topic")
+        name = (category.get("description") or "").strip() or cat.prettify(category.get("slug")) or "the topic"
 
         is_exclusion = phase == evaluate.PHASE_EXCLUSION
         if is_exclusion:
@@ -1909,7 +1916,7 @@ def performance_page(request: Request, cid: int):
     if not category:
         conn.close()
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
-    category["display_name"] = cat.prettify(category.get("slug")) or (category.get("description") or "Untitled")
+    category["display_name"] = cat.display_name(category)
     resp = templates.TemplateResponse("performance.html", ctx(conn, request, category=category))
     conn.close()
     return resp
@@ -1926,7 +1933,7 @@ def url_check_page(request: Request, cid: int):
     if not category:
         conn.close()
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
-    category["display_name"] = cat.prettify(category.get("slug")) or (category.get("description") or "Untitled")
+    category["display_name"] = cat.display_name(category)
     resp = templates.TemplateResponse("url_check.html", ctx(conn, request, category=category))
     conn.close()
     return resp
@@ -2391,7 +2398,7 @@ def run_detail_page(request: Request, cid: int, run_id: str):
     if not category or not run or str(run["category_id"]) != str(cid):
         conn.close()
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
-    category["display_name"] = cat.prettify(category.get("slug")) or (category.get("description") or "Untitled")
+    category["display_name"] = cat.display_name(category)
     chain = evaluate.run_chain(conn, run_id)
     totals = {k: sum((r.get(k) or 0) for r in chain)
               for k in ("cost", "in_tokens", "out_tokens", "hit_tokens", "miss_tokens", "pages")}
@@ -2726,7 +2733,7 @@ def results_table_page(request: Request, cid: int):
     if not category:
         conn.close()
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
-    category["display_name"] = cat.prettify(category.get("slug")) or (category.get("description") or "Untitled")
+    category["display_name"] = cat.display_name(category)
     resp = templates.TemplateResponse("results_table.html", ctx(
         conn, request, category=category, sections=_RESULTS_SECTIONS))
     conn.close()
@@ -2888,7 +2895,7 @@ def download_page(request: Request, cid: int, stage: str = "keyword",
     if not category:
         conn.close()
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
-    category["display_name"] = cat.prettify(category.get("slug")) or (category.get("description") or "Untitled")
+    category["display_name"] = cat.display_name(category)
     if stage not in _AUDIT_STAGE_KEYS:
         stage = "keyword"
     sq = _stage_query(conn, category, stage)

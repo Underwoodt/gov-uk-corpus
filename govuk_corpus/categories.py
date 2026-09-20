@@ -45,9 +45,23 @@ def prettify(slug: Optional[str]) -> str:
     return (slug or "").replace("_", " ").replace("-", " ").strip().title()
 
 
+def slugify(name: Optional[str]) -> str:
+    """A filename-safe slug derived from a free-text name (lowercase, alphanumerics -> hyphens).
+    The category is identified by its `id` everywhere; this slug is only for export filenames and
+    copy-naming, so it needn't be unique or stable."""
+    s = re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")
+    return s[:64]
+
+
+def display_name(category: Dict[str, Any]) -> str:
+    """The human name to show: the free-text name (stored in `description`), falling back to a
+    prettified slug for older records, then 'Untitled'."""
+    return (category.get("description") or "").strip() or prettify(category.get("slug")) or "Untitled"
+
+
 _LABELS = {
     "slug": "Name for this category",
-    "owner_email": "Owner Email", "description": "Description", "dept_slugs": "Departments",
+    "owner_email": "Owner Email", "description": "Name", "dept_slugs": "Departments",
     "include_child_orgs": "Include child organisations",
     "document_type_slugs": "Document Types", "keywords": "Keyword Search",
     "inclusion_context": "Include description", "exclusion_context": "Exclude description",
