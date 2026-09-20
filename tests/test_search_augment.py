@@ -110,15 +110,16 @@ class TestResolveAttachmentContainers(unittest.TestCase):
     def tearDown(self):
         self.conn.close()
 
-    def _search_rows(self):
-        return {dict(r)["url"]: dict(r)["source"] for r in self.conn.execute(
-            "SELECT url, source FROM category_search_pages WHERE category_id = ?", (self.CID,)).fetchall()}
+    def _rows(self):
+        return {dict(r)["url"]: dict(r) for r in self.conn.execute(
+            "SELECT url, source, phrases FROM category_search_pages WHERE category_id = ?",
+            (self.CID,)).fetchall()}
 
     def _seed(self, att_source):
-        # container as a GOV.UK-only row; attachment as whatever provenance compare left it
+        # container as a GOV.UK-only row, matched by GOV.UK for the phrase "licensing"
         self.conn.execute(
-            "INSERT INTO category_search_pages (category_id, url, content_id, source) VALUES (?,?,?,?)",
-            (self.CID, self.container_url, "cc", "search"))
+            "INSERT INTO category_search_pages (category_id, url, content_id, source, phrases) "
+            "VALUES (?,?,?,?,?)", (self.CID, self.container_url, "cc", "search", "licensing"))
         if att_source:
             self.conn.execute(
                 "INSERT INTO category_search_pages (category_id, url, content_id, source) VALUES (?,?,?,?)",
@@ -131,9 +132,10 @@ class TestResolveAttachmentContainers(unittest.TestCase):
         self.conn.commit()
         self._seed(att_source="shortlister")
         out = search_augment.resolve_attachment_containers(self.conn, self.CID)
-        rows = self._search_rows()
-        self.assertNotIn(self.container_url, rows)          # container dropped
-        self.assertEqual(rows.get(self.att_url), "both")    # attachment upgraded
+        rows = self._rows()
+        self.assertNotIn(self.container_url, rows)               # container dropped
+        self.assertEqual(rows[self.att_url]["source"], "both")   # attachment upgraded
+        self.assertEqual(rows[self.att_url]["phrases"], "licensing")  # GOV.UK terms carried over
         self.assertEqual(out["containers_dropped"], 1)
         self.assertEqual(out["attachments_both"], 1)
 
@@ -141,9 +143,10 @@ class TestResolveAttachmentContainers(unittest.TestCase):
         # attachment not in the shortlist and has no search row yet
         self._seed(att_source=None)
         out = search_augment.resolve_attachment_containers(self.conn, self.CID)
-        rows = self._search_rows()
-        self.assertNotIn(self.container_url, rows)          # container dropped
-        self.assertEqual(rows.get(self.att_url), "search")  # attachment added as GOV.UK-only
+        rows = self._rows()
+        self.assertNotIn(self.container_url, rows)                # container dropped
+        self.assertEqual(rows[self.att_url]["source"], "search")  # attachment added as GOV.UK-only
+        self.assertEqual(rows[self.att_url]["phrases"], "licensing")  # GOV.UK terms carried over
         self.assertEqual(out["attachments_search"], 1)
 
     def test_attachment_not_in_corpus_left_alone(self):
@@ -152,8 +155,8 @@ class TestResolveAttachmentContainers(unittest.TestCase):
         self.conn.commit()
         self._seed(att_source=None)
         out = search_augment.resolve_attachment_containers(self.conn, self.CID)
-        rows = self._search_rows()
-        self.assertEqual(rows.get(self.container_url), "search")   # container untouched
+        rows = self._rows()
+        self.assertEqual(rows[self.container_url]["source"], "search")   # container untouched
         self.assertEqual(out["containers_dropped"], 0)
 
 

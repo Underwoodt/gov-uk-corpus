@@ -235,7 +235,7 @@ def resolve_attachment_containers(conn, cid: int) -> dict:
     shortlist_ids = {dict(r)["content_id"] for r in conn.execute(
         f"SELECT content_id FROM category_shortlist_pages WHERE category_id = {_P}", (cid,)).fetchall()}
     rows = conn.execute(
-        f"SELECT sp.url AS url, c.content AS content FROM category_search_pages sp "
+        f"SELECT sp.url AS url, sp.phrases AS phrases, c.content AS content FROM category_search_pages sp "
         f"JOIN content c ON c.url = sp.url "
         f"WHERE sp.category_id = {_P} AND sp.source = 'search' AND c.content IS NOT NULL",
         (cid,)).fetchall()
@@ -252,13 +252,17 @@ def resolve_attachment_containers(conn, cid: int) -> dict:
         lookup = _content_lookup(conn, atts)
         if not all(a in lookup for a in atts):
             continue                              # some attachment not in corpus -> leave alone
+        # GOV.UK found the CONTAINER for these phrases; its content is the attachment, so the
+        # attachment inherits the container's GOV.UK terms.
+        govuk_phrases = d.get("phrases")
         for a in atts:
             cidv, title, eff = lookup[a]
             if (cidv or a) in shortlist_ids:      # in the deterministic shortlist -> upgrade to 'both'
-                cur = conn.execute(
-                    f"UPDATE category_search_pages SET source = 'both' "
+                conn.execute(
+                    f"UPDATE category_search_pages SET source = 'both', "
+                    f"phrases = COALESCE(NULLIF(phrases, ''), {_P}) "
                     f"WHERE category_id = {_P} AND content_id = {_P} AND source = 'shortlister'",
-                    (cid, cidv))
+                    (govuk_phrases, cid, cidv))
                 both += 1
             else:                                 # in the corpus but not the shortlist -> GOV.UK-only row
                 exists = conn.execute(
@@ -268,8 +272,8 @@ def resolve_attachment_containers(conn, cid: int) -> dict:
                     conn.execute(
                         "INSERT INTO category_search_pages (category_id, url, content_id, title, "
                         "document_type, source, phrases, corpus_phrases, computed_at) "
-                        f"VALUES ({_P}, {_P}, {_P}, {_P}, {_P}, 'search', NULL, NULL, {_P})",
-                        (cid, a, cidv, title, eff, cat.now_iso()))
+                        f"VALUES ({_P}, {_P}, {_P}, {_P}, {_P}, 'search', {_P}, NULL, {_P})",
+                        (cid, a, cidv, title, eff, govuk_phrases, cat.now_iso()))
                     searched += 1
         conn.execute(f"DELETE FROM category_search_pages WHERE category_id = {_P} AND url = {_P}",
                      (cid, d["url"]))
