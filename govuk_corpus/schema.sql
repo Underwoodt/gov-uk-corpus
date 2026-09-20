@@ -285,6 +285,7 @@ CREATE TABLE IF NOT EXISTS category_search_pages (
     source         TEXT,
     phrases        TEXT,          -- keywords that matched in GOV.UK Search (comma-joined)
     corpus_phrases TEXT,          -- JSON array of the keywords this page matched in our corpus (shortlister/both)
+    es_score       REAL,          -- GOV.UK Search relevance score (best across phrases); NULL if not returned by GOV.UK
     computed_at    TEXT,
     PRIMARY KEY (category_id, url)
 );

@@ -315,11 +315,13 @@ CREATE TABLE IF NOT EXISTS category_search_pages (
     source         text,          -- shortlister | both | search
     phrases        text,          -- keywords that matched in GOV.UK Search (comma-joined)
     corpus_phrases text,          -- JSON array of the keywords this page matched in our corpus (shortlister/both)
+    es_score       double precision,  -- GOV.UK Search relevance score (best across phrases); NULL if GOV.UK didn't return it
     computed_at    text,
     PRIMARY KEY (category_id, url)
 );
 CREATE INDEX IF NOT EXISTS idx_csrch_category ON category_search_pages(category_id, source);
 ALTER TABLE category_search_pages ADD COLUMN IF NOT EXISTS corpus_phrases text;
+ALTER TABLE category_search_pages ADD COLUMN IF NOT EXISTS es_score double precision;
 
 -- Reporting view: each category's materialised shortlist joined to page attributes,
 -- so BI tools / dashboards can read the filtered result without re-running the filters.

@@ -336,11 +336,15 @@
               <option value="missing">Missing From Corpus</option>
             </select>
           </label>
+          <label class="secondary" style="font-size:14px;" title="Hide GOV.UK results whose relevance (es_score) is below this. Weak matches (likely false positives) score low.">Min relevance
+            <input id="gc-min-score" type="number" step="0.001" min="0" placeholder="e.g. 0.01"
+              style="font:inherit;width:90px;padding:3px 6px;border:2px solid var(--black);border-radius:4px;margin-left:4px;">
+          </label>
         </div>
         <div style="overflow-x:auto;margin-top:8px;">
           <table id="gc-table" style="font-size:14px;width:100%;">
             <thead><tr><th>Source</th><th>In corpus</th><th>Title</th><th>Document type</th>
-              <th>Corpus terms</th><th>GOV.UK terms</th><th>URL</th></tr></thead>
+              <th>Corpus terms</th><th>GOV.UK terms</th><th>Relevance</th><th>URL</th></tr></thead>
             <tbody id="gc-rows"></tbody>
           </table>
         </div>
@@ -534,9 +538,10 @@
       const tbody = document.getElementById("gc-rows"), status = document.getElementById("gc-status");
       const source = document.getElementById("gc-source").value;
       const loaded = document.getElementById("gc-loaded").value;
-      tbody.innerHTML = `<tr><td colspan="7" class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr>`;
+      const minScore = document.getElementById("gc-min-score").value || "0";
+      tbody.innerHTML = `<tr><td colspan="8" class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr>`;
       try {
-        const j = await (await fetch(`/api/categories/${CID}/augmented-pages?source=${encodeURIComponent(source)}&loaded=${encodeURIComponent(loaded)}&limit=${GC_PAGE}&offset=${gcOffset}&q=${encodeURIComponent(gcQuery)}`)).json();
+        const j = await (await fetch(`/api/categories/${CID}/augmented-pages?source=${encodeURIComponent(source)}&loaded=${encodeURIComponent(loaded)}&min_score=${encodeURIComponent(minScore)}&limit=${GC_PAGE}&offset=${gcOffset}&q=${encodeURIComponent(gcQuery)}`)).json();
         const sum = j.summary || {counts:{}, total:0};
         const c = sum.counts || {};
         // Threshold check: warn if a configured cap truncated the GOV.UK result set.
@@ -578,7 +583,7 @@
           document.getElementById("gc-controls").hidden = true;
           document.getElementById("gc-download").hidden = true;
           document.getElementById("gc-pager").hidden = true;
-          tbody.innerHTML = `<tr><td colspan="7" class="secondary" style="padding:10px 6px;">Not run yet — click “Compare with GOV.UK Search”.</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="8" class="secondary" style="padding:10px 6px;">Not run yet — click “Compare with GOV.UK Search”.</td></tr>`;
           status.textContent = ""; return;
         }
         document.getElementById("gc-controls").hidden = false;
@@ -602,8 +607,9 @@
             `<td>${esc(r.document_type || "—")}</td>` +
             `<td>${kwLozenges(r.corpus_keywords, "kw-corpus")}</td>` +
             `<td>${kwLozenges(r.govuk_keywords, "kw-govuk")}</td>` +
+            `<td class="mono" style="font-variant-numeric:tabular-nums;white-space:nowrap;">${r.es_score == null ? '<span class="kw-none">—</span>' : Number(r.es_score).toFixed(4)}</td>` +
             `<td><a href="${esc(r.url)}" class="mono" style="font-size:13px;">${esc(r.url)}</a></td>` +
-          `</tr>`).join("") : `<tr><td colspan="7" class="secondary" style="padding:10px 6px;">No pages for this filter.</td></tr>`;
+          `</tr>`).join("") : `<tr><td colspan="8" class="secondary" style="padding:10px 6px;">No pages for this filter.</td></tr>`;
         const from = rows.length ? gcOffset + 1 : 0, to = gcOffset + rows.length;
         document.getElementById("gc-range").textContent = `${fmtInt(from)}–${fmtInt(to)} of ${fmtInt(total)}`;
         document.getElementById("gc-prev").disabled = gcOffset <= 0;
@@ -679,6 +685,11 @@
     });
     document.getElementById("gc-source").addEventListener("change", () => { gcOffset = 0; loadCoverage(); });
     document.getElementById("gc-loaded").addEventListener("change", () => { gcOffset = 0; loadCoverage(); });
+    let gcScoreTimer = null;
+    document.getElementById("gc-min-score").addEventListener("input", () => {
+      clearTimeout(gcScoreTimer);
+      gcScoreTimer = setTimeout(() => { gcOffset = 0; loadCoverage(); }, 300);
+    });
     // Type-ahead title filter — debounced, filters the whole stored set server-side.
     let gcSearchTimer = null;
     document.getElementById("gc-search").addEventListener("input", (e) => {

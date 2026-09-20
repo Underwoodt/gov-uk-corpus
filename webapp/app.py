@@ -1277,7 +1277,7 @@ async def api_govuk_compare(request: Request, cid: int):
 
 @app.get("/api/categories/{cid}/augmented-pages")
 def api_augmented_pages(request: Request, cid: int, source: str = "", limit: int = 100,
-                        offset: int = 0, q: str = "", loaded: str = ""):
+                        offset: int = 0, q: str = "", loaded: str = "", min_score: float = 0.0):
     """The stored GOV.UK-coverage augmented shortlist, tagged by source, paginated; `q`
     filters by title across the whole set."""
     if not authed(request):
@@ -1287,7 +1287,7 @@ def api_augmented_pages(request: Request, cid: int, source: str = "", limit: int
     conn = connect()
     try:
         out = search_augment.augmented_pages(conn, cid, source=source, limit=limit, offset=offset,
-                                             q=q, loaded=loaded)
+                                             q=q, loaded=loaded, min_score=min_score)
         summary = search_augment.summary(conn, cid)
         summary["evaluable"] = search_augment.evaluable_search_only(conn, cid)
         summary["pending_fetch"] = len(search_augment.pending_fetch_urls(conn, cid))
@@ -1346,11 +1346,11 @@ def download_augmented(request: Request, cid: int):
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(["source", "url", "content_id", "title", "document_type",
-                "corpus_keywords", "govuk_keywords"])
+                "corpus_keywords", "govuk_keywords", "es_score"])
     for r in rows:
         w.writerow([r.get("source"), r.get("url"), r.get("content_id"),
                     r.get("title"), r.get("document_type"),
-                    r.get("corpus_keywords"), r.get("govuk_keywords")])
+                    r.get("corpus_keywords"), r.get("govuk_keywords"), r.get("es_score")])
     return Response(buf.getvalue(), media_type="text/csv",
                     headers={"Content-Disposition": f'attachment; filename="govuk-coverage-{cid}-{_dl_stamp()}.csv"'})
 
@@ -2100,13 +2100,21 @@ def _govuk_search_multi(phrases, organisations=(), document_types=(), progress=N
                 link = str(item.get("link") or "")
                 if link.startswith("/"):
                     link = "https://www.gov.uk" + link
+                try:
+                    es = float(item.get("es_score")) if item.get("es_score") is not None else None
+                except (TypeError, ValueError):
+                    es = None
                 if link in pages:
                     if phrase not in pages[link]["phrases"]:
                         pages[link]["phrases"].append(phrase)
+                    if es is not None:            # keep the best relevance across phrases/pages
+                        prev = pages[link].get("es_score")
+                        pages[link]["es_score"] = es if prev is None else max(prev, es)
                     continue
                 pages[link] = {"title": (item.get("title") or link).strip(), "link": link,
                                "document_type": item.get("content_store_document_type") or "",
                                "description": (item.get("description") or "").strip(),
+                               "es_score": es,
                                "phrases": [phrase]}
             start += len(res)
             if start >= total:

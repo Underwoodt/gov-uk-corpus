@@ -65,21 +65,22 @@ def _content_lookup(conn, urls: Sequence[str]) -> dict:
 
 def _store(conn, cid: int, rows: List[tuple]) -> None:
     """Replace a category's augmented rows. Each row:
-    (url, content_id, title, doctype, source, phrases, corpus_phrases) where phrases is the
-    GOV.UK-Search matched keywords (comma-joined) and corpus_phrases is a JSON array of the
-    keywords the page matched in our corpus."""
+    (url, content_id, title, doctype, source, phrases, corpus_phrases, es_score) where phrases
+    is the GOV.UK-Search matched keywords (comma-joined), corpus_phrases is a JSON array of the
+    keywords the page matched in our corpus, and es_score is GOV.UK's relevance score."""
     ts = cat.now_iso()
     conn.execute(f"DELETE FROM category_search_pages WHERE category_id = {_P}", (cid,))
     CHUNK = 400
     for i in range(0, len(rows), CHUNK):
         batch = rows[i:i + CHUNK]
-        values = ",".join([f"({_P}, {_P}, {_P}, {_P}, {_P}, {_P}, {_P}, {_P}, {_P})"] * len(batch))
+        values = ",".join([f"({_P}, {_P}, {_P}, {_P}, {_P}, {_P}, {_P}, {_P}, {_P}, {_P})"] * len(batch))
         params: list = []
-        for url, content_id, title, doctype, source, phrases, corpus_phrases in batch:
-            params.extend((cid, url, content_id, title, doctype, source, phrases, corpus_phrases, ts))
+        for url, content_id, title, doctype, source, phrases, corpus_phrases, es_score in batch:
+            params.extend((cid, url, content_id, title, doctype, source, phrases, corpus_phrases, es_score, ts))
         conn.execute(
             "INSERT INTO category_search_pages "
-            "(category_id, url, content_id, title, document_type, source, phrases, corpus_phrases, computed_at) "
+            "(category_id, url, content_id, title, document_type, source, phrases, corpus_phrases, "
+            "es_score, computed_at) "
             f"VALUES {values}", tuple(params))
 
 
@@ -111,7 +112,7 @@ def compare(conn, cid: int, keywords: Sequence[str], organisations: Sequence[str
             continue
         search_urls.append(cu)
         search_meta[cu] = {"title": (it.get("title") or cu), "doctype": (it.get("document_type") or ""),
-                           "phrases": it.get("phrases") or []}
+                           "phrases": it.get("phrases") or [], "es_score": it.get("es_score")}
 
     membership = [dict(r) for r in conn.execute(
         f"SELECT content_id, url, matched_keywords FROM category_shortlist_pages WHERE category_id = {_P}",
@@ -138,10 +139,12 @@ def compare(conn, cid: int, keywords: Sequence[str], organisations: Sequence[str
         eff = lookup.get(url, (None, None, None))[2]
         in_search = m["content_id"] in search_keys
         source = "both" if in_search else "shortlister"
-        # GOV.UK phrases: only for 'both' pages (which GOV.UK Search also returned).
-        govuk = ", ".join(search_meta[search_keys[m["content_id"]]]["phrases"]) if in_search else None
+        # GOV.UK phrases + relevance: only for 'both' pages (which GOV.UK Search also returned).
+        meta = search_meta[search_keys[m["content_id"]]] if in_search else None
+        govuk = ", ".join(meta["phrases"]) if meta else None
+        es = meta.get("es_score") if meta else None
         # Corpus phrases: the keywords this page matched in our corpus, carried from membership.
-        rows.append((url, m["content_id"], title, eff, source, govuk, m.get("matched_keywords")))
+        rows.append((url, m["content_id"], title, eff, source, govuk, m.get("matched_keywords"), es))
 
     for k, cu in search_keys.items():
         if k in shortlist_keys:
@@ -149,7 +152,8 @@ def compare(conn, cid: int, keywords: Sequence[str], organisations: Sequence[str
         _, cidv = key_for(cu)
         meta = search_meta[cu]
         # search-only: no corpus match (it wasn't in our deterministic shortlist).
-        rows.append((cu, cidv, meta["title"], meta["doctype"], "search", ", ".join(meta["phrases"]), None))
+        rows.append((cu, cidv, meta["title"], meta["doctype"], "search",
+                     ", ".join(meta["phrases"]), None, meta.get("es_score")))
 
     _store(conn, cid, rows)
     conn.commit()
@@ -190,10 +194,11 @@ def has_comparison(conn, cid: int) -> bool:
 
 
 def augmented_pages(conn, cid: int, source: str = "", limit: int = 100, offset: int = 0,
-                    q: str = "", loaded: str = "") -> dict:
+                    q: str = "", loaded: str = "", min_score: float = 0.0) -> dict:
     """A page of the augmented shortlist, optionally filtered to one source, a title substring
-    `q` (case-insensitive, over the WHOLE stored set), and/or corpus status `loaded`
-    ('in' = in the corpus, 'missing' = not fetched yet)."""
+    `q` (case-insensitive, over the WHOLE stored set), corpus status `loaded`
+    ('in' = in the corpus, 'missing' = not fetched yet), and/or a minimum GOV.UK relevance
+    `min_score` (rows WITH an es_score below it are dropped; rows with no score are kept)."""
     where = [f"sp.category_id = {_P}"]
     params: list = [cid]
     if source in ("shortlister", "both", "search"):
@@ -207,6 +212,13 @@ def augmented_pages(conn, cid: int, source: str = "", limit: int = 100, offset: 
         where.append("c.url IS NOT NULL")
     elif loaded == "missing":
         where.append("c.url IS NULL")
+    try:
+        min_score = float(min_score or 0)
+    except (TypeError, ValueError):
+        min_score = 0.0
+    if min_score > 0:
+        where.append(f"(sp.es_score IS NULL OR sp.es_score >= {_P})")
+        params.append(min_score)
     wsql = " AND ".join(where)
     join = "category_search_pages sp LEFT JOIN content c ON c.url = sp.url"
     total = conn.execute(
@@ -219,7 +231,7 @@ def augmented_pages(conn, cid: int, source: str = "", limit: int = 100, offset: 
     rows = [dict(r) for r in conn.execute(
         f"SELECT sp.url AS url, sp.content_id AS content_id, sp.title AS title, "
         f"sp.document_type AS document_type, sp.source AS source, sp.phrases AS phrases, "
-        f"sp.corpus_phrases AS corpus_phrases, "
+        f"sp.corpus_phrases AS corpus_phrases, sp.es_score AS es_score, "
         f"CASE WHEN c.url IS NOT NULL THEN 1 ELSE 0 END AS loaded "
         f"FROM {join} "
         f"WHERE {wsql} ORDER BY {order} LIMIT {_P} OFFSET {_P}",
@@ -248,8 +260,8 @@ def resolve_attachment_containers(conn, cid: int) -> dict:
     shortlist_ids = {dict(r)["content_id"] for r in conn.execute(
         f"SELECT content_id FROM category_shortlist_pages WHERE category_id = {_P}", (cid,)).fetchall()}
     rows = conn.execute(
-        f"SELECT sp.url AS url, sp.phrases AS phrases, c.content AS content FROM category_search_pages sp "
-        f"JOIN content c ON c.url = sp.url "
+        f"SELECT sp.url AS url, sp.phrases AS phrases, sp.es_score AS es_score, c.content AS content "
+        f"FROM category_search_pages sp JOIN content c ON c.url = sp.url "
         f"WHERE sp.category_id = {_P} AND sp.source = 'search' AND c.content IS NOT NULL",
         (cid,)).fetchall()
     dropped = both = searched = 0
@@ -268,14 +280,15 @@ def resolve_attachment_containers(conn, cid: int) -> dict:
         # GOV.UK found the CONTAINER for these phrases; its content is the attachment, so the
         # attachment inherits the container's GOV.UK terms.
         govuk_phrases = d.get("phrases")
+        govuk_es = d.get("es_score")
         for a in atts:
             cidv, title, eff = lookup[a]
             if (cidv or a) in shortlist_ids:      # in the deterministic shortlist -> upgrade to 'both'
                 conn.execute(
                     f"UPDATE category_search_pages SET source = 'both', "
-                    f"phrases = COALESCE(NULLIF(phrases, ''), {_P}) "
+                    f"phrases = COALESCE(NULLIF(phrases, ''), {_P}), es_score = COALESCE(es_score, {_P}) "
                     f"WHERE category_id = {_P} AND content_id = {_P} AND source = 'shortlister'",
-                    (govuk_phrases, cid, cidv))
+                    (govuk_phrases, govuk_es, cid, cidv))
                 both += 1
             else:                                 # in the corpus but not the shortlist -> GOV.UK-only row
                 exists = conn.execute(
@@ -284,9 +297,9 @@ def resolve_attachment_containers(conn, cid: int) -> dict:
                 if not exists:
                     conn.execute(
                         "INSERT INTO category_search_pages (category_id, url, content_id, title, "
-                        "document_type, source, phrases, corpus_phrases, computed_at) "
-                        f"VALUES ({_P}, {_P}, {_P}, {_P}, {_P}, 'search', {_P}, NULL, {_P})",
-                        (cid, a, cidv, title, eff, govuk_phrases, cat.now_iso()))
+                        "document_type, source, phrases, corpus_phrases, es_score, computed_at) "
+                        f"VALUES ({_P}, {_P}, {_P}, {_P}, {_P}, 'search', {_P}, NULL, {_P}, {_P})",
+                        (cid, a, cidv, title, eff, govuk_phrases, govuk_es, cat.now_iso()))
                     searched += 1
         conn.execute(f"DELETE FROM category_search_pages WHERE category_id = {_P} AND url = {_P}",
                      (cid, d["url"]))
@@ -339,7 +352,7 @@ def export_rows(conn, cid: int) -> List[dict]:
     """All augmented rows for a CSV export, with the corpus and GOV.UK keyword hits."""
     out = []
     for r in conn.execute(
-            f"SELECT source, url, content_id, title, document_type, phrases, corpus_phrases "
+            f"SELECT source, url, content_id, title, document_type, phrases, corpus_phrases, es_score "
             f"FROM category_search_pages WHERE category_id = {_P} "
             f"ORDER BY CASE source WHEN 'search' THEN 0 WHEN 'both' THEN 1 ELSE 2 END, url",
             (cid,)).fetchall():

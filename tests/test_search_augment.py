@@ -88,6 +88,20 @@ class TestAugmentedPages(unittest.TestCase):
         self.assertEqual(missing["total"], 3)
         self.assertNotIn("https://www.gov.uk/a", [r["url"] for r in missing["rows"]])
 
+    def test_es_score_returned_and_min_score_filter(self):
+        self.conn.execute("UPDATE category_search_pages SET es_score=? WHERE url=?",
+                          (0.05, "https://www.gov.uk/c"))     # strong GOV.UK match
+        self.conn.execute("UPDATE category_search_pages SET es_score=? WHERE url=?",
+                          (0.005, "https://www.gov.uk/b"))    # weak GOV.UK match
+        self.conn.commit()
+        by = {r["url"]: r["es_score"] for r in search_augment.augmented_pages(self.conn, 7)["rows"]}
+        self.assertAlmostEqual(by["https://www.gov.uk/c"], 0.05)
+        out = search_augment.augmented_pages(self.conn, 7, min_score=0.01)
+        urls = {r["url"] for r in out["rows"]}
+        self.assertIn("https://www.gov.uk/c", urls)           # 0.05 >= 0.01 -> kept
+        self.assertNotIn("https://www.gov.uk/b", urls)        # 0.005 < 0.01 -> dropped
+        self.assertIn("https://www.gov.uk/a", urls)           # no score -> kept
+
     def test_rows_carry_both_keyword_sets(self):
         out = search_augment.augmented_pages(self.conn, 7)
         by_url = {r["url"]: r for r in out["rows"]}
