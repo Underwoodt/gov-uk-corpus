@@ -7,7 +7,7 @@
   <h1 style="margin:20px 0 20px;">{{ category.display_name }}</h1>
 
   <div class="tabs">
-    <a href="{{ url_for('edit_category_page', cid=category.id) }}">Filters</a>
+    <a href="{{ url_for('edit_category_page', cid=category.id) }}">Filter Parameters</a>
     <a href="{{ url_for('preview_category_page', cid=category.id) }}">Preview and run</a>
     <a href="{{ url_for('shortlist_page', cid=category.id) }}">Audit Results</a>
     <span class="current">Run performance</span>

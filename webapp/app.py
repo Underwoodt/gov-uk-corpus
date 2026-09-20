@@ -499,7 +499,7 @@ def form_values(form) -> dict:
     d["dept_slugs"] = "\n".join(s.strip() for s in form.getlist("dept_slugs") if s.strip())
     d["document_type_slugs"] = "\n".join(s.strip() for s in form.getlist("document_type_slugs") if s.strip())
     d["include_child_orgs"] = form.get("include_child_orgs")  # checkbox: "on" or absent
-    d["hybrid_on_save"] = form.get("hybrid_on_save")          # checkbox: run GOV.UK hybrid search on save
+    d["hybrid_on_save"] = "1"   # GOV.UK hybrid search now always runs on save (no longer opt-in)
     # Name is a free-text field (stored in `description`). The slug is derived from it and used
     # only for export filenames. Fall back to a submitted slug (the assistant sends one) if the
     # Name is empty, deriving a readable Name from it.
@@ -930,7 +930,7 @@ def rebuild_category_page(request: Request, cid: int):
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
     category["display_name"] = cat.display_name(category)
     resp = templates.TemplateResponse("rebuilding.html", ctx(
-        conn, request, category=category, hybrid_on_save=bool(category.get("hybrid_on_save"))))
+        conn, request, category=category, hybrid_on_save=True))  # GOV.UK hybrid search always runs on save
     conn.close()
     return resp
 

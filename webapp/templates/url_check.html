@@ -24,7 +24,7 @@
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Shortlists</a>
 
   <div class="tabs">
-    <a href="{{ url_for('edit_category_page', cid=category.id) }}">Filters</a>
+    <a href="{{ url_for('edit_category_page', cid=category.id) }}">Filter Parameters</a>
     <a href="{{ url_for('preview_category_page', cid=category.id) }}">Preview and run</a>
     <a href="{{ url_for('shortlist_page', cid=category.id) }}">Audit Results</a>
     <a href="{{ url_for('performance_page', cid=category.id) }}" data-level="advanced">Run performance</a>
