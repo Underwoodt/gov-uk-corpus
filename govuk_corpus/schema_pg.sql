@@ -146,7 +146,11 @@ CREATE TABLE IF NOT EXISTS evaluation_runs (
     out_tokens   bigint DEFAULT 0,   -- total output tokens billed across the run
     hit_tokens   bigint DEFAULT 0,   -- input tokens served from cache (cache-hit rate)
     miss_tokens  bigint DEFAULT 0,   -- input tokens NOT from cache (cache-miss rate)
-    total_ms     integer DEFAULT 0
+    total_ms     integer DEFAULT 0,
+    run_status   text,               -- 'running' | 'stopped' | 'complete' (NULL = legacy/unknown)
+    pid          integer,            -- OS pid of the driver process while running (NULL otherwise)
+    host         text,               -- hostname of that process (pid only trusted on this host)
+    heartbeat_at text                -- last time the driver made progress (staleness check)
 );
 CREATE INDEX IF NOT EXISTS idx_eval_runs_cat ON evaluation_runs(category_id);
 

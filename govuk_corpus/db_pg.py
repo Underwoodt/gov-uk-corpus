@@ -51,6 +51,12 @@ def init_db(conn) -> None:
     # Lightweight, idempotent column migrations for tables that already exist on prod
     # (CREATE TABLE IF NOT EXISTS above is a no-op for them, so new columns need ALTER).
     conn.execute("ALTER TABLE evaluation_results ADD COLUMN IF NOT EXISTS raw_reply text")
+    # Live run state: is a driver actively working this run, on which process, and when did it
+    # last make progress — so a stalled run (marked running but its process is gone) is detectable.
+    conn.execute("ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS run_status text")
+    conn.execute("ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS pid integer")
+    conn.execute("ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS host text")
+    conn.execute("ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS heartbeat_at text")
     conn.commit()
 
 

@@ -31,6 +31,12 @@ def init_db(conn: sqlite3.Connection) -> None:
     have = {r[1] for r in conn.execute("PRAGMA table_info(evaluation_results)")}
     if "raw_reply" not in have:
         conn.execute("ALTER TABLE evaluation_results ADD COLUMN raw_reply TEXT")
+    # Live run state (driver liveness): see db_pg.init_db for the rationale.
+    have_runs = {r[1] for r in conn.execute("PRAGMA table_info(evaluation_runs)")}
+    for col, typ in (("run_status", "TEXT"), ("pid", "INTEGER"),
+                     ("host", "TEXT"), ("heartbeat_at", "TEXT")):
+        if col not in have_runs:
+            conn.execute(f"ALTER TABLE evaluation_runs ADD COLUMN {col} {typ}")
     conn.commit()
 
 

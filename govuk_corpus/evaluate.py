@@ -10,8 +10,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import socket
 import time
 import uuid
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Sequence
 
 from .backend import db
@@ -339,9 +342,67 @@ def add_run_cost(conn, run_id: str, cost: float,
 
 
 def finish_run(conn, run_id: str) -> None:
-    conn.execute(f"UPDATE evaluation_runs SET finished_at = {_P} WHERE run_id = {_P}",
-                 (db.now_iso(), run_id))
+    conn.execute(
+        f"UPDATE evaluation_runs SET finished_at = {_P}, run_status = 'complete', pid = NULL, "
+        f"heartbeat_at = {_P} WHERE run_id = {_P}",
+        (db.now_iso(), db.now_iso(), run_id))
     conn.commit()
+
+
+# ---- live run state (is a driver actively working this run?) --------------
+# A run record carries run_status ('running'|'stopped'|'complete'), the driver's pid + host,
+# and a heartbeat. The driver marks it running (updating the heartbeat) as it works, and marks
+# it stopped when it steps away without finishing. If a run is left 'running' but its process
+# is gone (crash, kill, restart), run_is_alive() reports it dead so the UI can offer to resume.
+def mark_run_running(conn, run_id: str, pid: Optional[int] = None) -> None:
+    conn.execute(
+        f"UPDATE evaluation_runs SET run_status = 'running', pid = {_P}, host = {_P}, "
+        f"heartbeat_at = {_P} WHERE run_id = {_P}",
+        (int(pid if pid is not None else os.getpid()), socket.gethostname(), db.now_iso(), run_id))
+    conn.commit()
+
+
+def mark_run_stopped(conn, run_id: str) -> None:
+    """Driver stepped away without finishing (budget/cap/error/stop). Leaves finished_at as-is."""
+    conn.execute(
+        f"UPDATE evaluation_runs SET run_status = 'stopped', pid = NULL, heartbeat_at = {_P} "
+        f"WHERE run_id = {_P} AND finished_at IS NULL", (db.now_iso(), run_id))
+    conn.commit()
+
+
+def _heartbeat_age_seconds(ts: Optional[str]) -> Optional[float]:
+    if not ts:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - dt).total_seconds()
+    except (ValueError, TypeError):
+        return None
+
+
+def run_is_alive(run: dict, stale_after_s: int = 300) -> bool:
+    """True if a driver is actually working this run right now. On the same host we trust the
+    pid (os.kill(pid, 0)); off-host (or no pid) we fall back to a fresh heartbeat."""
+    if not run or run.get("run_status") != "running":
+        return False
+    pid, host = run.get("pid"), run.get("host")
+    if pid and host and host == socket.gethostname():
+        try:
+            os.kill(int(pid), 0)
+            return True
+        except (OSError, ValueError, TypeError):
+            return False
+    age = _heartbeat_age_seconds(run.get("heartbeat_at"))
+    return age is not None and age < stale_after_s
+
+
+def run_is_stalled(run: dict) -> bool:
+    """An unfinished run that is marked running but whose driver is gone — safe to resume."""
+    if not run or run.get("finished_at"):
+        return False
+    return run.get("run_status") == "running" and not run_is_alive(run)
 
 
 def get_run(conn, run_id: str) -> Optional[dict]:

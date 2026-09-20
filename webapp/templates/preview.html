@@ -16,6 +16,14 @@
     .pg-sub { color:var(--muted,#6b7477); font-weight:400; }
     .pg-drift { display:inline-block; margin-left:6px; font-size:11px; font-weight:700; padding:0 6px;
       border-radius:999px; background:#fdf0e6; color:#8a4b12; vertical-align:middle; cursor:help; }
+    /* Stalled-run banner + per-run status chips. */
+    .sd-warn { background:#fdf0ee; border:1px solid #e6b8ae; border-left:4px solid #d4351c;
+      border-radius:6px; padding:12px 14px; max-width:900px; font-size:14px; }
+    .sd-warn .hd { font-weight:700; color:#942514; }
+    .run-chip { display:inline-block; font-size:11px; font-weight:700; padding:1px 7px; border-radius:999px;
+      margin-left:6px; vertical-align:middle; }
+    .run-chip.running { background:#d2e2f1; color:#0b3d6b; }
+    .run-chip.stalled { background:#fbe5d6; color:#8a3b12; }
     /* Provenance lozenges for GOV.UK Search coverage. */
     .prov { display:inline-block; font-size:12px; font-weight:700; padding:2px 9px; border-radius:999px; white-space:nowrap; }
     .prov-search { background:#fbe5d6; color:#8a3b12; }        /* gap: GOV.UK Search only */
@@ -292,6 +300,13 @@
           title="You will need to execute this once setup.">Create New Run</button>
         <span id="new-run-status" class="secondary"></span>
       </p>
+      <div id="stalled-banner" class="sd-warn" style="margin:0 0 14px;" hidden>
+        <div class="hd">⚠ A run stopped before finishing and nothing is currently processing it</div>
+        <p style="margin:4px 0 8px;" id="stalled-detail"></p>
+        <button type="button" class="btn" id="complete-shortlist"
+          style="padding:6px 14px;">Complete the shortlist</button>
+        <span id="complete-status" class="secondary" style="margin-left:10px;"></span>
+      </div>
       <p class="hint" style="margin-top:0;">Every run for this shortlist. Select a run's radio to make it the
         <strong>active</strong> run (what <em>Execute Active Run</em> adds to); open a run's name for its per-page details.</p>
       <table id="runs-table" hidden>
@@ -1028,10 +1043,30 @@
            + ` <span class="pg-drift" title="${esc(tip)}">${sign}${mag}</span>`;
     }
 
+    // Per-run live-state chip: a driver is actively working it, or it stalled (running flag set
+    // but the process is gone), or its phase while running.
+    function runChip(r) {
+      if (r.alive) return ` <span class="run-chip running" title="A process is evaluating this run (${esc(r.phase || '')})">● running</span>`;
+      if (r.stalled) return ` <span class="run-chip stalled" title="Marked running but no process is working it — resume to finish">⚠ stalled</span>`;
+      return "";
+    }
+
     async function loadRuns() {
       const j = await (await fetch(`/api/categories/${CID}/runs`)).json();
       if (window.setSqlPanel) setSqlPanel("runs-sql", j.sql);
       activeRun = j.active || null;
+      // Stalled shortlist: a run left running with no live driver → offer to complete it.
+      const banner = document.getElementById("stalled-banner");
+      if (banner) {
+        if (j.stalled && !j.any_running) {
+          document.getElementById("stalled-detail").textContent =
+            `“${j.stalled.name || j.stalled.run_id}” (${j.stalled.phase || 'inclusion'}) was left part-way through. `
+            + `Complete the shortlist to resume it from where it stopped.`;
+          banner.hidden = false;
+        } else {
+          banner.hidden = true;
+        }
+      }
       document.getElementById("active-run-line").textContent =
         activeRun ? `Active run: ${activeRun} (Execute Active Run adds to it; “Create New Run” to compare a different model).`
                   : "No active run — “Execute Active Run” starts one with the model set in Settings.";
@@ -1046,7 +1081,7 @@
           `${r.run_id === activeRun ? "checked" : ""} title="Make this the active run" ` +
           `style="width:18px;height:18px;accent-color:var(--black);"></td>` +
           `<td><a class="name-link" href="/categories/${CID}/runs/${r.run_id}" ` +
-          `title="Open run details">${esc(r.name || r.run_id)}</a></td>` +
+          `title="Open run details">${esc(r.name || r.run_id)}</a>${runChip(r)}</td>` +
           `<td>${fmtDate(r.started_at)}</td>` +
           `<td class="num timing">${fmtElapsed(r.started_at, r.finished_at)}</td>` +
           `<td class="num">${pagesCell(r)}</td>` +
@@ -1264,6 +1299,18 @@
       try { await fetch(`/api/categories/${CID}/evaluate-bg/stop`, { method: "POST" }); } catch (e) {}
       stopBgBtn.disabled = false;
       document.getElementById("eval-status").textContent = "Stopping after the current batch…";
+    });
+    const completeBtn = document.getElementById("complete-shortlist");
+    if (completeBtn) completeBtn.addEventListener("click", async () => {
+      completeBtn.disabled = true;
+      const st = document.getElementById("complete-status");
+      st.textContent = "Resuming…";
+      try {
+        const j = await (await fetch(`/api/categories/${CID}/evaluate-bg/resume`, { method: "POST" })).json();
+        if (j.error) { st.textContent = "Error: " + j.error; completeBtn.disabled = false; return; }
+        document.getElementById("stalled-banner").hidden = true;
+        beginBgPolling();                       // show progress + refresh the runs list as it finishes
+      } catch (e) { st.textContent = "Could not resume."; completeBtn.disabled = false; }
     });
     // On load: if a background run is already going (e.g. started before you left), resume showing it.
     (async () => {

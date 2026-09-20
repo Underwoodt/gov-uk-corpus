@@ -1587,10 +1587,12 @@ def _run_evaluation(cid: int, limit: int) -> dict:
                     "spent_today": round(spent, 4), "budget": budget, "stopped": "budget"}
 
         run_id = _ensure_run(conn, cid)
+        evaluate.mark_run_running(conn, run_id)   # this process is now driving the run (pid + heartbeat)
         run = evaluate.get_run(conn, run_id)
         phase = run.get("phase") or evaluate.PHASE_INCLUSION
         cfg = _cfg_for(conn, run["provider"], run["model"])
         if not cfg["key"]:
+            evaluate.mark_run_stopped(conn, run_id)
             return {"error": f"No API key for {cfg['label']} (this run's provider) — set one in Settings."}
 
         limit = min(limit, _max_docs(conn))
@@ -1627,6 +1629,7 @@ def _run_evaluation(cid: int, limit: int) -> dict:
             if res.get("error"):
                 # Fatal (no key / bad config) -> stop the run and report it.
                 if res.get("fatal"):
+                    evaluate.mark_run_stopped(conn, run_id)
                     return {"error": res["error"], "fatal": True, "run_id": run_id,
                             "evaluated_this_run": done, "skipped": skipped,
                             "cost_usd": round(cost, 6), "spent_today": round(spent, 4), "budget": budget}
@@ -1635,6 +1638,7 @@ def _run_evaluation(cid: int, limit: int) -> dict:
                 # pages unscored; the user re-executes to resume where it left off.
                 consec_err += 1
                 if consec_err >= MAX_CONSEC_EVAL_ERRORS:
+                    evaluate.mark_run_stopped(conn, run_id)
                     return {"error": f"Stopped after {consec_err} evaluation errors in a row "
                             f"(last: {res['error']}). The provider may be down or rate-limiting — "
                             f"re-execute to resume where it left off.",
@@ -1670,6 +1674,8 @@ def _run_evaluation(cid: int, limit: int) -> dict:
             total = cached_count(conn, **filters)
         remaining = max(0, total - (run["pages"] or 0))
         advanced = None
+        if stopped == "budget":                 # driver will step away this batch — mark it idle
+            evaluate.mark_run_stopped(conn, run_id)
         if remaining == 0 and stopped is None:
             evaluate.finish_run(conn, run_id)
             # Auto-advance: when an inclusion run completes, start Phase 2 (Exclusion)
@@ -1772,6 +1778,18 @@ def _background_eval_loop(cid: int, stop_event: threading.Event, status: dict) -
     finally:
         status["running"] = False
         status["finished_at"] = db.now_iso()
+        # This driver is stepping away — clear the run's 'running' flag unless it completed
+        # (mark_run_stopped is a no-op on a finished run), so a stalled run is detectable.
+        rid = status.get("run_id")
+        if rid:
+            try:
+                c = connect()
+                try:
+                    evaluate.mark_run_stopped(c, rid)
+                finally:
+                    c.close()
+            except Exception:
+                pass
 
 
 def _spawn_bg_eval(cid: int) -> dict:
@@ -1815,7 +1833,10 @@ def _resume_stalled_runs() -> None:
                 # ACTIVE run is unfinished AND already made progress. A pages=0 unfinished
                 # run is indistinguishable from a created-but-never-started draft, so we
                 # leave those for the user to start rather than resurrecting abandoned drafts.
-                if run and not run.get("finished_at") and (run.get("pages") or 0) > 0:
+                # Skip runs a driver is already working (run_is_alive) so we never double-drive
+                # one — e.g. a detached CLI run, or another worker.
+                if (run and not run.get("finished_at") and (run.get("pages") or 0) > 0
+                        and not evaluate.run_is_alive(run)):
                     cids.append(cid)
         finally:
             conn.close()
@@ -1844,6 +1865,30 @@ async def api_bg_eval_start(request: Request, cid: int):
     if res.get("already_running"):
         return JSONResponse({"already_running": True, "status": res["status"]})
     return JSONResponse({"started": True, "status": res["status"]})
+
+
+@app.post("/api/categories/{cid}/evaluate-bg/resume")
+async def api_bg_eval_resume(request: Request, cid: int):
+    """Complete a stalled shortlist: a run left 'running' but whose driver process is gone.
+    Makes that run the active run and starts a fresh background driver to finish it."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    conn = connect()
+    try:
+        if not cat.get_category(conn, cid):
+            return JSONResponse({"error": "not found"}, status_code=404)
+        stalled = next((r for r in evaluate.list_runs(conn, cid) if evaluate.run_is_stalled(r)), None)
+        if not stalled:
+            return JSONResponse({"error": "No stalled run to resume — nothing to complete."},
+                                status_code=409)
+        evaluate.mark_run_stopped(conn, stalled["run_id"])          # clear the stale 'running' flag
+        settings.set_setting(conn, f"active_run_{cid}", stalled["run_id"])
+        rid = stalled["run_id"]
+    finally:
+        conn.close()
+    res = _spawn_bg_eval(cid)
+    return JSONResponse({"resumed": True, "run_id": rid,
+                         "already_running": bool(res.get("already_running")), "status": res["status"]})
 
 
 @app.get("/api/categories/{cid}/evaluate-bg/status")
@@ -2412,14 +2457,22 @@ def api_list_runs(request: Request, cid: int):
         return _shortlist_total[0]
 
     by_id = {r["run_id"]: r for r in runs}
+    stalled = None
     for r in runs:
         if "exclusion" in (r.get("phase") or "").lower():
             src = by_id.get(r.get("source_run_id"))
             r["target"] = src.get("kept") if src else None   # exclusion re-checks the inclusion's keeps
         else:
             r["target"] = shortlist_total()
+        # Live driver state for the UI: is a process actually working this run, and is it a
+        # stalled run (marked running but its driver is gone) that could be resumed?
+        r["alive"] = evaluate.run_is_alive(r)
+        r["stalled"] = evaluate.run_is_stalled(r)
+        if r["stalled"] and stalled is None:
+            stalled = {"run_id": r["run_id"], "phase": r.get("phase"), "name": r.get("name")}
     rsql, rparams = evaluate.list_runs_query(cid)
-    out = {"runs": runs, "active": _active_run(conn, cid), "sql": _display_sql(rsql, rparams)}
+    out = {"runs": runs, "active": _active_run(conn, cid), "stalled": stalled,
+           "any_running": any(r.get("alive") for r in runs), "sql": _display_sql(rsql, rparams)}
     conn.close()
     return JSONResponse(out)
 
