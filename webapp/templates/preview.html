@@ -343,6 +343,7 @@
     <span class="secondary" style="display:block;margin-top:2px;">Definition, runs, results, membership and
       metadata-only pages — import in a test system to reproduce and fix this shortlist.</span></p>
 
+  <script src="{{ url_for('static', path='ai_pipeline.js') }}"></script>
   <script>
     const CID = {{ category.id }};
     const STAGES = [{% for s in stages %}"{{ s.stage }}"{{ "," if not loop.last }}{% endfor %}];
@@ -938,7 +939,6 @@
       return "Major focus";
     }
     function scoreText(score) { return score == null ? "—" : Number(score).toFixed(1); }
-    const newRunBtn = document.getElementById("new-run");
     let selectedRun = null, activeRun = null;
 
     function fmtDate(s) { return s ? String(s).slice(0, 19).replace("T", " ") : "—"; }
@@ -951,153 +951,10 @@
       return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
     }
 
-    // "Pages" cell: evaluated / current-shortlist target. When they drift (finished run whose
-    // shortlist has since changed, or a run stopped before finishing), show the delta as a chip
-    // so X/Y isn't misread as "over 100%".
-    function pagesCell(r) {
-      const p = fmtInt(r.pages);
-      if (r.target == null) return p;
-      const t = fmtInt(r.target);
-      const drift = (Number(r.pages) || 0) - (Number(r.target) || 0);
-      if (!drift) return `${p} <span class="pg-sub">/ ${t}</span>`;
-      const sign = drift > 0 ? "+" : "−", mag = fmtInt(Math.abs(drift));
-      const tip = drift > 0
-        ? `This run evaluated ${p} pages; the shortlist now holds ${t} — ${mag} fewer than when it ran.`
-        : `This run evaluated ${p} of ${t} pages in the current shortlist — ${mag} not covered (stopped early, or the shortlist has since grown).`;
-      return `<span title="${esc(tip)}">${p} <span class="pg-sub">/ ${t}</span></span>`
-           + ` <span class="pg-drift" title="${esc(tip)}">${sign}${mag}</span>`;
-    }
-
-    // Per-run live-state chip: a driver is actively working it, or it stalled (running flag set
-    // but the process is gone), or its phase while running.
-    function runChip(r) {
-      if (r.alive) return ` <span class="run-chip running" title="A process is evaluating this run (${esc(r.phase || '')})">● running</span>`;
-      if (r.stalled) return ` <span class="run-chip stalled" title="Marked running but no process is working it — resume to finish">⚠ stalled</span>`;
-      return "";
-    }
-
-    async function loadRuns() {
-      const j = await (await fetch(`/api/categories/${CID}/runs`)).json();
-      if (window.setSqlPanel) setSqlPanel("runs-sql", j.sql);
-      activeRun = j.active || null;
-      // Stalled shortlist: a run left running with no live driver → offer to complete it.
-      const banner = document.getElementById("stalled-banner");
-      if (banner) {
-        if (j.stalled && !j.any_running) {
-          document.getElementById("stalled-detail").textContent =
-            `“${j.stalled.name || j.stalled.run_id}” (${j.stalled.phase || 'inclusion'}) was left part-way through. `
-            + `Complete the shortlist to resume it from where it stopped.`;
-          banner.hidden = false;
-        } else {
-          banner.hidden = true;
-        }
-      }
-      document.getElementById("active-run-line").textContent =
-        activeRun ? `Active run: ${activeRun} (Execute Active Run adds to it; “Create New Run” to compare a different model).`
-                  : "No active run — “Execute Active Run” starts one with the model set in Settings.";
-      const table = document.getElementById("runs-table");
-      const tbody = table.querySelector("tbody");
-      tbody.innerHTML = "";
-      for (const r of j.runs) {
-        const tr = document.createElement("tr");
-        if (r.run_id === activeRun) tr.style.fontWeight = "700";
-        tr.innerHTML =
-          `<td><input type="radio" name="active-run" class="active-run" data-run="${r.run_id}" ` +
-          `${r.run_id === activeRun ? "checked" : ""} title="Make this the active run" ` +
-          `style="width:18px;height:18px;accent-color:var(--black);"></td>` +
-          `<td><a class="name-link" href="/categories/${CID}/runs/${r.run_id}" ` +
-          `title="Open run details">${esc(r.name || r.run_id)}</a>${runChip(r)}</td>` +
-          `<td>${fmtDate(r.started_at)}</td>` +
-          `<td class="num timing">${fmtElapsed(r.started_at, r.finished_at)}</td>` +
-          `<td class="num">${pagesCell(r)}</td>` +
-          `<td class="num">${fmtInt(r.kept)}</td>` +
-          `<td class="num">${fmtInt(r.dropped)}</td>` +
-          `<td class="num">${fmtInt(r.in_tokens)}</td>` +
-          `<td class="num">${fmtInt(r.out_tokens)}</td>` +
-          `<td class="num">$${(r.cost||0).toFixed(2)}</td>` +
-          `<td><a href="#" class="del-run" data-run="${r.run_id}" data-pages="${r.pages||0}" ` +
-          `style="color:#d4351c;">Delete</a></td>`;
-        tbody.appendChild(tr);
-      }
-      table.hidden = j.runs.length === 0;
-      document.getElementById("runs-empty").hidden = j.runs.length !== 0;
-
-      // Funnel Results tab: run selector, defaulting to the latest run.
-      const rrSel = document.getElementById("rr-run-select");
-      const prevSel = rrSel.value;
-      rrSel.innerHTML = j.runs.map(r =>
-        `<option value="${r.run_id}">${esc(r.name || r.run_id)} · ${fmtDate(r.started_at)}</option>`).join("");
-      if (prevSel && j.runs.some(r => r.run_id === prevSel)) rrSel.value = prevSel;
-      else if (j.runs.length) rrSel.value = j.runs[0].run_id;   // newest (list is DESC)
-      document.getElementById("rr-empty").hidden = j.runs.length !== 0;
-      if (j.runs.length === 0) document.getElementById("run-results-wrap").hidden = true;
-      // If the Funnel Results tab is open but empty (e.g. restored on load), fill it.
-      if (j.runs.length && !document.getElementById("tab-results").hidden
-          && document.getElementById("run-results-wrap").hidden) {
-        loadRunResults(rrSel.value, "");
-      }
-
-      table.querySelectorAll("a.del-run").forEach(a =>
-        a.addEventListener("click", e => { e.preventDefault(); deleteRun(a.dataset.run, a.dataset.pages); }));
-      table.querySelectorAll("input.active-run").forEach(radio =>
-        radio.addEventListener("change", async () => {
-          if (!radio.checked) return;
-          try {
-            await fetch(`/api/categories/${CID}/runs/${radio.dataset.run}/activate`, { method: "POST" });
-          } catch (e) {}
-          await loadRuns();
-        }));
-      // Radios can't switch the target mid-run — lock them while a run is executing.
-      const lockRadios = !!(stopBgBtn && !stopBgBtn.hidden);
-      table.querySelectorAll("input.active-run").forEach(radio => { radio.disabled = lockRadios; });
-
-      // Feed the latest inclusion (and its exclusion) run into the pipeline Sankey.
-      const incl = j.runs.find(r => /inclusion/i.test(r.phase || ""));
-      const excl = incl && j.runs.find(r => /exclusion/i.test(r.phase || "") && r.source_run_id === incl.run_id);
-      sankeyLLM = incl ? {
-        inclKept: incl.kept || 0, inclDropped: incl.dropped || 0,
-        exclKept: excl ? (excl.kept || 0) : null, exclDropped: excl ? (excl.dropped || 0) : null,
-      } : null;
-      // Progressive AI rows in the funnel table (kept / dropped / run elapsed).
-      fillFunnelAiRow("incl", incl);
-      fillFunnelAiRow("excl", excl);
-      drawSankey();
-      loadActiveSummary();
-      updateExplainSummary();   // refresh the plain-English summary with the AI numbers
-    }
-
-    // Active Run summary: the active run's phase chain + status (complete /
-    // incomplete / in progress), refreshed whenever the runs list is reloaded.
-    function statusPill(status) {
-      const m = { complete:   { t: "Complete",    bg: "#cce2d8", c: "#005a30" },
-                  incomplete: { t: "Incomplete",  bg: "#fdf3d8", c: "#7a5b00" },
-                  in_progress:{ t: "In Progress", bg: "#d2e2f1", c: "#0b3d6b" } };
-      return m[status] || m.incomplete;
-    }
-    async function loadActiveSummary() {
-      const box = document.getElementById("active-summary");
-      let j;
-      try { j = await (await fetch(`/api/categories/${CID}/active-run`)).json(); }
-      catch (e) { return; }
-      if (!j || !j.run) { box.hidden = true; return; }
-      box.hidden = false;
-      document.getElementById("as-name").textContent = j.run.name || j.run.run_id;
-      const p = statusPill(j.status), el = document.getElementById("as-status");
-      el.textContent = p.t; el.style.background = p.bg; el.style.color = p.c;
-      document.getElementById("as-rows").innerHTML = (j.chain || []).map(r =>
-        `<tr><td>${esc(r.phase || "—")}</td><td>${esc(r.provider || "—")}</td>`
-        + `<td class="mono">${esc(r.model || "—")}</td>`
-        + `<td class="num">${fmtInt(r.pages)}</td><td class="num">${fmtInt(r.kept)}</td>`
-        + `<td class="num">${fmtInt(r.dropped)}</td><td class="num">${fmtInt(r.in_tokens)}</td>`
-        + `<td class="num">${fmtInt(r.out_tokens)}</td><td class="num">$${(r.cost || 0).toFixed(2)}</td></tr>`).join("");
-      // If this run's job is in flight, disable Execute (and adopt the run so this
-      // page polls it and re-enables when it finishes) — even if another tab/session
-      // started it. bgUiRunning(false) re-enables the button when the run stops.
-      if (j.status === "in_progress") {
-        runBgBtn.disabled = true;
-        if (!bgTimer) beginBgPolling();
-      }
-    }
+    // AI Pipeline runs UI (loadRuns, execute/stop/complete controls, active-run summary, run
+    // history, background polling) now lives in the shared /static/ai_pipeline.js, driven via
+    // window.AIPipeline. This page keeps the funnel-Sankey and Funnel-Results wiring below and
+    // feeds them through the onRuns / onPoll hooks passed to AIPipeline.init().
 
     function fillFunnelAiRow(stage, run) {
       const row = document.querySelector(`#funnel tr[data-stage="${stage}"]`);
@@ -1109,20 +966,6 @@
       row.querySelector(".timing").textContent = fmtElapsed(run.started_at, run.finished_at);
     }
 
-
-    async function deleteRun(runId, pages) {
-      if (!confirm(`Delete this run and its ${Number(pages).toLocaleString()} page decision(s)?\n\n` +
-                   `This permanently removes the run's keep/drop scores and its totals. ` +
-                   `It cannot be undone, and re-creating them means re-running the AI (which costs money).\n\n` +
-                   `Your daily spend/budget ledger is NOT affected.`)) return;
-      const res = await fetch(`/api/categories/${CID}/runs/${runId}/delete`, {method: "POST"});
-      if (!res.ok) { alert("Delete failed."); return; }
-      if (selectedRun === runId) {
-        selectedRun = null;
-        document.getElementById("run-results-wrap").hidden = true;
-      }
-      await loadRuns();
-    }
 
     async function loadRunResults(runId, keep) {
       selectedRun = runId;
@@ -1155,111 +998,37 @@
     document.getElementById("rr-drop").addEventListener("click", e => { e.preventDefault(); if (selectedRun) loadRunResults(selectedRun, "0"); });
     document.getElementById("rr-run-select").addEventListener("change", e => { if (e.target.value) loadRunResults(e.target.value, ""); });
 
-    async function newRun() {
-      newRunBtn.disabled = true;
-      try {
-        await fetch(`/api/categories/${CID}/runs`, { method: "POST" });
-        await loadRuns();
-        document.getElementById("new-run-status").textContent = "New run created — switch to Active Run to execute it.";
-      } finally { newRunBtn.disabled = false; }
-    }
-    newRunBtn.addEventListener("click", newRun);
-
-    // ---- server-side background run (keeps going with the page closed) ----
-    const runBgBtn = document.getElementById("run-bg");
-    const stopBgBtn = document.getElementById("stop-bg");
-    const bgNote = document.getElementById("bg-note");
-    let bgTimer = null;
-
-    function bgUiRunning(on) {
-      runBgBtn.disabled = on; newRunBtn.disabled = on;
-      stopBgBtn.hidden = !on; bgNote.hidden = !on;
-    }
-    function renderBgStatus(s) {
-      const st = document.getElementById("eval-status");
-      const done = s.done || 0, remaining = (s.remaining == null ? null : s.remaining);
-      const total = (remaining == null ? null : done + remaining);
-      if (total && total > 0) {
-        document.getElementById("eval-progress-wrap").hidden = false;
-        document.getElementById("eval-progress-bar").style.width =
-          Math.min(100, (done / total) * 100).toFixed(1) + "%";
+    // ---- AI Pipeline: shared /static/ai_pipeline.js drives the runs UI (execute/stop/complete,
+    // runs table, active-run summary, background polling, nested Active-Run/Run-History tabs).
+    // These hooks feed this page's extras — the funnel Sankey and the Funnel Results tab — as the
+    // shared script (re)loads runs and polls a background run.
+    function aiOnRuns(j) {
+      const rrSel = document.getElementById("rr-run-select");
+      const prevSel = rrSel.value;
+      rrSel.innerHTML = j.runs.map(r =>
+        `<option value="${r.run_id}">${esc(r.name || r.run_id)} · ${fmtDate(r.started_at)}</option>`).join("");
+      if (prevSel && j.runs.some(r => r.run_id === prevSel)) rrSel.value = prevSel;
+      else if (j.runs.length) rrSel.value = j.runs[0].run_id;   // newest (list is DESC)
+      document.getElementById("rr-empty").hidden = j.runs.length !== 0;
+      if (j.runs.length === 0) document.getElementById("run-results-wrap").hidden = true;
+      if (j.runs.length && !document.getElementById("tab-results").hidden
+          && document.getElementById("run-results-wrap").hidden) {
+        loadRunResults(rrSel.value, "");
       }
-      let msg = `Background ${s.phase ? "(" + s.phase + ") " : ""}— evaluated ${fmtInt(done)}`
-              + (remaining != null ? ` · ${fmtInt(remaining)} left` : "")
-              + (s.skipped ? ` · ${fmtInt(s.skipped)} skipped` : "")
-              + ` · $${(s.cost || 0).toFixed(2)}`;
-      if (s.spent_today != null) msg += ` · $${s.spent_today.toFixed(2)}/$${(s.budget || 0).toFixed(2)} today`;
-      if (!s.running) {
-        if (s.error) msg = "⚠️ Stopped: " + s.error;
-        else if (s.stopped === "budget") msg += " · ⛔ stopped: daily budget reached";
-        else if (s.stopped === "cap") msg += " · ⏸ reached the per-run page limit — Execute again to continue";
-        else msg += " · ✅ finished";
-      }
-      st.textContent = msg;
+      // Feed the latest inclusion (and its exclusion) run into the pipeline Sankey.
+      const incl = j.runs.find(r => /inclusion/i.test(r.phase || ""));
+      const excl = incl && j.runs.find(r => /exclusion/i.test(r.phase || "") && r.source_run_id === incl.run_id);
+      sankeyLLM = incl ? {
+        inclKept: incl.kept || 0, inclDropped: incl.dropped || 0,
+        exclKept: excl ? (excl.kept || 0) : null, exclDropped: excl ? (excl.dropped || 0) : null,
+      } : null;
+      fillFunnelAiRow("incl", incl);
+      fillFunnelAiRow("excl", excl);
+      drawSankey();
+      updateExplainSummary();
     }
-    async function pollBg() {
-      let s;
-      try { s = await (await fetch(`/api/categories/${CID}/evaluate-bg/status`)).json(); }
-      catch (e) { return; }
-      renderBgStatus(s);
-      await loadRuns();
-      if (s.run_id) await loadRunResults(s.run_id, "");
-      if (!s.running) { bgUiRunning(false); if (bgTimer) { clearInterval(bgTimer); bgTimer = null; } }
-    }
-    function beginBgPolling() {
-      bgUiRunning(true);
-      if (!bgTimer) bgTimer = setInterval(pollBg, 3000);
-      pollBg();
-    }
-    runBgBtn.addEventListener("click", async () => {
-      runBgBtn.disabled = true;
-      try {
-        const j = await (await fetch(`/api/categories/${CID}/evaluate-bg/start`, { method: "POST" })).json();
-        if (j.error) { document.getElementById("eval-status").textContent = "Error: " + j.error; runBgBtn.disabled = false; return; }
-        beginBgPolling();
-      } catch (e) { document.getElementById("eval-status").textContent = "Could not start background run."; runBgBtn.disabled = false; }
-    });
-    stopBgBtn.addEventListener("click", async () => {
-      stopBgBtn.disabled = true;
-      try { await fetch(`/api/categories/${CID}/evaluate-bg/stop`, { method: "POST" }); } catch (e) {}
-      stopBgBtn.disabled = false;
-      document.getElementById("eval-status").textContent = "Stopping after the current batch…";
-    });
-    const completeBtn = document.getElementById("complete-shortlist");
-    if (completeBtn) completeBtn.addEventListener("click", async () => {
-      completeBtn.disabled = true;
-      const st = document.getElementById("complete-status");
-      st.textContent = "Resuming…";
-      try {
-        const j = await (await fetch(`/api/categories/${CID}/evaluate-bg/resume`, { method: "POST" })).json();
-        if (j.error) { st.textContent = "Error: " + j.error; completeBtn.disabled = false; return; }
-        document.getElementById("stalled-banner").hidden = true;
-        beginBgPolling();                       // show progress + refresh the runs list as it finishes
-      } catch (e) { st.textContent = "Could not resume."; completeBtn.disabled = false; }
-    });
-    // On load: if a background run is already going (e.g. started before you left), resume showing it.
-    (async () => {
-      try { const s = await (await fetch(`/api/categories/${CID}/evaluate-bg/status`)).json(); if (s.running) beginBgPolling(); }
-      catch (e) {}
-    })();
-    // Nested tabs inside AI Pipeline: Active Run (controls) vs Run History (runs list).
-    const nestedBtns = document.querySelectorAll(".subtab2");
-    let currentNested = "active";
-    try { currentNested = localStorage.getItem("preview-subtab2-" + CID) || "active"; } catch (e) {}
-    if (!["active", "history"].includes(currentNested)) currentNested = "active";
-    function showNested(which) {
-      currentNested = which;
-      nestedBtns.forEach(b => b.classList.toggle("current", b.dataset.subtab2 === which));
-      document.getElementById("tab2-active").hidden = which !== "active";
-      document.getElementById("tab2-history").hidden = which !== "history";
-      // Only own the pane-id when the AI Pipeline panel is the visible top-level tab.
-      const active = [...nestedBtns].find(b => b.dataset.subtab2 === which);
-      if (active && !document.getElementById("tab-semantic").hidden)
-        document.getElementById("pane-id").textContent = active.dataset.tabid;
-      try { localStorage.setItem("preview-subtab2-" + CID, which); } catch (e) {}
-    }
-    nestedBtns.forEach(b => b.addEventListener("click", e => { e.preventDefault(); showNested(b.dataset.subtab2); }));
-    showNested(currentNested);   // sync the nested panels to the stored choice
+    function aiOnPoll(s) { if (s.run_id) loadRunResults(s.run_id, ""); }
+    window.AIPipeline.init(CID, { onRuns: aiOnRuns, onPoll: aiOnPoll });
 
     // Sub-tabs: Keyword Matching (deterministic funnel), AI Pipeline (runs), Funnel Results.
     (function () {
@@ -1272,7 +1041,7 @@
         document.getElementById("tab-hybrid").hidden = tab !== "hybrid";
         const active = [...btns].find(b => b.dataset.tab === tab);
         document.getElementById("pane-id").textContent = active ? active.dataset.tabid : "";
-        if (tab === "semantic") showNested(currentNested);   // pane-id → active nested tab
+        if (tab === "semantic") window.AIPipeline.showNested();   // re-apply nested tab + pane-id
         if (tab === "exact") drawSankey();   // redraw at the now-visible width
         if (tab === "results") {
           const v = document.getElementById("rr-run-select").value;
@@ -1288,7 +1057,6 @@
       show(initial);
     })();
 
-    loadRuns();   // show existing runs on load
     // Refresh: clear the cached counts server-side, reset the rows, and re-run.
     document.getElementById("refresh-funnel").addEventListener("click", async e => {
       const btn = e.currentTarget;

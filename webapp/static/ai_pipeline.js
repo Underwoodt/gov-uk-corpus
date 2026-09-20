@@ -7,7 +7,7 @@
  */
 (function () {
   "use strict";
-  let CID = null, bgTimer = null;
+  let CID = null, bgTimer = null, hooks = {}, curNested = "active";
   const $ = (id) => document.getElementById(id);
 
   function fmtInt(n) { return (n == null || isNaN(n)) ? "0" : Number(n).toLocaleString(); }
@@ -79,6 +79,7 @@
     catch (e) { return; }
     renderBgStatus(s);
     await loadRuns();
+    if (hooks.onPoll) { try { hooks.onPoll(s); } catch (e) {} }   // host page extras (e.g. run-results)
     if (!s.running) { bgUiRunning(false); if (bgTimer) { clearInterval(bgTimer); bgTimer = null; } }
   }
   function beginBgPolling() {
@@ -165,6 +166,7 @@
       });
     });
     loadActiveSummary();
+    if (hooks.onRuns) { try { hooks.onRuns(j); } catch (e) {} }   // host page extras (Sankey, run-results)
   }
 
   async function newRun() {
@@ -186,7 +188,11 @@
   }
 
   // Nested tabs inside the AI Pipeline: Active Run (controls) vs Run History (runs list).
+  // `which` defaults to the current choice (lets the host re-apply it when the pipeline tab
+  // becomes visible). pane-id is only claimed when the pipeline panel is actually showing.
   function showNested(which) {
+    if (which === undefined) which = curNested;
+    curNested = which;
     const btns = document.querySelectorAll(".subtab2");
     btns.forEach(b => b.classList.toggle("current", b.dataset.subtab2 === which));
     const a = $("tab2-active"), h = $("tab2-history");
@@ -194,7 +200,8 @@
     if (h) h.hidden = which !== "history";
     const active = [...btns].find(b => b.dataset.subtab2 === which);
     const pane = $("pane-id");
-    if (pane && active) pane.textContent = active.dataset.tabid;
+    const panel = document.querySelector(".ai-pipeline") && document.querySelector(".ai-pipeline").closest(".subpanel");
+    if (pane && active && panel && !panel.hidden) pane.textContent = active.dataset.tabid;
     try { localStorage.setItem("ai-pipeline-subtab2-" + CID, which); } catch (e) {}
   }
 
@@ -231,8 +238,11 @@
   }
 
   window.AIPipeline = {
-    init(cid) {
+    loadRuns: () => loadRuns(),
+    showNested: (which) => showNested(which),
+    init(cid, options) {
       CID = cid;
+      hooks = options || {};
       wireOnce();
       let start = "active";
       try { start = localStorage.getItem("ai-pipeline-subtab2-" + CID) || "active"; } catch (e) {}
