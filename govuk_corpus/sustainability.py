@@ -107,6 +107,18 @@ def equivalences(kwh: float, water_l: float, co2_kg: float) -> list:
             for m, ic, l, v, n in out]
 
 
+def _per_mtok(d: dict) -> Optional[Dict[str, float]]:
+    """Average cost / energy / water / CO₂ per one million tokens processed (in + out).
+    Lets you compare models like-for-like regardless of how much each was run."""
+    toks = float(d.get("intok") or 0) + float(d.get("outtok") or 0)
+    if toks <= 0:
+        return None
+    scale = 1_000_000.0 / toks
+    pt = d["impact"]["point"]
+    return {"cost": d["cost"] * scale, "kwh": pt["kwh"] * scale,
+            "water_l": pt["water_l"] * scale, "co2_kg": pt["co2_kg"] * scale}
+
+
 def _agg_row(conn, where: str = "", params: tuple = ()) -> dict:
     row = conn.execute(
         f"SELECT COUNT(*) AS runs, COALESCE(SUM(cost),0) AS cost, "
@@ -139,6 +151,7 @@ def summary(conn) -> dict:
             for k in ("cost", "intok", "outtok", "hit", "miss", "pages", "kept"):
                 d[k] = float(d.get(k) or 0)
             d["impact"] = impact(d["intok"], d["outtok"], d["hit"], d["miss"])
+            d["per_mtok"] = _per_mtok(d)
             rows.append(d)
         return rows
 
