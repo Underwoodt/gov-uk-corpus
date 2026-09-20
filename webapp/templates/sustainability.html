@@ -6,6 +6,14 @@
   {% macro water(l) %}{% if l < 1 %}{{ '%.0f'|format(l * 1000) }} mL{% else %}{{ '%.2f'|format(l) }} L{% endif %}{% endmacro %}
   {% macro co2(kg) %}{% if kg < 1 %}{{ '%.0f'|format(kg * 1000) }} g{% else %}{{ '%.2f'|format(kg) }} kg{% endif %}{% endmacro %}
   {% macro num(n) %}{{ '{:,.0f}'.format(n or 0) }}{% endmacro %}
+  {% macro eqval(v) %}{{ '%.1f'|format(v) if v < 100 else '{:,.0f}'.format(v) }}{% endmacro %}
+  {%- macro eqlist(metric) -%}
+    {% set items = s.equivalences | selectattr('metric', 'equalto', metric) | list %}
+    {% if items %}<ul class="sd-eq">
+      {% for e in items %}<li title="{{ e.note }}"><span class="ic">{{ e.icon }}</span>
+        <b>{{ eqval(e.value) }}</b> {{ e.label }}</li>{% endfor %}
+    </ul>{% endif %}
+  {%- endmacro -%}
 
   <style>
     .sd-cards { display:flex; flex-wrap:wrap; gap:14px; margin:18px 0 8px; }
@@ -14,9 +22,10 @@
     .sd-card .lab { font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted,#6b7477); font-weight:700; }
     .sd-card .big { font-size:26px; font-weight:700; margin:4px 0 2px; font-variant-numeric:tabular-nums; }
     .sd-card .rng { font-size:12px; color:var(--muted,#6b7477); }
-    .sd-eq { display:flex; flex-wrap:wrap; gap:10px 22px; margin:6px 0 4px; }
-    .sd-eq .e { font-size:14px; } .sd-eq .e b { font-size:18px; font-variant-numeric:tabular-nums; }
-    .sd-eq .e span { color:var(--muted,#6b7477); }
+    .sd-eq { list-style:none; margin:10px 0 0; padding:10px 0 0; border-top:1px solid var(--border-light,#eceef0); }
+    .sd-eq li { display:flex; align-items:baseline; gap:8px; font-size:13px; color:var(--muted,#6b7477); padding:2px 0; }
+    .sd-eq li .ic { font-size:15px; line-height:1; flex:0 0 auto; }
+    .sd-eq li b { font-size:15px; color:var(--text,#0b0c0c); font-variant-numeric:tabular-nums; }
     .sd table { font-size:14px; width:100%; } .sd .num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
     .sd h2 { font-size:19px; margin:26px 0 8px; }
     .sd .caveat { background:#fef7e0; border:1px solid #f2d888; border-left:4px solid #e0a800; border-radius:6px;
@@ -38,20 +47,13 @@
     <div class="sd-card"><div class="lab">Cost</div><div class="big">${{ '%.2f'|format(s.total.cost) }}</div>
       <div class="rng">across all runs</div></div>
     <div class="sd-card"><div class="lab">Energy</div><div class="big">{{ energy(pt.kwh) }}</div>
-      <div class="rng">{{ energy(lo.kwh) }} – {{ energy(hi.kwh) }}</div></div>
+      <div class="rng">{{ energy(lo.kwh) }} – {{ energy(hi.kwh) }}</div>{{ eqlist('energy') }}</div>
     <div class="sd-card"><div class="lab">Water</div><div class="big">{{ water(pt.water_l) }}</div>
-      <div class="rng">{{ water(lo.water_l) }} – {{ water(hi.water_l) }}</div></div>
+      <div class="rng">{{ water(lo.water_l) }} – {{ water(hi.water_l) }}</div>{{ eqlist('water') }}</div>
     <div class="sd-card"><div class="lab">Carbon (CO₂e)</div><div class="big">{{ co2(pt.co2_kg) }}</div>
-      <div class="rng">{{ co2(lo.co2_kg) }} – {{ co2(hi.co2_kg) }}</div></div>
+      <div class="rng">{{ co2(lo.co2_kg) }} – {{ co2(hi.co2_kg) }}</div>{{ eqlist('co2') }}</div>
   </div>
-
-  <h2>To put that in context</h2>
-  <div class="sd-eq">
-    {% for e in s.equivalences %}
-    <span class="e"><b>{{ '%.1f'|format(e.value) if e.value < 100 else '{:,.0f}'.format(e.value) }}</b>
-      {{ e.label }} <span>· {{ e.note }}</span></span>
-    {% endfor %}
-  </div>
+  <p class="secondary" style="margin:8px 0 0;font-size:12px;">Everyday equivalents shown under each figure — hover for the assumption behind each.</p>
 
   <h2>Efficiency</h2>
   <div class="table-wrap"><table>

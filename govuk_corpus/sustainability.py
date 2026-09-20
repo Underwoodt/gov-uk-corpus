@@ -69,18 +69,22 @@ def impact(intok, outtok, hit, miss) -> Dict[str, Dict[str, float]]:
 
 
 def equivalences(kwh: float, water_l: float, co2_kg: float) -> list:
-    """Everyday anchors for a kWh / water / CO₂ figure (nobody intuits '0.4 Wh')."""
+    """Everyday anchors for a kWh / water / CO₂ figure (nobody intuits '0.4 Wh').
+
+    Each anchor is tagged with the ``metric`` it belongs beside (energy / water / co2) and an
+    ``icon`` (emoji) so the UI can show it next to the matching headline card."""
     wh = kwh * 1000.0
     ml = water_l * 1000.0
     g = co2_kg * 1000.0
     out = [
-        ("Phone charges", wh / 10.0, "a full phone charge ≈ 10 Wh"),
-        ("Kettles boiled", wh / 100.0, "boiling a kettle ≈ 100 Wh"),
-        ("Google searches", wh / 0.3, "a web search ≈ 0.3 Wh"),
-        ("Cups of water", ml / 250.0, "a cup ≈ 250 mL"),
-        ("Km driven (car)", g / 120.0, "a petrol car ≈ 120 g CO₂e/km"),
+        ("energy", "📱", "phone charges", wh / 10.0, "a full charge ≈ 10 Wh"),
+        ("energy", "🫖", "kettles boiled", wh / 100.0, "boiling a kettle ≈ 100 Wh"),
+        ("energy", "🔍", "web searches", wh / 0.3, "a web search ≈ 0.3 Wh"),
+        ("water", "🥤", "cups of water", ml / 250.0, "a cup ≈ 250 mL"),
+        ("co2", "🚗", "km driven", g / 120.0, "a petrol car ≈ 120 g CO₂e/km"),
     ]
-    return [{"label": l, "value": v, "note": n} for l, v, n in out]
+    return [{"metric": m, "icon": ic, "label": l, "value": v, "note": n}
+            for m, ic, l, v, n in out]
 
 
 def _agg_row(conn, where: str = "", params: tuple = ()) -> dict:
