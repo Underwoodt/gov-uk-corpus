@@ -173,7 +173,7 @@
       <input type="hidden" name="csrf" value="{{ csrf_token }}">
       <h2 style="margin-bottom:10px;">Execution guardrails</h2>
       <p class="secondary" style="margin:0 0 6px;">Spent today (all AI calls):
-        <strong>${{ '%.4f'|format(spent_today) }}</strong> of ${{ '%.2f'|format(daily_budget) }} budget.</p>
+        <strong>${{ '%.2f'|format(spent_today) }}</strong> of ${{ '%.2f'|format(daily_budget) }} budget.</p>
       <div class="field">
         <label class="q" for="ai_daily_budget">Daily AI budget (USD)</label>
         <p class="hint">Inference warns within 10% and stops when the day's spend reaches this. 0 = no limit.</p>

@@ -50,6 +50,16 @@ Project conventions that must be followed for every change. This file is the hom
   if a specific box needs a different floor or ceiling. New textareas need no per-field
   code — the default applies everywhere.
 
+## Money / costs
+
+- **Show costs to 2 decimal places as `$1.32`** by default — totals, accrued spend, per-run
+  costs, budget figures. Use `'%.2f'|format(x)` (Jinja) / `x.toFixed(2)` (JS) with a leading
+  `$`. Don't show 4–6 dp for a cost the user reads as money.
+- **Exception — sub-cent analytical/config values** where 2dp would round to `$0.00` and lose
+  the signal: model **unit prices** (per-million-tokens, in Settings), fine-grained **averages**
+  (e.g. average cost per 100 pages), and single-call **estimates** (the AI Assistant scratch
+  page) may keep more precision. Everything a user treats as a spend total is 2dp.
+
 ## App structure
 
 - Web app: FastAPI + Jinja in [webapp/app.py](webapp/app.py); domain logic in the

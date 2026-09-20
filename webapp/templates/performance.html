@@ -82,7 +82,7 @@
       set("hittokens", (r.hit_tokens || 0).toLocaleString());
       set("misstokens", (r.miss_tokens || 0).toLocaleString());
       set("outtokens", (r.out_tokens || 0).toLocaleString());
-      set("totalcost", "$" + (r.cost || 0).toFixed(6));
+      set("totalcost", "$" + (r.cost || 0).toFixed(2));
       set("totaltime", fmtMS(secsTotal));
     }
     const fmtInt = n => Number(n || 0).toLocaleString();

@@ -99,9 +99,9 @@
         </tr>
         {% endfor %}
         <tr data-stage="incl" hidden><td>Included by AI</td><td class="num val"></td><td class="num rejected"></td><td class="num timing"></td>
-          <td class="num cost" title="Total AI spend on the inclusion pass for this shortlist (all runs).">${{ '%.4f'|format(ai_cost.incl) }}</td></tr>
+          <td class="num cost" title="Total AI spend on the inclusion pass for this shortlist (all runs).">${{ '%.2f'|format(ai_cost.incl) }}</td></tr>
         <tr data-stage="excl" hidden><td>Shortlist</td><td class="num val"></td><td class="num rejected"></td><td class="num timing"></td>
-          <td class="num cost" title="Total AI spend on the exclusion pass for this shortlist (all runs).">${{ '%.4f'|format(ai_cost.excl) }}</td></tr>
+          <td class="num cost" title="Total AI spend on the exclusion pass for this shortlist (all runs).">${{ '%.2f'|format(ai_cost.excl) }}</td></tr>
       </tbody>
       </table>
     </div>
@@ -997,7 +997,7 @@
           `<td class="num">${fmtInt(r.dropped)}</td>` +
           `<td class="num">${fmtInt(r.in_tokens)}</td>` +
           `<td class="num">${fmtInt(r.out_tokens)}</td>` +
-          `<td class="num">$${(r.cost||0).toFixed(6)}</td>` +
+          `<td class="num">$${(r.cost||0).toFixed(2)}</td>` +
           `<td><a href="#" class="del-run" data-run="${r.run_id}" data-pages="${r.pages||0}" ` +
           `style="color:#d4351c;">Delete</a></td>`;
         tbody.appendChild(tr);
@@ -1071,7 +1071,7 @@
         + `<td class="mono">${esc(r.model || "—")}</td>`
         + `<td class="num">${fmtInt(r.pages)}</td><td class="num">${fmtInt(r.kept)}</td>`
         + `<td class="num">${fmtInt(r.dropped)}</td><td class="num">${fmtInt(r.in_tokens)}</td>`
-        + `<td class="num">${fmtInt(r.out_tokens)}</td><td class="num">$${(r.cost || 0).toFixed(6)}</td></tr>`).join("");
+        + `<td class="num">${fmtInt(r.out_tokens)}</td><td class="num">$${(r.cost || 0).toFixed(2)}</td></tr>`).join("");
       // If this run's job is in flight, disable Execute (and adopt the run so this
       // page polls it and re-enables when it finishes) — even if another tab/session
       // started it. bgUiRunning(false) re-enables the button when the run stops.
@@ -1168,8 +1168,8 @@
       let msg = `Background ${s.phase ? "(" + s.phase + ") " : ""}— evaluated ${fmtInt(done)}`
               + (remaining != null ? ` · ${fmtInt(remaining)} left` : "")
               + (s.skipped ? ` · ${fmtInt(s.skipped)} skipped` : "")
-              + ` · $${(s.cost || 0).toFixed(6)}`;
-      if (s.spent_today != null) msg += ` · $${s.spent_today.toFixed(4)}/$${(s.budget || 0).toFixed(2)} today`;
+              + ` · $${(s.cost || 0).toFixed(2)}`;
+      if (s.spent_today != null) msg += ` · $${s.spent_today.toFixed(2)}/$${(s.budget || 0).toFixed(2)} today`;
       if (!s.running) {
         if (s.error) msg = "⚠️ Stopped: " + s.error;
         else if (s.stopped === "budget") msg += " · ⛔ stopped: daily budget reached";
