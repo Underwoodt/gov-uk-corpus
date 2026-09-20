@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block page_id %}guc-0006{% endblock %}
-{% block title %}{{ run.name or 'Run' }} — run details{% endblock %}
+{% block title %}Run Details for {{ run.name or run.run_id }}{% endblock %}
 {% block content %}
   {% macro notelist(items) %}
   <ul style="list-style:none;padding:0;margin:0 0 18px;max-width:840px;">
@@ -13,7 +13,7 @@
 
   <a class="back" href="{{ url_for('preview_category_page', cid=category.id) }}">‹ Back to preview</a>
 
-  <h1 style="margin:18px 0 4px;">Run details</h1>
+  <h1 style="margin:18px 0 4px;">Run Details for {{ run.name or run.run_id }}</h1>
   <p class="secondary" style="margin:0 0 18px;">{{ category.display_name }}
     (<span class="mono">{{ category.slug or '' }}</span>) · run <span class="mono">{{ run.run_id }}</span></p>
 
