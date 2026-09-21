@@ -193,7 +193,7 @@
       if (k === "url") return `<a href="${esc(v)}">${esc(v)}</a>`;
       if (k === "title") return v == null ? "—" : `<a href="${esc(r.url)}">${esc(v)}</a>`;
       if (k === "public_updated_at" || k === "first_published_at") return v ? esc(String(v).slice(0, 10)) : "—";
-      if (k === "exclusion_reason") return (v == null || v === "") ? "—" : "----- EXCLUSION_HIT ----<br>" + esc(v);
+      if (k === "exclusion_reason") return (v == null || v === "") ? "—" : esc(v).replace(/\n/g, "<br>");
       return (v == null || v === "") ? "—" : esc(v);
     }
     async function loadAudit() {

@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import socket
 import time
 import uuid
@@ -224,6 +225,38 @@ def parse_exclusion(text: str) -> Optional[Dict]:
     if hit and hit.lower() != "none":
         reason = f"[{hit}] {reason}".strip()
     return {"keep": 1 if keep else 0, "score": None, "reason": reason}
+
+
+# The model's exclusion_hit categories -> the display label shown as a header line above the
+# reason. parse_exclusion (above) tags an excluded page's stored reason with a leading [hit];
+# an untagged reason is a page that survived the exclusion pass -> "KEPT" (exclusion_hit "none").
+EXCLUSION_HIT_LABELS = {
+    "incidental": "Excluded as Incidental",
+    "homonym": "Excluded as homonym",
+    "wrong_domain": "Excluded as wrong domain",
+}
+
+
+def exclusion_label(reason) -> "tuple[str, str]":
+    """(label, clean_reason) for a stored exclusion-run reason: map its leading [hit] tag to the
+    display label and strip the tag; an untagged reason -> ("KEPT", reason unchanged)."""
+    r = str(reason or "")
+    m = re.match(r"\s*\[([a-z_]+)\]\s*", r, re.I)
+    if m:
+        label = EXCLUSION_HIT_LABELS.get(m.group(1).lower())
+        if label:
+            return label, r[m.end():]
+    return "KEPT", r
+
+
+def exclusion_display(reason):
+    """'label\\nclean_reason' for a non-empty exclusion reason (header line + body), left as-is
+    (falsy) when there is no exclusion reason. Single source for the funnel/audit tables and
+    the CSV/XLSX/JSON exports so every surface shows the same exclusion_hit label."""
+    if not reason:
+        return reason
+    label, clean = exclusion_label(reason)
+    return f"{label}\n{clean}"
 
 
 def latest_inclusion_run(conn, category_id: int) -> Optional[str]:

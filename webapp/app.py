@@ -2974,7 +2974,7 @@ def api_run_results(request: Request, cid: int, run_id: str, keep: str = ""):
     for r in rows:
         if src:                                   # exclusion run: this reason = exclusion
             r["incl_reason"] = r.get("src_reason")
-            r["excl_reason"] = r.get("reason")
+            r["excl_reason"] = evaluate.exclusion_display(r.get("reason"))   # label header + reason
         else:                                     # inclusion run: no exclusion pass here
             r["incl_reason"] = r.get("reason")
             r["excl_reason"] = None
@@ -2998,13 +2998,6 @@ def _safe_filename(name: str, default: str) -> str:
     return base[:120] or default
 
 
-# The on-screen funnel/audit tables prefix a header line above a non-empty exclusion reason
-# (added in JS). Mirror it in CSV exports so the two match; a newline inside the field is
-# valid CSV (csv.writer quotes it), giving the same two-line cell.
-def _excl_hit_csv(val):
-    return f"----- EXCLUSION_HIT ----\n{val}" if val else val
-
-
 @app.get("/categories/{cid}/runs/{run_id}/download")
 def download_run(request: Request, cid: int, run_id: str):
     if not authed(request):
@@ -3020,8 +3013,8 @@ def download_run(request: Request, cid: int, run_id: str):
     for r in rows:
         decision = "keep" if r["keep"] == 1 else "drop" if r["keep"] == 0 else "unparseable"
         incl = r.get("src_reason") if src else r.get("reason")
-        excl = r.get("reason") if src else ""
-        w.writerow([r["url"], decision, r["score"], incl, _excl_hit_csv(excl)])
+        excl = evaluate.exclusion_display(r.get("reason")) if src else ""
+        w.writerow([r["url"], decision, r["score"], incl, excl])
     return Response(buf.getvalue(), media_type="text/csv",
                     headers={"Content-Disposition": f'attachment; filename="gov-uk-funnel-pages-{_dl_stamp()}.csv"'})
 
@@ -3166,7 +3159,10 @@ def _enrich_audit_rows(conn, cid: int, rows: list, keys: list, stage: str = None
             run_id = inc if field.startswith("inclusion") else exc
             m = _map(f"SELECT url, {col} AS val FROM evaluation_results WHERE run_id = {P}", run_id) if run_id else {}
             for r in rows:
-                r[field] = m.get(r.get("url")) or ""
+                val = m.get(r.get("url")) or ""
+                # Prefix the exclusion reason with its exclusion_hit label header (single source
+                # for the table + every export); other virtual fields pass through unchanged.
+                r[field] = evaluate.exclusion_display(val) if field == "exclusion_reason" else val
     if "decision" in need:
         # The AI verdict for each page — Keep / Drop / Unscored (a row with keep = NULL) — from
         # the run relevant to the stage: the inclusion run for include/excl_include, the exclusion
@@ -3462,12 +3458,18 @@ def export_category(request: Request, cid: int, format: str = "csv", stage: str 
         except Exception:
             return JSONResponse({"error": "Excel export needs openpyxl (pip install -r requirements.txt)."},
                                 status_code=500)
+        from openpyxl.styles import Alignment
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "shortlist"
         ws.append(labels)
+        # exclusion_reason is baked as 'label\nreason' (see _enrich_audit_rows); wrap so the
+        # exclusion_hit label header shows on the line above the reason in Excel.
+        excl_col = keys.index("exclusion_reason") + 1 if "exclusion_reason" in keys else None
         for r in rows:
             ws.append([r.get(k) for k in keys])
+            if excl_col and r.get("exclusion_reason"):
+                ws.cell(row=ws.max_row, column=excl_col).alignment = Alignment(wrap_text=True, vertical="top")
         bio = io.BytesIO()
         wb.save(bio)
         return Response(bio.getvalue(),
@@ -3478,7 +3480,7 @@ def export_category(request: Request, cid: int, format: str = "csv", stage: str 
     w = csv.writer(buf)
     w.writerow(labels)
     for r in rows:
-        w.writerow([_excl_hit_csv(r.get(k)) if k == "exclusion_reason" else r.get(k) for k in keys])
+        w.writerow([r.get(k) for k in keys])   # exclusion_reason already carries its label header
     return Response(buf.getvalue(), media_type="text/csv",
                     headers={"Content-Disposition": f'attachment; filename="{name}.csv"'})
 

@@ -989,7 +989,7 @@
           `<td>${confidence(row.score)}</td>` +
           `<td class="num">${scoreText(row.score)}</td>` +
           `<td>${esc(row.incl_reason || "—")}</td>` +
-          `<td>${row.excl_reason ? "----- EXCLUSION_HIT ----<br>" + esc(row.excl_reason) : "—"}</td>`;
+          `<td>${row.excl_reason ? esc(row.excl_reason).replace(/\n/g, "<br>") : "—"}</td>`;
         tbody.appendChild(tr);
       }
     }
