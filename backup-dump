@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+#
+# backup-dump — write a dated, compressed dump of the corpus database.
+#
+#   ./backup-dump [output-dir]
+#
+# Produces  <db>-YYYYMMDD-HHMMSS.dump  (pg_dump custom format, -Fc) covering the WHOLE
+# database — the corpus (public schema) and the accounts (auth schema). Restore with:
+#
+#   pg_restore --clean --if-exists -d <db> <file>.dump        # into an existing DB, or
+#   pg_restore -C -d postgres <file>.dump                     # create the DB from the dump
+#
+# Config (env, or ~/gov-uk-corpus.env): DB_NAME (default gov_uk_corpus), DB_HOST, DB_PORT,
+# DB_USER, DB_PASSWORD. Output dir: first argument, else $BACKUP_DIR, else ~/backups.
+# Set BACKUP_KEEP=N to keep only the N newest dumps in that dir (default: keep all).
+#
+set -euo pipefail
+
+ENV_FILE="${ENV_FILE:-$HOME/gov-uk-corpus.env}"
+if [ -f "$ENV_FILE" ]; then set -a; . "$ENV_FILE"; set +a; fi
+
+DB_NAME="${DB_NAME:-gov_uk_corpus}"
+OUT_DIR="${1:-${BACKUP_DIR:-$HOME/backups}}"
+STAMP="$(date +%Y%m%d-%H%M%S)"
+OUT="$OUT_DIR/${DB_NAME}-${STAMP}.dump"
+
+mkdir -p "$OUT_DIR"
+
+echo "→ Dumping database '${DB_NAME}' to:"
+echo "    $OUT"
+
+# Prefer the postgres superuser via peer auth (passwordless sudo) so the dump is complete and
+# needs no password in the shell; fall back to the app role from the env file.
+if command -v sudo >/dev/null 2>&1 && sudo -n -u postgres true 2>/dev/null; then
+    sudo -u postgres pg_dump --format=custom --no-owner --file="$OUT.tmp" "$DB_NAME"
+    sudo chown "$(id -u):$(id -g)" "$OUT.tmp" 2>/dev/null || true
+elif [ -n "${DB_USER:-}" ]; then
+    PGPASSWORD="${DB_PASSWORD:-}" pg_dump --format=custom --no-owner \
+        --host="${DB_HOST:-localhost}" --port="${DB_PORT:-5432}" --username="$DB_USER" \
+        --file="$OUT.tmp" "$DB_NAME"
+else
+    pg_dump --format=custom --no-owner --file="$OUT.tmp" "$DB_NAME"
+fi
+
+# Verify the dump is readable before we trust it, then move it into place atomically.
+if ! pg_restore --list "$OUT.tmp" >/dev/null 2>&1; then
+    echo "✗ Dump failed its readability check — not keeping it." >&2
+    rm -f "$OUT.tmp"
+    exit 1
+fi
+mv "$OUT.tmp" "$OUT"
+
+SIZE="$(du -h "$OUT" | cut -f1)"
+echo "✓ Backup complete: $OUT ($SIZE)"
+
+# Optional retention: keep only the N newest dumps for this database in the output dir.
+if [ -n "${BACKUP_KEEP:-}" ] && [ "${BACKUP_KEEP}" -gt 0 ] 2>/dev/null; then
+    mapfile -t OLD < <(ls -1t "$OUT_DIR/${DB_NAME}-"*.dump 2>/dev/null | tail -n +$((BACKUP_KEEP + 1)))
+    if [ "${#OLD[@]}" -gt 0 ]; then
+        echo "→ Pruning $((${#OLD[@]})) old dump(s) (keeping newest ${BACKUP_KEEP}):"
+        for f in "${OLD[@]}"; do echo "    rm $f"; rm -f "$f"; done
+    fi
+fi
