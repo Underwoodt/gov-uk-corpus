@@ -18,7 +18,7 @@ we can pin the report to an exact page.
 
 ## Next free serial
 
-**`guc-0023`** ← assign this to the next new page, then increment this line.
+**`guc-0027`** ← assign this to the next new page, then increment this line. (guc-0023 is free; 0024–0026 used by the password-reset pages.)
 
 ## How it's wired (so the rule is automatic)
 
@@ -63,6 +63,9 @@ we can pin the report to an exact page.
 | guc-0020 | User administration (admin) | `admin_users.html` | `GET /admin/users`, `POST /admin/users` (accounts mode) | Active |
 | guc-0021 | Updating category (post-save rebuild) | `rebuilding.html` | `GET /categories/{id}/rebuilding`, `POST /api/categories/{id}/refresh-shortlist`, `POST /api/categories/{id}/reconcile-eval` | Active |
 | guc-0022 | Sustainability dashboard (modelled AI impact) | `sustainability.html` | `GET /sustainability` | Active |
+| guc-0024 | Forgotten password (request reset link) | inline (`_LOGIN_HEAD`) | `GET/POST /forgot-password` | Active |
+| guc-0025 | Reset password via token | inline (`_LOGIN_HEAD`) | `GET/POST /reset-password/{token}` | Active |
+| guc-0026 | Forced password change (must_change) | inline (`_LOGIN_HEAD`) | `GET/POST /account/set-password` | Active |
 
 ## Sub-tab IDs
 
