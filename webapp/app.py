@@ -1318,9 +1318,8 @@ def shortlist_page(request: Request, cid: int, stage: str = "final"):
     category["display_name"] = cat.display_name(category)
     if stage not in _AUDIT_STAGE_KEYS:
         stage = "final"
-    has_ai_run = evaluate.latest_inclusion_run(conn, cid) is not None
     return templates.TemplateResponse("audit_shortlist.html", ctx(
-        conn, request, category=category, stage=stage, has_ai_run=has_ai_run,
+        conn, request, category=category, stage=stage,
         audit_stages=_AUDIT_STAGES, audit_sections=_DOWNLOAD_SECTIONS))
 
 
@@ -3059,13 +3058,13 @@ _DOWNLOAD_SECTIONS = [
         ("content", "Content (raw JSON)", False, False, "warning: may make the download very large"),
     ]),
     ("Matching & AI decision", [
-        ("organisations", "Organisations", False, False, "all linked organisation slugs"),
+        ("organisations", "Organisations", True, False, "all linked organisation slugs"),
         ("document_type", "Document type", True, False, None),
-        ("matched_keywords", "Matched keywords", False, False,
+        ("matched_keywords", "Matched keywords", True, False,
          "the shortlist keywords this page matched"),
-        ("inclusion_reason", "Inclusion reason", False, False,
+        ("inclusion_reason", "Inclusion reason", True, False,
          "from the latest AI run; blank for pages not evaluated"),
-        ("exclusion_reason", "Exclusion reason", False, False,
+        ("exclusion_reason", "Exclusion reason", True, False,
          "from the latest AI run's exclusion pass"),
         ("inclusion_raw_reply", "Inclusion raw reply", False, False,
          "warning: the model's verbatim inclusion reply — can be long"),
