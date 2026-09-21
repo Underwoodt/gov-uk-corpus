@@ -202,6 +202,19 @@ CREATE TABLE IF NOT EXISTS app_settings (
     value text
 );
 
+-- Editable, versioned overrides for the AI prompts (inclusion | exclusion | builder | assistant).
+-- No row for a name => the code default is used. The `active` row (one per name) is the one in use.
+CREATE TABLE IF NOT EXISTS prompt_versions (
+    name        text NOT NULL,
+    version     integer NOT NULL,
+    body        text NOT NULL,
+    note        text,
+    active      smallint NOT NULL DEFAULT 0,
+    created_at  text,
+    created_by  text,
+    PRIMARY KEY (name, version)
+);
+
 -- Per-page funnel audit for a category (starting point = organisation filter).
 CREATE TABLE IF NOT EXISTS category_audit (
     category_id  bigint NOT NULL,

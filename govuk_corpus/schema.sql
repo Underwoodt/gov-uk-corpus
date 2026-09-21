@@ -215,6 +215,18 @@ CREATE TABLE IF NOT EXISTS app_settings (
     value TEXT
 );
 
+-- Editable, versioned overrides for the AI prompts (inclusion | exclusion | builder | assistant).
+CREATE TABLE IF NOT EXISTS prompt_versions (
+    name        TEXT NOT NULL,
+    version     INTEGER NOT NULL,
+    body        TEXT NOT NULL,
+    note        TEXT,
+    active      SMALLINT NOT NULL DEFAULT 0,
+    created_at  TEXT,
+    created_by  TEXT,
+    PRIMARY KEY (name, version)
+);
+
 -- Per-page funnel audit for a category. Starting point is the organisation
 -- filter (so we never log the whole corpus): every row passed the org filter,
 -- and `outcome` says where it then dropped, or that it was included.

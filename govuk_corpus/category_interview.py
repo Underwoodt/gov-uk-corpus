@@ -178,15 +178,17 @@ Current definition:
 """
 
 
-def system_prompt(edit_fields: Optional[Dict] = None) -> str:
+def system_prompt(edit_fields: Optional[Dict] = None, base: Optional[str] = None) -> str:
     """The interview system prompt. In edit mode (edit_fields given) the model is told to
-    re-ask each facet showing the current value so the user can keep or nuance it."""
+    re-ask each facet showing the current value so the user can keep or nuance it. `base` overrides
+    the default SYSTEM_PROMPT (a saved version); the edit suffix is still appended in edit mode."""
+    text = base or SYSTEM_PROMPT
     if not edit_fields:
-        return SYSTEM_PROMPT
+        return text
     # Never expose the owner email to the model (it's set from the signed-in user, and an
     # email in the text would trip the input guardrails).
     current = {k: edit_fields[k] for k in FIELD_KEYS if k in edit_fields and k != "owner_email"}
-    return SYSTEM_PROMPT + EDIT_SUFFIX.format(current=json.dumps(current, indent=2))
+    return text + EDIT_SUFFIX.format(current=json.dumps(current, indent=2))
 
 
 def edit_greeting(name: str) -> str:

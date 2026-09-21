@@ -43,25 +43,58 @@ def normalise_mode(value: Optional[str]) -> str:
     return MODE_BATCH if (value or "").strip().lower() == MODE_BATCH else MODE_SYNC
 
 
+# Editable prompt templates. The wording lives here (and can be overridden by a saved version —
+# see govuk_corpus/prompts.py); the {{PLACEHOLDERS}} are filled in per page by the build_* helpers.
+DEFAULT_INCLUSION_TEMPLATE = (
+    "You are assessing whether a GOV.UK page is relevant to a topic.\n\n"
+    "Topic to INCLUDE (keep pages about this):\n{{INCLUDE}}\n\n"
+    "EXCLUDE (looks relevant but is not):\n{{EXCLUDE}}\n\n"
+    "Page title: {{TITLE}}\n"
+    "Page description: {{DESCRIPTION}}\n\n"
+    "Page content (may be truncated):\n{{BODY}}\n\n"
+    "Decide whether to KEEP this page for the topic. A page is relevant if it "
+    "concerns the topic in the sense described, even if only part of the page does. "
+    "Drop it if it is out of scope or matches an exclusion.\n\n"
+    "Return ONLY a JSON object, no prose:\n"
+    '{"keep": true|false, "score": 0.0-1.0, "reason": "1-2 sentence explanation"}')
+
+DEFAULT_EXCLUSION_TEMPLATE = (
+    "You curate a GOV.UK corpus for a {{NAME_UPPER}} audit. A fast first pass flagged this "
+    "page because it looked relevant; it forces KEEP on any mention. Remove ONLY pages that "
+    "are clearly not about {{NAME}} at all. Missing a genuinely {{NAME}}-relevant page is "
+    "unacceptable; keeping a borderline one is fine. Default to KEEP.\n\n"
+    "=== {{NAME_UPPER}} SPEC ===\n{{SPEC}}\n=== END SPEC ===\n\n"
+    "Apply the inclusion and exclusion criteria above.\n"
+    "KEEP (keep = true) — keep if the page has any audit-relevant {{NAME}} content, even briefly.\n"
+    "DROP (keep = false) — drop ONLY when the page is clearly out of scope per the exclusion "
+    "criteria (homonyms, incidental-only mentions, wrong domain).\n"
+    "{{KEEP_SECTION}}{{DROP_SECTION}}"
+    "If you are unsure, KEEP.\n\n"
+    "For context, the first pass wrote this note (it may be wrong): {{PASS1_REASON}}\n\n"
+    "{{TITLE_LINE}}\nPage content (may be truncated):\n{{BODY}}\n\n"
+    "Return ONLY a JSON object, no prose:\n"
+    '{"keep": true|false, "exclusion_hit": "none"|"incidental"|"homonym"|"wrong_domain", '
+    '"reason": "1-2 sentence explanation"}')
+
+
+def _fill(template: str, values: Dict[str, str]) -> str:
+    """Substitute {{KEY}} tokens (str.replace, so literal { } in the text are left alone)."""
+    out = template
+    for k, v in values.items():
+        out = out.replace("{{" + k + "}}", v)
+    return out
+
+
 def build_prompt(inclusion: str, exclusion: str, title: str, description: str,
-                 body: str, body_limit: int = BODY_CHAR_LIMIT) -> str:
+                 body: str, body_limit: int = BODY_CHAR_LIMIT, template: Optional[str] = None) -> str:
     body = (body or "")[:body_limit]
-    return (
-        "You are assessing whether a GOV.UK page is relevant to a topic.\n\n"
-        "Topic to INCLUDE (keep pages about this):\n"
-        f"{inclusion.strip() or '(not specified)'}\n\n"
-        "EXCLUDE (looks relevant but is not):\n"
-        f"{exclusion.strip() or '(none given)'}\n\n"
-        f"Page title: {title or '(none)'}\n"
-        f"Page description: {description or '(none)'}\n\n"
-        "Page content (may be truncated):\n"
-        f"{body or '(no body text)'}\n\n"
-        "Decide whether to KEEP this page for the topic. A page is relevant if it "
-        "concerns the topic in the sense described, even if only part of the page does. "
-        "Drop it if it is out of scope or matches an exclusion.\n\n"
-        "Return ONLY a JSON object, no prose:\n"
-        '{"keep": true|false, "score": 0.0-1.0, "reason": "1-2 sentence explanation"}'
-    )
+    return _fill(template or DEFAULT_INCLUSION_TEMPLATE, {
+        "INCLUDE": inclusion.strip() or "(not specified)",
+        "EXCLUDE": exclusion.strip() or "(none given)",
+        "TITLE": title or "(none)",
+        "DESCRIPTION": description or "(none)",
+        "BODY": body or "(no body text)",
+    })
 
 
 def _iter_json_spans(text: str):
@@ -149,7 +182,8 @@ def parse_decision(text: str) -> Optional[Dict]:
 # positives). Adapted from the DEFRA guidance-relevance-filter adjudication pass.
 def build_exclusion_prompt(name: str, inclusion: str, exclusion: str,
                            keep_hints: str, drop_hints: str, title: str, body: str,
-                           pass1_reason: str, body_limit: int = BODY_CHAR_LIMIT) -> str:
+                           pass1_reason: str, body_limit: int = BODY_CHAR_LIMIT,
+                           template: Optional[str] = None) -> str:
     body = (body or "")[:body_limit]
     nm = (name or "the topic").strip()
     spec = (inclusion or "").strip() or "(not specified)"
@@ -164,24 +198,16 @@ def build_exclusion_prompt(name: str, inclusion: str, exclusion: str,
         drop_section = ("\nDROP examples (keep = false) — drop only when clearly similar to:\n"
                         f"{drop_hints.strip()}\n")
     title_line = f"Page title: {title}\n" if title else ""
-    return (
-        f"You curate a GOV.UK corpus for a {nm.upper()} audit. A fast first pass flagged this "
-        f"page because it looked relevant; it forces KEEP on any mention. Remove ONLY pages that "
-        f"are clearly not about {nm} at all. Missing a genuinely {nm}-relevant page is "
-        "unacceptable; keeping a borderline one is fine. Default to KEEP.\n\n"
-        f"=== {nm.upper()} SPEC ===\n{spec}\n=== END SPEC ===\n\n"
-        "Apply the inclusion and exclusion criteria above.\n"
-        f"KEEP (keep = true) — keep if the page has any audit-relevant {nm} content, even briefly.\n"
-        "DROP (keep = false) — drop ONLY when the page is clearly out of scope per the exclusion "
-        "criteria (homonyms, incidental-only mentions, wrong domain).\n"
-        f"{keep_section}{drop_section}"
-        "If you are unsure, KEEP.\n\n"
-        f"For context, the first pass wrote this note (it may be wrong): {pass1_reason!r}\n\n"
-        f"{title_line}\nPage content (may be truncated):\n{body or '(no body text)'}\n\n"
-        "Return ONLY a JSON object, no prose:\n"
-        '{"keep": true|false, "exclusion_hit": "none"|"incidental"|"homonym"|"wrong_domain", '
-        '"reason": "1-2 sentence explanation"}'
-    )
+    return _fill(template or DEFAULT_EXCLUSION_TEMPLATE, {
+        "NAME_UPPER": nm.upper(),
+        "NAME": nm,
+        "SPEC": spec,
+        "KEEP_SECTION": keep_section,
+        "DROP_SECTION": drop_section,
+        "PASS1_REASON": repr(pass1_reason),
+        "TITLE_LINE": title_line,
+        "BODY": body or "(no body text)",
+    })
 
 
 def parse_exclusion(text: str) -> Optional[Dict]:
