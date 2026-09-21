@@ -44,7 +44,7 @@
     <span class="service">Content Relevance Filters</span>
     <a href="{{ url_for('list_categories_page') }}" class="{{ 'active' if active_nav not in ['assistant','settings','govuk_search','users','sustainability'] }}">Shortlists</a>
     <a href="{{ url_for('sustainability_page') }}" class="{{ 'active' if active_nav == 'sustainability' }}">Sustainability</a>
-    <a href="{{ url_for('govuk_search_page') }}" class="{{ 'active' if active_nav == 'govuk_search' }}">GOV.UK search</a>
+    <a href="{{ url_for('govuk_search_page') }}" class="{{ 'active' if active_nav == 'govuk_search' }}" data-level="admin">GOV.UK search</a>
     <a href="{{ url_for('assistant_page') }}" class="{{ 'active' if active_nav == 'assistant' }}" data-level="admin">AI Assistant</a>
     <a href="{{ url_for('admin_users_page') }}" class="{{ 'active' if active_nav == 'users' }}" data-level="admin">Users</a>
     <a href="{{ url_for('settings_page') }}" class="{{ 'active' if active_nav == 'settings' }}" data-level="admin">Settings</a>

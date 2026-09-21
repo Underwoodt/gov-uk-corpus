@@ -59,7 +59,7 @@ we can pin the report to an exact page.
 | guc-0016 | Profile (details, password, UI display level) | `profile.html` | `GET /profile`, `POST /profile/details`, `POST /profile/password` | Active |
 | guc-0017 | Edit user (admin) | `user_edit.html` | `GET/POST /admin/users/{id}/edit` (accounts mode) | Active |
 | guc-0018 | URL check (corpus / active / final shortlist) | `url_check.html` | `GET /categories/{id}/url-check`, `POST /api/categories/{id}/url-check`, `POST /categories/{id}/url-check/save` | Active |
-| guc-0019 | GOV.UK search | `govuk_search.html` | `GET /govuk-search`, `GET /api/govuk-search` | Active |
+| guc-0019 | GOV.UK search (Admin only) | `govuk_search.html` | `GET /govuk-search`, `GET /api/govuk-search` | Active |
 | guc-0020 | User administration (admin) | `admin_users.html` | `GET /admin/users`, `POST /admin/users` (accounts mode) | Active |
 | guc-0021 | Updating category (post-save rebuild) | `rebuilding.html` | `GET /categories/{id}/rebuilding`, `POST /api/categories/{id}/refresh-shortlist`, `POST /api/categories/{id}/reconcile-eval` | Active |
 | guc-0022 | Sustainability dashboard (modelled AI impact) | `sustainability.html` | `GET /sustainability` | Active |
@@ -81,8 +81,7 @@ letter (e.g. `guc-0003b1`); the nested pane's id is what shows in the corner.
 | guc-0003b | AI Pipeline | Preview and run (`guc-0003`) |
 | guc-0003b1 | AI Pipeline › Active Run | Preview and run (`guc-0003`) |
 | guc-0003b2 | AI Pipeline › Run History | Preview and run (`guc-0003`) |
-| guc-0003c | Funnel Results | Preview and run (`guc-0003`) |
-| guc-0003d | Hybrid Search | Preview and run (`guc-0003`) |
+| guc-0003d | Hybrid Search (advanced+ only) | Preview and run (`guc-0003`) |
 | guc-0004a | Shortlist | Audit Results (`guc-0004`) |
 | guc-0004b | GDS Compliance (Non-LLM) | Audit Results (`guc-0004`) |
 | guc-0016a | Your details | Profile (`guc-0016`) |

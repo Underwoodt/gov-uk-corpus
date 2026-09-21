@@ -2587,11 +2587,14 @@ def _govuk_search_multi(phrases, organisations=(), document_types=(), progress=N
 
 @app.get("/govuk-search", response_class=HTMLResponse)
 def govuk_search_page(request: Request):
-    """Search GOV.UK for pages matching a set of phrases (guc-0019). Uses the official Search API."""
+    """Search GOV.UK for pages matching a set of phrases (guc-0019). Admin only.
+    Uses the official Search API."""
     if not authed(request):
         return login_redirect(request)
+    if not _settings_admin_ok(request):
+        return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
     conn = connect()
-    resp = templates.TemplateResponse("govuk_search.html", ctx(conn, request))
+    resp = templates.TemplateResponse("govuk_search.html", ctx(conn, request, active_nav="govuk_search"))
     conn.close()
     return resp
 
@@ -2615,6 +2618,8 @@ def sustainability_page(request: Request):
 async def api_govuk_search(request: Request):
     if not authed(request):
         return JSONResponse({"error": "auth"}, status_code=401)
+    if not _settings_admin_ok(request):     # GOV.UK search page (guc-0019) is admin only
+        return JSONResponse({"error": "forbidden"}, status_code=403)
     body = await request.json()
     raw = body.get("phrases")
     lines = raw.splitlines() if isinstance(raw, str) else (raw if isinstance(raw, list) else [])
@@ -2960,31 +2965,6 @@ def api_compare(request: Request, cid: int, base: str = "", other: str = ""):
     return JSONResponse(out)
 
 
-@app.get("/api/categories/{cid}/runs/{run_id}/results")
-def api_run_results(request: Request, cid: int, run_id: str, keep: str = ""):
-    if not authed(request):
-        return JSONResponse({"error": "auth"}, status_code=401)
-    k = int(keep) if keep in ("0", "1") else None
-    conn = connect()
-    run = evaluate.get_run(conn, run_id)
-    # An exclusion run carries source_run_id = its inclusion run; join it so each row shows both
-    # the inclusion reason (why it was kept in Phase 1) and the exclusion reason (Phase 2).
-    src = run.get("source_run_id") if run else None
-    rows = evaluate.run_results(conn, run_id, keep=k, limit=500, source_run_id=src)
-    for r in rows:
-        if src:                                   # exclusion run: this reason = exclusion
-            r["incl_reason"] = r.get("src_reason")
-            r["excl_reason"] = evaluate.exclusion_display(r.get("reason"))   # label header + reason
-        else:                                     # inclusion run: no exclusion pass here
-            r["incl_reason"] = r.get("reason")
-            r["excl_reason"] = None
-        r.pop("src_reason", None)
-    rsql, rparams = evaluate.run_results_query(run_id, keep=k, limit=500, source_run_id=src)
-    out = {"run": run, "rows": rows, "sql": _display_sql(rsql, rparams)}
-    conn.close()
-    return JSONResponse(out)
-
-
 def _dl_stamp() -> str:
     """UTC timestamp for download filenames: yy-mm-dd-hr-min."""
     return time.strftime("%y-%m-%d-%H-%M", time.gmtime())
@@ -2996,27 +2976,6 @@ def _safe_filename(name: str, default: str) -> str:
     base = re.sub(r"\.(csv|xlsx|json)$", "", (name or "").strip(), flags=re.I)
     base = re.sub(r"[^A-Za-z0-9._ -]", "", base).strip().replace(" ", "-")
     return base[:120] or default
-
-
-@app.get("/categories/{cid}/runs/{run_id}/download")
-def download_run(request: Request, cid: int, run_id: str):
-    if not authed(request):
-        return login_redirect(request)
-    conn = connect()
-    run = evaluate.get_run(conn, run_id)
-    src = run.get("source_run_id") if run else None
-    rows = evaluate.run_results(conn, run_id, source_run_id=src)
-    conn.close()
-    buf = io.StringIO()
-    w = csv.writer(buf)
-    w.writerow(["url", "decision", "score", "inclusion_reason", "exclusion_reason"])
-    for r in rows:
-        decision = "keep" if r["keep"] == 1 else "drop" if r["keep"] == 0 else "unparseable"
-        incl = r.get("src_reason") if src else r.get("reason")
-        excl = evaluate.exclusion_display(r.get("reason")) if src else ""
-        w.writerow([r["url"], decision, r["score"], incl, excl])
-    return Response(buf.getvalue(), media_type="text/csv",
-                    headers={"Content-Disposition": f'attachment; filename="gov-uk-funnel-pages-{_dl_stamp()}.csv"'})
 
 
 # ---- download page (choose format + fields) -----------------------------

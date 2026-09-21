@@ -147,8 +147,7 @@
     <div class="tabs" role="tablist" style="margin-bottom:22px;">
       <a href="#" class="subtab current" data-tab="exact" data-tabid="{{ page_ref }}a" role="tab">Keyword Matching</a>
       <a href="#" class="subtab" data-tab="semantic" data-tabid="{{ page_ref }}b" role="tab">AI Pipeline</a>
-      <a href="#" class="subtab" data-tab="results" data-tabid="{{ page_ref }}c" role="tab">Funnel Results</a>
-      <a href="#" class="subtab" data-tab="hybrid" data-tabid="{{ page_ref }}d" role="tab">Hybrid Search</a>
+      <a href="#" class="subtab" data-tab="hybrid" data-tabid="{{ page_ref }}d" role="tab" data-level="advanced">Hybrid Search</a>
     </div>
 
     <section id="tab-exact" class="subpanel" role="tabpanel">
@@ -247,33 +246,7 @@
       {% include "_ai_pipeline.html" %}
     </section>
 
-    <section id="tab-results" class="subpanel" role="tabpanel" hidden>
-      <h2 style="margin-top:10px;">Funnel results</h2>
-      <p class="hint" style="margin-top:-14px;">Per-page keep / drop decisions for a run. Pick a run (defaults to the
-        latest). <strong>Confidence</strong> describes how central the topic is to the page.</p>
-      <div class="controls" style="align-items:center;" data-level="advanced">
-        <label>Run
-          <select id="rr-run-select" style="font-size:15px;padding:6px;border:2px solid var(--black);min-width:280px;"></select>
-        </label>
-      </div>
-      <div id="run-results-wrap" hidden>
-        <div class="controls">
-          <span id="run-results-title" class="secondary"></span>
-          <a href="#" id="rr-all">All</a>
-          <a href="#" id="rr-keep">Keep</a>
-          <a href="#" id="rr-drop">Drop</a>
-          <a href="#" id="rr-csv">Download CSV</a>
-        </div>
-        <table id="run-results">
-          <thead><tr><th>Page</th><th>Decision</th><th>Confidence</th><th class="num">Score</th><th>Inclusion reason</th><th>Exclusion reason</th></tr></thead>
-          <tbody></tbody>
-        </table>
-        {{ sql_panel("run-results-sql") }}
-      </div>
-      <p id="rr-empty" class="secondary" hidden>No runs yet — evaluate the shortlist first on the AI Pipeline tab.</p>
-    </section>
-
-    <section id="tab-hybrid" class="subpanel" role="tabpanel" hidden>
+    <section id="tab-hybrid" class="subpanel" role="tabpanel" data-level="advanced" hidden>
       <div id="govuk-coverage">
         <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;">
           <h2 style="margin:0;font-size:19px;">Hybrid Search</h2>
@@ -926,21 +899,6 @@
     }
     window.addEventListener("resize", drawSankey);
 
-    // AI evaluation
-    function decisionText(k) { return k === 1 ? "keep" : k === 0 ? "drop" : "—"; }
-    // Model score → a confidence description of how central the topic is to the page.
-    // The label (this fn) and the raw score (scoreText) are shown in separate columns.
-    function confidence(score) {
-      if (score == null) return "—";
-      const s = Number(score);
-      if (s <= 0)         return "Wrong sense";
-      if (s <= 0.35)      return "Mentioned once or in passing";
-      if (s <= 0.65)      return "Discussed a little";
-      return "Major focus";
-    }
-    function scoreText(score) { return score == null ? "—" : Number(score).toFixed(1); }
-    let selectedRun = null, activeRun = null;
-
     function fmtDate(s) { return s ? String(s).slice(0, 19).replace("T", " ") : "—"; }
     // Wall-clock elapsed between start and finish as H:MM:SS ("—" if unfinished).
     function fmtElapsed(startIso, finishIso) {
@@ -967,54 +925,11 @@
     }
 
 
-    async function loadRunResults(runId, keep) {
-      selectedRun = runId;
-      const rrSel = document.getElementById("rr-run-select");
-      if (rrSel && [...rrSel.options].some(o => o.value === runId)) rrSel.value = runId;
-      const j = await (await fetch(`/api/categories/${CID}/runs/${runId}/results?keep=${keep}`)).json();
-      document.getElementById("run-results-wrap").hidden = false;
-      if (window.setSqlPanel) setSqlPanel("run-results-sql", j.sql);
-      const run = j.run || {};
-      document.getElementById("run-results-title").textContent =
-        `Run ${runId} · ${run.provider || ""} / ${run.actual_model || run.model || ""} · `
-        + `${fmtInt(run.kept)} keep · ${fmtInt(run.dropped)} drop`;
-      document.getElementById("rr-csv").href = `/categories/${CID}/runs/${runId}/download`;
-      const tbody = document.querySelector("#run-results tbody");
-      tbody.innerHTML = "";
-      for (const row of j.rows) {
-        const tr = document.createElement("tr");
-        tr.innerHTML =
-          `<td><a href="${esc(row.url)}">${esc(row.url)}</a></td>` +
-          `<td>${decisionText(row.keep)}</td>` +
-          `<td>${confidence(row.score)}</td>` +
-          `<td class="num">${scoreText(row.score)}</td>` +
-          `<td>${esc(row.incl_reason || "—")}</td>` +
-          `<td>${row.excl_reason ? esc(row.excl_reason).replace(/\n/g, "<br>") : "—"}</td>`;
-        tbody.appendChild(tr);
-      }
-    }
-    document.getElementById("rr-all").addEventListener("click", e => { e.preventDefault(); if (selectedRun) loadRunResults(selectedRun, ""); });
-    document.getElementById("rr-keep").addEventListener("click", e => { e.preventDefault(); if (selectedRun) loadRunResults(selectedRun, "1"); });
-    document.getElementById("rr-drop").addEventListener("click", e => { e.preventDefault(); if (selectedRun) loadRunResults(selectedRun, "0"); });
-    document.getElementById("rr-run-select").addEventListener("change", e => { if (e.target.value) loadRunResults(e.target.value, ""); });
-
     // ---- AI Pipeline: shared /static/ai_pipeline.js drives the runs UI (execute/stop/complete,
     // runs table, active-run summary, background polling, nested Active-Run/Run-History tabs).
-    // These hooks feed this page's extras — the funnel Sankey and the Funnel Results tab — as the
-    // shared script (re)loads runs and polls a background run.
+    // These hooks feed this page's extras — the funnel Sankey — as the shared script
+    // (re)loads runs and polls a background run.
     function aiOnRuns(j) {
-      const rrSel = document.getElementById("rr-run-select");
-      const prevSel = rrSel.value;
-      rrSel.innerHTML = j.runs.map(r =>
-        `<option value="${r.run_id}">${esc(r.name || r.run_id)} · ${fmtDate(r.started_at)}</option>`).join("");
-      if (prevSel && j.runs.some(r => r.run_id === prevSel)) rrSel.value = prevSel;
-      else if (j.runs.length) rrSel.value = j.runs[0].run_id;   // newest (list is DESC)
-      document.getElementById("rr-empty").hidden = j.runs.length !== 0;
-      if (j.runs.length === 0) document.getElementById("run-results-wrap").hidden = true;
-      if (j.runs.length && !document.getElementById("tab-results").hidden
-          && document.getElementById("run-results-wrap").hidden) {
-        loadRunResults(rrSel.value, "");
-      }
       // Feed the latest inclusion (and its exclusion) run into the pipeline Sankey.
       const incl = j.runs.find(r => /inclusion/i.test(r.phase || ""));
       const excl = incl && j.runs.find(r => /exclusion/i.test(r.phase || "") && r.source_run_id === incl.run_id);
@@ -1027,33 +942,30 @@
       drawSankey();
       updateExplainSummary();
     }
-    function aiOnPoll(s) { if (s.run_id) loadRunResults(s.run_id, ""); }
-    window.AIPipeline.init(CID, { onRuns: aiOnRuns, onPoll: aiOnPoll });
+    window.AIPipeline.init(CID, { onRuns: aiOnRuns });
 
-    // Sub-tabs: Keyword Matching (deterministic funnel), AI Pipeline (runs), Funnel Results.
+    // Sub-tabs: Keyword Matching (deterministic funnel), AI Pipeline (runs), Hybrid Search.
     (function () {
       const btns = document.querySelectorAll(".subtab");
       function show(tab) {
         btns.forEach(b => b.classList.toggle("current", b.dataset.tab === tab));
         document.getElementById("tab-exact").hidden = tab !== "exact";
         document.getElementById("tab-semantic").hidden = tab !== "semantic";
-        document.getElementById("tab-results").hidden = tab !== "results";
         document.getElementById("tab-hybrid").hidden = tab !== "hybrid";
         const active = [...btns].find(b => b.dataset.tab === tab);
         document.getElementById("pane-id").textContent = active ? active.dataset.tabid : "";
         if (tab === "semantic") window.AIPipeline.showNested();   // re-apply nested tab + pane-id
         if (tab === "exact") drawSankey();   // redraw at the now-visible width
-        if (tab === "results") {
-          const v = document.getElementById("rr-run-select").value;
-          if (v) loadRunResults(v, "");
-        }
         if (tab === "hybrid") gcPoll();   // lazy: loads the list, or resumes progress if a job is running
         try { localStorage.setItem("preview-subtab-" + CID, tab); } catch (e) {}
       }
       btns.forEach(b => b.addEventListener("click", e => { e.preventDefault(); show(b.dataset.tab); }));
       let initial = "exact";
       try { initial = localStorage.getItem("preview-subtab-" + CID) || "exact"; } catch (e) {}
-      if (!["exact", "semantic", "results", "hybrid"].includes(initial)) initial = "exact";  // "audit" is now its own page
+      if (!["exact", "semantic", "hybrid"].includes(initial)) initial = "exact";  // "audit"/"results" are gone
+      // Don't land on a tab hidden for this display level (e.g. Hybrid, which is advanced+).
+      const initBtn = [...btns].find(b => b.dataset.tab === initial);
+      if (!initBtn || initBtn.offsetParent === null) initial = "exact";
       show(initial);
     })();
 
