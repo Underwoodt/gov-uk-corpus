@@ -30,16 +30,17 @@ echo "→ Dumping database '${DB_NAME}' to:"
 echo "    $OUT"
 
 # Prefer the postgres superuser via peer auth (passwordless sudo) so the dump is complete and
-# needs no password in the shell; fall back to the app role from the env file.
+# needs no password in the shell; fall back to the app role from the env file. Redirect pg_dump's
+# stdout (written by THIS shell, so it lands in our own output dir even when pg_dump runs as the
+# postgres user) rather than pg_dump's --file (which would write as postgres and hit permissions).
 if command -v sudo >/dev/null 2>&1 && sudo -n -u postgres true 2>/dev/null; then
-    sudo -u postgres pg_dump --format=custom --no-owner --file="$OUT.tmp" "$DB_NAME"
-    sudo chown "$(id -u):$(id -g)" "$OUT.tmp" 2>/dev/null || true
+    sudo -u postgres pg_dump --format=custom --no-owner "$DB_NAME" > "$OUT.tmp"
 elif [ -n "${DB_USER:-}" ]; then
     PGPASSWORD="${DB_PASSWORD:-}" pg_dump --format=custom --no-owner \
         --host="${DB_HOST:-localhost}" --port="${DB_PORT:-5432}" --username="$DB_USER" \
-        --file="$OUT.tmp" "$DB_NAME"
+        "$DB_NAME" > "$OUT.tmp"
 else
-    pg_dump --format=custom --no-owner --file="$OUT.tmp" "$DB_NAME"
+    pg_dump --format=custom --no-owner "$DB_NAME" > "$OUT.tmp"
 fi
 
 # Verify the dump is readable before we trust it, then move it into place atomically.
