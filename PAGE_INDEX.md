@@ -59,7 +59,7 @@ we can pin the report to an exact page.
 | guc-0016 | Profile (details, password, UI display level) | `profile.html` | `GET /profile`, `POST /profile/details`, `POST /profile/password` | Active |
 | guc-0017 | Edit user (admin) | `user_edit.html` | `GET/POST /admin/users/{id}/edit` (accounts mode) | Active |
 | guc-0018 | URL check (corpus / active / final shortlist) | `url_check.html` | `GET /categories/{id}/url-check`, `POST /api/categories/{id}/url-check`, `POST /categories/{id}/url-check/save` | Active |
-| guc-0019 | GOV.UK search (Admin only) | `govuk_search.html` | `GET /govuk-search`, `GET /api/govuk-search` | Active |
+| guc-0019 | GOV.UK search (Admin UI level) | `govuk_search.html` | `GET /govuk-search`, `GET /api/govuk-search` | Active |
 | guc-0020 | User administration (admin) | `admin_users.html` | `GET /admin/users`, `POST /admin/users` (accounts mode) | Active |
 | guc-0021 | Updating category (post-save rebuild) | `rebuilding.html` | `GET /categories/{id}/rebuilding`, `POST /api/categories/{id}/refresh-shortlist`, `POST /api/categories/{id}/reconcile-eval` | Active |
 | guc-0022 | Sustainability dashboard (modelled AI impact) | `sustainability.html` | `GET /sustainability` | Active |

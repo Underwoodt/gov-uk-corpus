@@ -2587,12 +2587,11 @@ def _govuk_search_multi(phrases, organisations=(), document_types=(), progress=N
 
 @app.get("/govuk-search", response_class=HTMLResponse)
 def govuk_search_page(request: Request):
-    """Search GOV.UK for pages matching a set of phrases (guc-0019). Admin only.
+    """Search GOV.UK for pages matching a set of phrases (guc-0019). Shown only at the
+    Admin UI-complexity level (profile setting) — see the data-level="admin" nav link.
     Uses the official Search API."""
     if not authed(request):
         return login_redirect(request)
-    if not _settings_admin_ok(request):
-        return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
     conn = connect()
     resp = templates.TemplateResponse("govuk_search.html", ctx(conn, request, active_nav="govuk_search"))
     conn.close()
@@ -2618,8 +2617,6 @@ def sustainability_page(request: Request):
 async def api_govuk_search(request: Request):
     if not authed(request):
         return JSONResponse({"error": "auth"}, status_code=401)
-    if not _settings_admin_ok(request):     # GOV.UK search page (guc-0019) is admin only
-        return JSONResponse({"error": "forbidden"}, status_code=403)
     body = await request.json()
     raw = body.get("phrases")
     lines = raw.splitlines() if isinstance(raw, str) else (raw if isinstance(raw, list) else [])
