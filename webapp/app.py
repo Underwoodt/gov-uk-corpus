@@ -1305,11 +1305,10 @@ def preview_category_page(request: Request, cid: int):
 
 
 @app.get("/categories/{cid}/shortlist", response_class=HTMLResponse)
-def shortlist_page(request: Request, cid: int, stage: str = "final", tab: str = "shortlist"):
-    """Audit Results page — Shortlist and Dashboard sub-tabs. `stage` pre-selects
-    the shortlist stage dropdown; `tab` picks the initial sub-tab (shortlist |
-    dashboard). Data loads from /api/categories/{cid}/audit-shortlist and
-    /api/categories/{cid}/audit-stats."""
+def shortlist_page(request: Request, cid: int, stage: str = "final"):
+    """Audit Results page — the shortlist pages list. `stage` pre-selects the shortlist
+    stage dropdown. Data loads from /api/categories/{cid}/audit-shortlist. (GDS Compliance
+    is now its own page — see gds_compliance_page.)"""
     if not authed(request):
         return login_redirect(request)
     conn = connect()
@@ -1319,14 +1318,9 @@ def shortlist_page(request: Request, cid: int, stage: str = "final", tab: str = 
     category["display_name"] = cat.display_name(category)
     if stage not in _AUDIT_STAGE_KEYS:
         stage = "final"
-    stages = [(s, _FUNNEL_STAGES[s][0]) for s in ("all", "org", "doctype", "keyword")]  # dashboard levels
-    gds_check_meta = [{"name": c.name, "weight": c.weight, "reason": c.reason}
-                      for c in readability.CHECKS]
     has_ai_run = evaluate.latest_inclusion_run(conn, cid) is not None
     return templates.TemplateResponse("audit_shortlist.html", ctx(
-        conn, request, category=category, stage=stage,
-        initial_tab=(tab if tab == "dashboard" else "shortlist"), stages=stages,
-        gds_check_meta=gds_check_meta, has_ai_run=has_ai_run, eval_max_docs=_max_docs(conn),
+        conn, request, category=category, stage=stage, has_ai_run=has_ai_run,
         audit_stages=_AUDIT_STAGES, audit_sections=_DOWNLOAD_SECTIONS))
 
 
@@ -1344,6 +1338,27 @@ def ai_pipeline_page(request: Request, cid: int):
     category["display_name"] = cat.display_name(category)
     resp = templates.TemplateResponse("ai_pipeline_page.html", ctx(
         conn, request, category=category, eval_max_docs=_max_docs(conn)))
+    conn.close()
+    return resp
+
+
+@app.get("/categories/{cid}/gds-compliance", response_class=HTMLResponse)
+def gds_compliance_page(request: Request, cid: int):
+    """GDS Compliance (Non-LLM) quality/freshness dashboard for a shortlist (guc-0004b) —
+    promoted from a Shortlist sub-tab to its own page. Data via /api/.../audit-stats."""
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    category = cat.get_category(conn, cid)
+    if not category:
+        conn.close()
+        return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
+    category["display_name"] = cat.display_name(category)
+    stages = [(s, _FUNNEL_STAGES[s][0]) for s in ("all", "org", "doctype", "keyword")]
+    gds_check_meta = [{"name": c.name, "weight": c.weight, "reason": c.reason}
+                      for c in readability.CHECKS]
+    resp = templates.TemplateResponse("gds_compliance_page.html", ctx(
+        conn, request, category=category, stages=stages, gds_check_meta=gds_check_meta))
     conn.close()
     return resp
 
