@@ -4,7 +4,15 @@
 {% block content %}
   <a class="back" href="{{ url_for('admin_users_page') }}">‹ User administration</a>
   <h1 style="margin:16px 0 4px;">Edit user</h1>
-  <p class="secondary" style="margin:0 0 18px;"><span class="mono">{{ u.email }}</span></p>
+  <p class="secondary" style="margin:0 0 18px;"><span class="mono">{{ u.email }}</span>
+    {% if u.must_change_password %}· <strong style="color:#8a3b12;">must set a new password at next sign-in</strong>{% endif %}</p>
+
+  {% if pw_msg %}<div class="success" style="margin-bottom:16px;">{{ pw_msg }}</div>{% endif %}
+  {% if reset_link %}
+  <div class="success" style="margin-bottom:16px;">
+    One-time reset link (valid 24h, single use) — give it to the user until email is set up:<br>
+    <a href="{{ reset_link }}" style="word-break:break-all;">{{ reset_link }}</a>
+  </div>{% endif %}
 
   <form method="post" action="{{ url_for('admin_update_user', user_id=u.id) }}" style="max-width:520px;">
     <input type="hidden" name="csrf" value="{{ csrf_token }}">
@@ -24,4 +32,19 @@
       </select></div>
     <button class="btn" type="submit">Save changes</button>
   </form>
+
+  <h2 style="margin:32px 0 8px;">Password</h2>
+  <p class="hint" style="margin-top:0;max-width:560px;">Until email is wired up, reset a user's password
+    one of two ways: <strong>require a change</strong> (they set a new password the next time they sign in),
+    or <strong>generate a reset link</strong> to hand to them now.</p>
+  <div style="display:flex;gap:12px;flex-wrap:wrap;">
+    <form method="post" action="{{ url_for('admin_require_reset', user_id=u.id) }}">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <button class="btn secondary-btn" type="submit">Require password change at next sign-in</button>
+    </form>
+    <form method="post" action="{{ url_for('admin_reset_link', user_id=u.id) }}">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <button class="btn secondary-btn" type="submit">Generate reset link</button>
+    </form>
+  </div>
 {% endblock %}

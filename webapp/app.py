@@ -111,6 +111,28 @@ async def _security_headers(request: Request, call_next):
     return resp
 
 
+# ---- forced password change gate ----------------------------------------
+# When an admin has "dirtied" a record (must_change_password), a signed-in user is confined to
+# the set-password page (and logout) until they choose a new one. current_user caches on
+# request.state, so the handler doesn't resolve the session twice.
+_PW_GATE_ALLOW = {"/account/set-password", "/logout", "/login", "/forgot-password"}
+
+
+@app.middleware("http")
+async def _force_password_change(request: Request, call_next):
+    if AUTH_MODE == "accounts":
+        path = request.url.path
+        if not (path.startswith("/static") or path.startswith("/reset-password")
+                or path in _PW_GATE_ALLOW):
+            try:
+                u = current_user(request)
+            except Exception:
+                u = None
+            if u and u.get("must_change_password"):
+                return RedirectResponse(url=str(request.url_for("set_password_page")), status_code=303)
+    return await call_next(request)
+
+
 # ---- last-resort error page ---------------------------------------------
 # Best practice: never surface a traceback, SQL, or stack detail to the user —
 # it leaks internals and is a standard pentest finding. Instead we log the full
@@ -551,8 +573,10 @@ _LOGIN_HEAD = ("""<!doctype html><meta charset=utf-8>
 
 
 @app.get("/login", response_class=HTMLResponse)
-def login(request: Request, bad: int = 0, locked: int = 0):
+def login(request: Request, bad: int = 0, locked: int = 0, reset: int = 0):
     err = ""
+    if reset:
+        err = "<div class='success'>Your password has been changed. Sign in with your new password.</div>"
     if locked:
         err = f"<div class='error-summary'><h2>There is a problem</h2><ul><li>{accounts.LOGIN_LOCKED_MESSAGE}</li></ul></div>"
     elif bad:
@@ -566,7 +590,9 @@ def login(request: Request, bad: int = 0, locked: int = 0):
     else:
         fields = ("<div class='field'><label class='q' for='p'>Password</label>"
                   "<input id='p' name='password' type='password'></div>")
-    reg = (f"<p style='margin-top:16px;'><a href='{request.url_for('register')}'>Create an account</a></p>"
+    reg = (f"<p style='margin-top:16px;'>"
+           f"<a href='{request.url_for('forgot_password')}'>Forgotten your password?</a> · "
+           f"<a href='{request.url_for('register')}'>Create an account</a></p>"
            if AUTH_MODE == "accounts" else "")
     return HTMLResponse(
         f"""{_LOGIN_HEAD}
@@ -590,7 +616,9 @@ def do_login(request: Request, password: str = Form(""), email: str = Form("")):
                                              user_agent=request.headers.get("user-agent"))
         finally:
             conn.close()
-        resp = RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
+        # Admin "dirtied" the record (or a reset was required) → force a new password first.
+        dest = ("set_password_page" if user.get("must_change_password") else "list_categories_page")
+        resp = RedirectResponse(url=str(request.url_for(dest)), status_code=303)
         _set_session_cookie(resp, cookie)
         return resp
     # shared-password mode
@@ -620,6 +648,154 @@ def do_logout(request: Request):
     else:
         resp.delete_cookie(COOKIE)
     return resp
+
+
+# ---- forgotten password / reset / forced change (accounts mode) ----------
+# Iteration 1: no email yet — the reset link is shown on screen (self-serve) or handed over by
+# an admin. A later iteration emails it. Tokens are single-use, hashed at rest, and expiring.
+def _auth_page(request: Request, body: str, pageid: str) -> HTMLResponse:
+    return HTMLResponse(f"{_LOGIN_HEAD}\n<div class='wrap body'>{body}</div>"
+                        f"<div class='page-id'>{pageid}</div>")
+
+
+@app.get("/forgot-password", response_class=HTMLResponse)
+def forgot_password(request: Request, sent: int = 0):
+    if AUTH_MODE != "accounts":
+        return RedirectResponse(url=str(request.url_for("login")), status_code=303)
+    action = request.url_for("forgot_password_submit")
+    body = (f"<h1>Reset your password</h1>"
+            f"<p>Enter your email address and we'll create a reset link.</p>"
+            f"<form class='authform' method=post action='{action}'>"
+            f"<input type=hidden name=csrf value='{_csrf_token(request)}'>"
+            f"<div class='field'><label class='q' for='e'>Email address</label>"
+            f"<input id='e' name='email' type='email' autocomplete='username'></div>"
+            f"<button class='btn' type=submit>Create reset link</button></form>"
+            f"<p style='margin-top:16px;'><a href='{request.url_for('login')}'>Back to sign in</a></p>")
+    return _auth_page(request, body, "guc-0024")
+
+
+@app.post("/forgot-password", response_class=HTMLResponse)
+async def forgot_password_submit(request: Request):
+    if AUTH_MODE != "accounts":
+        return RedirectResponse(url=str(request.url_for("login")), status_code=303)
+    form = await request.form()
+    email = (form.get("email") or "").strip()
+    link_html = ""
+    conn = connect()
+    try:
+        u = accounts.get_user_by_email(conn, email) if email else None
+        if u:
+            token = accounts.create_reset_token(conn, u["id"])
+            url = str(request.url_for("reset_password_page", token=token))
+            accounts.audit(conn, "password_reset_requested", user_id=u["id"], ip=_client_ip(request))
+            link_html = (f"<div class='success' style='margin-top:14px;'>Reset link created — open it to set a "
+                         f"new password (valid {accounts.RESET_TTL_HOURS}h, single use):<br>"
+                         f"<a href='{url}' style='word-break:break-all;'>{url}</a></div>")
+    finally:
+        conn.close()
+    # Same generic wording whether or not the account exists (no email enumeration); the link only
+    # appears when it matched. Iteration 1 shows it here; later this is emailed instead.
+    body = (f"<h1>Reset your password</h1>"
+            f"<p>If an account exists for <strong>{html.escape(email)}</strong>, a reset link has been created."
+            f" (In this version the link is shown below rather than emailed.)</p>{link_html}"
+            f"<p style='margin-top:16px;'><a href='{request.url_for('login')}'>Back to sign in</a></p>")
+    return _auth_page(request, body, "guc-0024")
+
+
+@app.get("/reset-password/{token}", response_class=HTMLResponse)
+def reset_password_page(request: Request, token: str, bad: int = 0):
+    if AUTH_MODE != "accounts":
+        return RedirectResponse(url=str(request.url_for("login")), status_code=303)
+    conn = connect()
+    try:
+        u = accounts.user_for_reset_token(conn, token)
+    finally:
+        conn.close()
+    if not u:
+        body = ("<h1>Reset link expired</h1><p>This reset link is invalid, already used, or expired. "
+                f"<a href='{request.url_for('forgot_password')}'>Request a new one</a>.</p>")
+        return _auth_page(request, body, "guc-0025")
+    err = ("<div class='error-summary'><h2>There is a problem</h2><ul><li>"
+           "The password didn't meet the policy or the two entries differed.</li></ul></div>" if bad else "")
+    action = request.url_for("reset_password_submit", token=token)
+    body = (f"<h1>Set a new password</h1><p>For <strong>{html.escape(u['email'])}</strong>.</p>{err}"
+            f"<form class='authform' method=post action='{action}'>"
+            f"<input type=hidden name=csrf value='{_csrf_token(request)}'>"
+            f"<div class='field'><label class='q' for='p'>New password</label>"
+            f"<input id='p' name='password' type='password' autocomplete='new-password'></div>"
+            f"<div class='field'><label class='q' for='p2'>Confirm new password</label>"
+            f"<input id='p2' name='password2' type='password' autocomplete='new-password'></div>"
+            f"<button class='btn' type=submit>Set password</button></form>")
+    return _auth_page(request, body, "guc-0025")
+
+
+@app.post("/reset-password/{token}")
+async def reset_password_submit(request: Request, token: str):
+    if AUTH_MODE != "accounts":
+        return RedirectResponse(url=str(request.url_for("login")), status_code=303)
+    form = await request.form()
+    pw, pw2 = (form.get("password") or ""), (form.get("password2") or "")
+    back = str(request.url_for("reset_password_page", token=token))
+    if pw != pw2:
+        return RedirectResponse(url=back + "?bad=1", status_code=303)
+    conn = connect()
+    try:
+        try:
+            ok = accounts.reset_password_with_token(conn, token, pw)
+        except ValueError:
+            return RedirectResponse(url=back + "?bad=1", status_code=303)
+        if not ok:
+            return RedirectResponse(url=back, status_code=303)   # token went stale
+    finally:
+        conn.close()
+    return RedirectResponse(url=str(request.url_for("login")) + "?reset=1", status_code=303)
+
+
+@app.get("/account/set-password", response_class=HTMLResponse)
+def set_password_page(request: Request, bad: int = 0):
+    """Forced password change: the user is signed in but must_change_password is set."""
+    if not authed(request):
+        return login_redirect(request)
+    u = current_user(request)
+    if not u or not u.get("must_change_password"):
+        return RedirectResponse(url=str(request.url_for("profile_page")), status_code=303)
+    err = ("<div class='error-summary'><h2>There is a problem</h2><ul><li>"
+           "The password didn't meet the policy or the two entries differed.</li></ul></div>" if bad else "")
+    action = request.url_for("set_password_submit")
+    body = (f"<h1>Set a new password</h1>"
+            f"<p>An administrator has asked you to choose a new password before continuing.</p>{err}"
+            f"<form class='authform' method=post action='{action}'>"
+            f"<input type=hidden name=csrf value='{_csrf_token(request)}'>"
+            f"<div class='field'><label class='q' for='p'>New password</label>"
+            f"<input id='p' name='password' type='password' autocomplete='new-password'></div>"
+            f"<div class='field'><label class='q' for='p2'>Confirm new password</label>"
+            f"<input id='p2' name='password2' type='password' autocomplete='new-password'></div>"
+            f"<button class='btn' type=submit>Set password</button></form>")
+    return _auth_page(request, body, "guc-0026")
+
+
+@app.post("/account/set-password")
+async def set_password_submit(request: Request):
+    if not authed(request):
+        return login_redirect(request)
+    u = current_user(request)
+    if not u:
+        return login_redirect(request)
+    form = await request.form()
+    pw, pw2 = (form.get("password") or ""), (form.get("password2") or "")
+    back = str(request.url_for("set_password_page"))
+    if pw != pw2:
+        return RedirectResponse(url=back + "?bad=1", status_code=303)
+    conn = connect()
+    try:
+        try:
+            accounts.set_password(conn, u["id"], pw)
+        except ValueError:
+            return RedirectResponse(url=back + "?bad=1", status_code=303)
+        accounts.audit(conn, "password_changed_forced", user_id=u["id"], ip=_client_ip(request))
+    finally:
+        conn.close()
+    return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
 
 
 # ---- registration (accounts mode only) ----------------------------------
@@ -3589,7 +3765,7 @@ async def admin_create_user(request: Request):
 
 
 @app.get("/admin/users/{user_id}/edit", response_class=HTMLResponse)
-def admin_edit_user_page(request: Request, user_id: str):
+def admin_edit_user_page(request: Request, user_id: str, pw_msg: str = "", reset_link: str = ""):
     if not authed(request):
         return login_redirect(request)
     if not _require_admin(request):
@@ -3600,7 +3776,8 @@ def admin_edit_user_page(request: Request, user_id: str):
         if not u:
             return RedirectResponse(url=str(request.url_for("admin_users_page")), status_code=303)
         return templates.TemplateResponse("user_edit.html", ctx(
-            conn, request, u=u, account_roles=accounts.ROLES, account_statuses=accounts.STATUSES))
+            conn, request, u=u, account_roles=accounts.ROLES, account_statuses=accounts.STATUSES,
+            pw_msg=pw_msg, reset_link=reset_link))
     finally:
         conn.close()
 
@@ -3621,6 +3798,46 @@ async def admin_update_user(request: Request, user_id: str):
     finally:
         conn.close()
     return RedirectResponse(url=str(request.url_for("admin_users_page")) + "?user_ok=1", status_code=303)
+
+
+@app.post("/admin/users/{user_id}/require-reset")
+async def admin_require_reset(request: Request, user_id: str):
+    """Admin 'dirties' the record: the user must choose a new password at next login."""
+    if not authed(request):
+        return login_redirect(request)
+    if not _require_admin(request):
+        return RedirectResponse(url=str(request.url_for("admin_users_page")), status_code=303)
+    conn = connect()
+    try:
+        accounts.require_password_change(conn, user_id, on=True)
+        actor = current_user(request)
+        accounts.audit(conn, "password_change_required", user_id=user_id,
+                       actor_id=(actor or {}).get("id"), ip=_client_ip(request))
+    finally:
+        conn.close()
+    edit = str(request.url_for("admin_edit_user_page", user_id=user_id))
+    return RedirectResponse(url=edit + "?pw_msg=" + quote("This user must set a new password at next sign-in."),
+                            status_code=303)
+
+
+@app.post("/admin/users/{user_id}/reset-link")
+async def admin_reset_link(request: Request, user_id: str):
+    """Admin generates a one-time reset link to hand to the user (until email is wired up)."""
+    if not authed(request):
+        return login_redirect(request)
+    if not _require_admin(request):
+        return RedirectResponse(url=str(request.url_for("admin_users_page")), status_code=303)
+    conn = connect()
+    try:
+        token = accounts.create_reset_token(conn, user_id)
+        actor = current_user(request)
+        accounts.audit(conn, "password_reset_link_created", user_id=user_id,
+                       actor_id=(actor or {}).get("id"), ip=_client_ip(request))
+    finally:
+        conn.close()
+    link = str(request.url_for("reset_password_page", token=token))
+    edit = str(request.url_for("admin_edit_user_page", user_id=user_id))
+    return RedirectResponse(url=edit + "?reset_link=" + quote(link), status_code=303)
 
 
 @app.get("/settings", response_class=HTMLResponse)
@@ -3810,6 +4027,18 @@ def _startup():
     conn = connect()
     db.init_db(conn)
     conn.close()
+    # Apply auth-schema migrations too (accounts mode). Best-effort: on setups where the app role
+    # doesn't own the `auth` schema (postgres created it), this is a no-op and the DDL is applied
+    # out of band — see docs. Never let it block startup.
+    if AUTH_MODE == "accounts":
+        try:
+            c = connect()
+            try:
+                accounts.init_auth_schema(c)
+            finally:
+                c.close()
+        except Exception as e:
+            logging.getLogger("assistant").warning("auth schema init skipped: %s", e)
     # Re-drive any evaluation run left mid-flight by the previous process (deploy/crash),
     # so a restart doesn't silently strand a run 'in progress'. Budget-capped; opt out via
     # the 'auto_resume_runs' setting.

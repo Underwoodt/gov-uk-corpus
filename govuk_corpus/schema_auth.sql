@@ -28,6 +28,23 @@ CREATE TABLE IF NOT EXISTS auth.users (
 );
 -- Case-insensitive unique email (replaces CITEXT).
 CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_uniq ON auth.users (lower(email));
+-- Force a password change on next login (admin "dirties" the record). Additive for existing DBs.
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS must_change_password boolean NOT NULL DEFAULT false;
+
+-- One-time password-reset links. The URL carries a random token; we only store its SHA-256
+-- (like sessions), so a DB read can't mint a working link. Single-use (used_at) and expiring.
+-- Iteration 1: the link is shown on screen (self-serve) or handed over by an admin; a later
+-- iteration emails it instead.
+CREATE TABLE IF NOT EXISTS auth.password_resets (
+    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    token_hash  text NOT NULL,
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    expires_at  timestamptz NOT NULL,
+    used_at     timestamptz
+);
+CREATE INDEX IF NOT EXISTS password_resets_user ON auth.password_resets (user_id);
+CREATE INDEX IF NOT EXISTS password_resets_token ON auth.password_resets (token_hash);
 
 -- Server-side sessions, so logout / rotation / password-reset can truly invalidate.
 CREATE TABLE IF NOT EXISTS auth.user_sessions (

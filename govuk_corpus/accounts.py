@@ -10,10 +10,11 @@ are unit-tested directly; the DB helpers require the Postgres backend.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from .backend import db
@@ -87,7 +88,7 @@ _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 # Columns safe to return through the app/API — never includes password_hash.
 _PUBLIC_COLS = ("id, email, first_name, last_name, role, account_status, "
                 "email_verified_at, failed_login_count, locked_until, "
-                "created_at, updated_at, last_login_at")
+                "created_at, updated_at, last_login_at, must_change_password")
 
 
 class EmailTakenError(Exception):
@@ -255,6 +256,72 @@ def change_password(conn, user_id: str, old_password: str, new_password: str) ->
     conn.execute("UPDATE auth.users SET password_hash=%s, updated_at=now() WHERE id=%s",
                  (pw, user_id))
     conn.commit()
+
+
+# ---- password reset (forgotten password) + forced change ------------------
+RESET_TTL_HOURS = 24
+
+
+def _token_hash(token: str) -> str:
+    return hashlib.sha256((token or "").encode()).hexdigest()
+
+
+def set_password(conn, user_id: str, new_password: str) -> None:
+    """Set a user's password WITHOUT the old one (reset-token or forced-change flows). Validates
+    policy, stores the Argon2id hash, and clears the must-change flag."""
+    _require_pg()
+    validate_password(new_password)
+    conn.execute("UPDATE auth.users SET password_hash=%s, must_change_password=false, "
+                 "updated_at=now() WHERE id=%s", (hash_password(new_password), user_id))
+    conn.commit()
+
+
+def require_password_change(conn, user_id: str, on: bool = True) -> None:
+    """Admin 'dirties' (or clears) a record so the user must set a new password at next login."""
+    _require_pg()
+    conn.execute("UPDATE auth.users SET must_change_password=%s, updated_at=now() WHERE id=%s",
+                 (bool(on), user_id))
+    conn.commit()
+
+
+def create_reset_token(conn, user_id: str, ttl_hours: int = RESET_TTL_HOURS) -> str:
+    """Mint a single-use reset token for a user. Stores only its hash; returns the raw token
+    for the URL. Any earlier unused tokens for the user are invalidated first."""
+    _require_pg()
+    conn.execute("UPDATE auth.password_resets SET used_at=now() WHERE user_id=%s AND used_at IS NULL",
+                 (user_id,))
+    token = secrets.token_urlsafe(32)
+    expires = datetime.now(timezone.utc) + timedelta(hours=ttl_hours)
+    conn.execute("INSERT INTO auth.password_resets (user_id, token_hash, expires_at) VALUES (%s,%s,%s)",
+                 (user_id, _token_hash(token), expires))
+    conn.commit()
+    return token
+
+
+def user_for_reset_token(conn, token: str) -> Optional[dict]:
+    """The (public) user a valid, unused, unexpired token belongs to, else None."""
+    _require_pg()
+    if not token:
+        return None
+    row = conn.execute(
+        f"SELECT {_PUBLIC_COLS} FROM auth.users u "
+        f"JOIN auth.password_resets r ON r.user_id = u.id "
+        f"WHERE r.token_hash=%s AND r.used_at IS NULL AND r.expires_at > now() LIMIT 1",
+        (_token_hash(token),)).fetchone()
+    return dict(row) if row else None
+
+
+def reset_password_with_token(conn, token: str, new_password: str) -> bool:
+    """Consume a valid token and set the new password. Returns True on success, False if the
+    token is invalid/expired/used. Raises ValueError if the new password fails policy."""
+    _require_pg()
+    u = user_for_reset_token(conn, token)
+    if not u:
+        return False
+    validate_password(new_password)                 # before consuming the token
+    conn.execute("UPDATE auth.password_resets SET used_at=now() WHERE token_hash=%s", (_token_hash(token),))
+    set_password(conn, u["id"], new_password)        # also clears must_change_password + commits
+    return True
 
 
 # ---- login: lockout, audit, authentication --------------------------------

@@ -27,7 +27,8 @@ IDLE_MINUTES = 120           # inactivity timeout (rolling, via last_seen_at)
 COOKIE_NAME = "sb_session"
 
 # Columns returned for the logged-in user (never password_hash).
-_USER_COLS = "u.id, u.email, u.first_name, u.last_name, u.role, u.account_status"
+_USER_COLS = ("u.id, u.email, u.first_name, u.last_name, u.role, u.account_status, "
+              "u.must_change_password")
 
 
 def _require_pg() -> None:
@@ -97,7 +98,8 @@ def resolve(conn, cookie_value: Optional[str], *, idle_minutes: int = IDLE_MINUT
         conn.execute("UPDATE auth.user_sessions SET last_seen_at = now() WHERE id = %s", (r["sid"],))
         conn.commit()
     return {"id": r["id"], "email": r["email"], "first_name": r["first_name"],
-            "last_name": r["last_name"], "role": r["role"], "account_status": r["account_status"]}
+            "last_name": r["last_name"], "role": r["role"], "account_status": r["account_status"],
+            "must_change_password": bool(r.get("must_change_password"))}
 
 
 def revoke(conn, cookie_value: Optional[str]) -> None:
