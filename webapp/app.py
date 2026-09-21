@@ -1072,7 +1072,9 @@ async def delete_category_route(request: Request, cid: int):
         return login_redirect(request)
     conn = connect()
     try:
-        cat.delete_category(conn, cid)
+        cat.delete_category(conn, cid)              # rows across the 6 category-scoped tables
+        settings.set_setting(conn, f"funnel_cache_{cid}", "")   # + its per-shortlist settings keys
+        settings.set_setting(conn, f"active_run_{cid}", "")
     finally:
         conn.close()
     return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
