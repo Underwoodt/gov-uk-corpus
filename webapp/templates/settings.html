@@ -19,6 +19,7 @@
     <a href="#" class="stab current" data-tab="models">Available Models</a>
     <a href="#" class="stab" data-tab="phases">Inference Phase &amp; Models</a>
     <a href="#" class="stab" data-tab="guardrails">Execution Guardrails</a>
+    <a href="#" class="stab" data-tab="prompts">AI Prompts</a>
     <a href="#" class="stab" data-tab="users">User Management</a>
   </div>
 
@@ -201,6 +202,27 @@
       dedicated <a href="{{ url_for('admin_users_page') }}"><strong>User administration</strong></a> page.</p>
     <p><a class="btn" href="{{ url_for('admin_users_page') }}">Go to User administration →</a></p>
     {% endif %}
+  </section>
+
+  <!-- Tab: AI Prompts (read-only) -->
+  <section class="stabpanel" data-tab="prompts" hidden>
+    <h2 style="margin-bottom:6px;">AI prompts</h2>
+    <p class="hint" style="max-width:720px;">The prompts behind each AI feature, shown for transparency.
+      <strong>Read-only for now</strong> — a later iteration may version these and let us tweak them to
+      finesse the outputs. <span class="mono">« … »</span> marks a value filled in at run time from the
+      shortlist and the page.</p>
+    {% for p in prompts %}
+    <details {{ 'open' if loop.first }} style="margin:0 0 14px;max-width:920px;border:1px solid var(--border-mid,#b1b4b6);border-radius:8px;">
+      <summary style="cursor:pointer;font-weight:700;padding:10px 14px;">{{ p.title }}</summary>
+      <div style="padding:0 14px 14px;">
+        <p class="secondary" style="margin:0 0 8px;">{{ p.note }}
+          {% if p.source %}<br><span class="mono" style="font-size:12px;">{{ p.source }}</span>{% endif %}</p>
+        <textarea readonly rows="16" style="width:100%;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
+          border:2px solid var(--border-mid,#b1b4b6);border-radius:6px;padding:10px;background:#f8f8f8;
+          white-space:pre;overflow:auto;">{{ p.text }}</textarea>
+      </div>
+    </details>
+    {% endfor %}
   </section>
 
   <script>

@@ -3840,6 +3840,36 @@ async def admin_reset_link(request: Request, user_id: str):
     return RedirectResponse(url=edit + "?reset_link=" + quote(link), status_code=303)
 
 
+def _ai_prompts() -> list:
+    """Read-only prompt templates surfaced on Settings → Prompts. « … » marks a value filled in
+    at run time from the shortlist and the page. Read-only for now; a later iteration may version
+    and let us tweak these to finesse the outputs."""
+    body_ph = "«page body — first %d characters»" % evaluate.BODY_CHAR_LIMIT
+    inclusion = evaluate.build_prompt(
+        "«INCLUDE context — what to keep»", "«EXCLUDE context — what to drop»",
+        "«page title»", "«page description»", body_ph)
+    exclusion = evaluate.build_exclusion_prompt(
+        "«shortlist name»", "«INCLUDE context»", "«EXCLUDE context»",
+        "«KEEP examples (adjudication hints)»", "«DROP examples (adjudication hints)»",
+        "«page title»", body_ph, "«first-pass (inclusion) reason»")
+    return [
+        {"title": "AI evaluation — Phase 1 (Inclusion)", "source": "govuk_corpus/evaluate.py · build_prompt",
+         "note": "Sent once per page in an inclusion run — keep or drop, with a score and reason.",
+         "text": inclusion},
+        {"title": "AI evaluation — Phase 2 (Exclusion)", "source": "govuk_corpus/evaluate.py · build_exclusion_prompt",
+         "note": "Recall-priority re-check of the pages Phase 1 kept — only ever turns a keep into a drop.",
+         "text": exclusion},
+        {"title": "AI shortlist builder (guided interview)", "source": "govuk_corpus/category_interview.py · SYSTEM_PROMPT",
+         "note": "System prompt for the assistant that helps define a shortlist. When editing an existing "
+                 "shortlist a summary of its current fields is appended to this.",
+         "text": category_interview.SYSTEM_PROMPT},
+        {"title": "AI Assistant (free-form)", "source": "webapp/templates/assistant.html",
+         "note": "The AI Assistant is a playground — the operator supplies the system prompt per request "
+                 "(guardrails still apply). This is the placeholder shown in that box.",
+         "text": "You are a helpful assistant that evaluates gov.uk pages…"},
+    ]
+
+
 @app.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request, saved: int = 0, user_ok: int = 0, user_error: str = ""):
     if not authed(request):
@@ -3870,7 +3900,7 @@ def settings_page(request: Request, saved: int = 0, user_ok: int = 0, user_error
         providers=list(PROVIDERS.keys()), phase_models=phase_models,
         provider_keys={k: _provider_key(k) is not None for k in PROVIDERS},
         daily_budget=_budget(conn), max_docs=_max_docs(conn),
-        spent_today=round(_daily_spend(conn), 4), saved=saved))
+        spent_today=round(_daily_spend(conn), 4), saved=saved, prompts=_ai_prompts()))
     conn.close()
     return resp
 
