@@ -209,32 +209,6 @@
       {{ sql_panel("venn-sql") }}
     </div>
 
-    <div id="kw-pages" style="margin-top:36px;">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;">
-        <h2 style="margin:0;font-size:19px;">Pages in this shortlist</h2>
-        <a href="{{ url_for('download_page', cid=category.id) }}?stage=keyword" id="kw-pages-download"
-          style="font-size:14px;">Download…</a>
-      </div>
-      <p class="hint" style="margin-top:2px;">Every page matching the organisation, document-type and keyword
-        filters — the input shortlist. <span id="kw-pages-total"></span></p>
-      <div style="overflow-x:auto;">
-        <table id="kw-pages-table" style="font-size:14px;width:100%;">
-          <thead><tr><th>Title</th><th>Document type</th><th>Keyword hits</th><th>URL</th></tr></thead>
-          <tbody id="kw-pages-rows">
-            <tr><td colspan="4" class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <p id="kw-pages-empty" class="secondary" hidden>No pages in this shortlist.</p>
-      <div id="kw-pages-pager" class="controls" style="margin-top:12px;align-items:center;" hidden>
-        <button class="btn secondary-btn" id="kwp-prev" type="button">‹ Prev</button>
-        <span id="kwp-range" class="secondary"></span>
-        <button class="btn secondary-btn" id="kwp-next" type="button">Next ›</button>
-      </div>
-      <p id="kw-pages-status" class="secondary" style="margin:6px 0 0;"></p>
-      {{ sql_panel("kw-pages-sql") }}
-    </div>
-
     <details style="margin-top:30px;" data-level="advanced"><summary>SQL queries that were run (per funnel stage)</summary>
       <div class="detail" style="max-width:none;"><pre class="mono" style="white-space:pre-wrap;font-size:14px;">{{ sql }}</pre>
         <p class="secondary">The COUNT(*) query behind each funnel row, then the shortlist SELECT — separated by
@@ -365,7 +339,6 @@
       loadDoctypeBreakdown();   // 'which document types matched'
       loadKeywordBreakdown();   // 'which terms matched'
       loadVenn();               // keyword-overlap Venn
-      loadKwPages();            // 'pages in this shortlist'
       // Hybrid Search coverage loads lazily when its tab is opened (see show()).
       updateExplainSummary();   // plain-English summary at the top of the tab
     }
@@ -416,10 +389,6 @@
     }
     document.getElementById("venn-n").addEventListener("change", loadVenn);
 
-    // "Pages in this shortlist" — the deterministic keyword-stage results, paginated,
-    // with a Download link for the full data (same export as the audit page).
-    const KWP_PAGE = 25;
-    let kwpOffset = 0;
     // Render a list of matched keywords as small lozenges (cls = kw-corpus | kw-govuk).
     function kwLozenges(list, cls) {
       const arr = Array.isArray(list) ? list : [];
@@ -427,38 +396,6 @@
       return `<span class="kw-hits">` +
         arr.map(k => `<span class="kw-hit ${cls}">${esc(k)}</span>`).join("") + `</span>`;
     }
-    async function loadKwPages() {
-      const tbody = document.getElementById("kw-pages-rows");
-      const status = document.getElementById("kw-pages-status");
-      tbody.innerHTML =
-        `<tr><td colspan="4" class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr>`;
-      document.getElementById("kw-pages-empty").hidden = true;
-      try {
-        const j = await (await fetch(`/api/categories/${CID}/results-table?limit=${KWP_PAGE}&offset=${kwpOffset}`)).json();
-        if (j.error) { tbody.innerHTML = ""; status.textContent = "Error: " + j.error; return; }
-        if (window.setSqlPanel) setSqlPanel("kw-pages-sql", j.sql);
-        const rows = j.rows || [], total = j.total, known = total != null;
-        document.getElementById("kw-pages-total").textContent = known ? (fmtInt(total) + " pages.") : "";
-        document.getElementById("kw-pages-empty").hidden = rows.length !== 0 || (known && total !== 0);
-        tbody.innerHTML = rows.length ? rows.map(r =>
-          `<tr>` +
-            `<td><a href="${esc(r.url)}">${esc(r.title || r.url)}</a></td>` +
-            `<td>${esc(r.effective_document_type || "—")}</td>` +
-            `<td>${kwLozenges(r.corpus_keywords, "kw-corpus")}</td>` +
-            `<td><a href="${esc(r.url)}" class="mono" style="font-size:13px;">${esc(r.url)}</a></td>` +
-          `</tr>`).join("") : "";
-        const from = rows.length ? kwpOffset + 1 : 0, to = kwpOffset + rows.length;
-        document.getElementById("kwp-range").textContent =
-          `${fmtInt(from)}–${fmtInt(to)}` + (known ? ` of ${fmtInt(total)}` : "");
-        document.getElementById("kwp-prev").disabled = kwpOffset <= 0;
-        document.getElementById("kwp-next").disabled = known ? (kwpOffset + KWP_PAGE >= total) : (rows.length < KWP_PAGE);
-        document.getElementById("kw-pages-pager").hidden = kwpOffset === 0 && rows.length < KWP_PAGE;
-        status.textContent = "";
-      } catch (e) { tbody.innerHTML = ""; status.textContent = "Could not load the pages list."; }
-    }
-    document.getElementById("kwp-prev").addEventListener("click", () => { kwpOffset = Math.max(0, kwpOffset - KWP_PAGE); loadKwPages(); });
-    document.getElementById("kwp-next").addEventListener("click", () => { kwpOffset += KWP_PAGE; loadKwPages(); });
-
     // GOV.UK Search coverage — provenance-tagged augmented shortlist.
     const GC_PAGE = 50;
     let gcOffset = 0;
