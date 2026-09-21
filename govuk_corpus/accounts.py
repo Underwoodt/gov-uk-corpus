@@ -303,8 +303,9 @@ def user_for_reset_token(conn, token: str) -> Optional[dict]:
     _require_pg()
     if not token:
         return None
+    cols = ", ".join("u." + c.strip() for c in _PUBLIC_COLS.split(","))   # qualify for the JOIN
     row = conn.execute(
-        f"SELECT {_PUBLIC_COLS} FROM auth.users u "
+        f"SELECT {cols} FROM auth.users u "
         f"JOIN auth.password_resets r ON r.user_id = u.id "
         f"WHERE r.token_hash=%s AND r.used_at IS NULL AND r.expires_at > now() LIMIT 1",
         (_token_hash(token),)).fetchone()
