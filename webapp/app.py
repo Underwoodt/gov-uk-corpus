@@ -1745,6 +1745,8 @@ def _background_eval_loop(cid: int, stop_event: threading.Event, status: dict) -
             status["run_id"] = _active_run(conn, cid) or None   # so "In Progress" shows at once
         finally:
             conn.close()
+        cleanups = 0
+        MAX_CLEANUPS = 3
         while not stop_event.is_set():
             res = _run_evaluation(cid, BG_EVAL_CHUNK)
             if res.get("error"):
@@ -1762,9 +1764,24 @@ def _background_eval_loop(cid: int, stop_event: threading.Event, status: dict) -
             if res.get("stopped") == "budget":
                 status["stopped"] = "budget"
                 break
-            # No auto-advance and nothing left (or nothing progressed) -> finished.
+            # No auto-advance and nothing left (or nothing progressed) -> the chain looks done.
             if not res.get("advanced") and (res.get("evaluated_this_run", 0) == 0
                                             or res.get("remaining") == 0):
+                # End-of-run cleanup: retry any unparsable (keep IS NULL) rows once the pipeline
+                # has otherwise finished. If that recovers pages — e.g. inclusion-keeps that were
+                # unparsable and so never reached exclusion — loop again so exclusion folds them
+                # in. Bounded (and stops when a pass recovers nothing) so it always terminates.
+                if cleanups < MAX_CLEANUPS:
+                    cleanups += 1
+                    try:
+                        cu = _retry_unparsable(cid)
+                    except Exception as e:
+                        cu = {"error": str(e)}
+                    status["cost"] += cu.get("cost_usd") or 0.0
+                    status["done"] += cu.get("retried", 0)
+                    status["cleaned"] = status.get("cleaned", 0) + cu.get("now_parsed", 0)
+                    if cu.get("now_parsed"):
+                        continue   # recovered pages may create exclusion work — re-drive
                 break
             # Per-run page cap: evaluate up to `cap` NEW pages this execution, then
             # stop cleanly so we actually run the full 600 (not nothing) and the user
