@@ -1325,9 +1325,27 @@ def shortlist_page(request: Request, cid: int, stage: str = "final", tab: str = 
     has_ai_run = evaluate.latest_inclusion_run(conn, cid) is not None
     return templates.TemplateResponse("audit_shortlist.html", ctx(
         conn, request, category=category, stage=stage,
-        initial_tab=(tab if tab in ("dashboard", "pipeline") else "shortlist"), stages=stages,
+        initial_tab=(tab if tab == "dashboard" else "shortlist"), stages=stages,
         gds_check_meta=gds_check_meta, has_ai_run=has_ai_run, eval_max_docs=_max_docs(conn),
         audit_stages=_AUDIT_STAGES, audit_sections=_DOWNLOAD_SECTIONS))
+
+
+@app.get("/categories/{cid}/ai-pipeline", response_class=HTMLResponse)
+def ai_pipeline_page(request: Request, cid: int):
+    """AI evaluation pipeline for a shortlist (guc-0004c) — its own top-level page
+    (Active Run / Run History). Behaviour lives in /static/ai_pipeline.js."""
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    category = cat.get_category(conn, cid)
+    if not category:
+        conn.close()
+        return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
+    category["display_name"] = cat.display_name(category)
+    resp = templates.TemplateResponse("ai_pipeline_page.html", ctx(
+        conn, request, category=category, eval_max_docs=_max_docs(conn)))
+    conn.close()
+    return resp
 
 
 @app.get("/api/categories/{cid}/funnel")

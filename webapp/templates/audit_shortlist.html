@@ -45,6 +45,7 @@
   <div class="tabs">
     <a href="{{ url_for('edit_category_page', cid=category.id) }}">Filter Parameters</a>
     <span class="current">Shortlist</span>
+    <a href="{{ url_for('ai_pipeline_page', cid=category.id) }}">AI Pipeline</a>
     <a href="{{ url_for('preview_category_page', cid=category.id) }}">Explainability</a>
     <a href="{{ url_for('performance_page', cid=category.id) }}" data-level="advanced">Run performance</a>
     <a href="{{ url_for('url_check_page', cid=category.id) }}">URL check</a>
@@ -53,7 +54,6 @@
   <div class="tabpanel">
     <div class="tabs" role="tablist" style="margin-bottom:22px;">
       <a href="#" class="subtab current" data-tab="shortlist" data-tabid="{{ page_ref }}a" role="tab">Pages</a>
-      <a href="#" class="subtab" data-tab="pipeline" data-tabid="{{ page_ref }}c" role="tab">AI Pipeline</a>
       <a href="#" class="subtab" data-tab="dashboard" data-tabid="{{ page_ref }}b" role="tab">GDS Compliance (Non-LLM)</a>
     </div>
 
@@ -98,11 +98,6 @@
         <span id="audit-range" class="secondary"></span>
         <button class="btn secondary-btn" id="audit-next" type="button">Next ›</button>
       </div>
-    </section>
-
-    <section id="tab-pipeline" class="subpanel" role="tabpanel" hidden>
-      {% set ai_ref = page_ref ~ 'c' %}
-      {% include "_ai_pipeline.html" %}
     </section>
 
     <section id="tab-dashboard" class="subpanel" role="tabpanel" hidden>
@@ -173,7 +168,6 @@
     <span class="pane-id" id="pane-id"></span>
   </div>
 
-  <script src="{{ url_for('static', path='ai_pipeline.js') }}"></script>
   <script>
     const CID = {{ category.id }};
     // Field-key -> label + stage-key -> label for the Audit Shortlist.
@@ -366,25 +360,22 @@
 
     // ---- sub-tab switching (lazy-load each panel once) --------------------
     (function () {
-      let shortlistLoaded = false, dashboardLoaded = false, pipelineLoaded = false;
+      let shortlistLoaded = false, dashboardLoaded = false;
       const btns = document.querySelectorAll(".subtab");
       function show(tab) {
         btns.forEach(b => b.classList.toggle("current", b.dataset.tab === tab));
         document.getElementById("tab-shortlist").hidden = tab !== "shortlist";
-        document.getElementById("tab-pipeline").hidden = tab !== "pipeline";
         document.getElementById("tab-dashboard").hidden = tab !== "dashboard";
         const active = [...btns].find(b => b.dataset.tab === tab);
         document.getElementById("pane-id").textContent = active ? active.dataset.tabid : "";
         if (tab === "shortlist" && !shortlistLoaded) { shortlistLoaded = true; loadAudit(); }
         if (tab === "dashboard" && !dashboardLoaded) { dashboardLoaded = true; showStage("keyword"); }
-        // Lazy-init the shared AI Pipeline the first time it's opened (from /static/ai_pipeline.js).
-        if (tab === "pipeline" && !pipelineLoaded && window.AIPipeline) { pipelineLoaded = true; window.AIPipeline.init(CID); }
         try { localStorage.setItem("audit-subtab-" + CID, tab); } catch (e) {}
       }
       btns.forEach(b => b.addEventListener("click", e => { e.preventDefault(); show(b.dataset.tab); }));
       let initial = "{{ initial_tab or 'shortlist' }}";
       if (initial !== "dashboard") { try { initial = localStorage.getItem("audit-subtab-" + CID) || "shortlist"; } catch (e) {} }
-      if (!["shortlist", "pipeline", "dashboard"].includes(initial)) initial = "shortlist";
+      if (!["shortlist", "dashboard"].includes(initial)) initial = "shortlist";
       show(initial);
     })();
   </script>

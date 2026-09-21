@@ -79,6 +79,7 @@
   <div class="tabs">
     <a href="{{ url_for('edit_category_page', cid=category.id) }}">Filter Parameters</a>
     <a href="{{ url_for('shortlist_page', cid=category.id) }}">Shortlist</a>
+    <a href="{{ url_for('ai_pipeline_page', cid=category.id) }}">AI Pipeline</a>
     <span class="current">Explainability</span>
     <a href="{{ url_for('performance_page', cid=category.id) }}" data-level="advanced">Run performance</a>
     <a href="{{ url_for('url_check_page', cid=category.id) }}">URL check</a>
@@ -146,7 +147,6 @@
 
     <div class="tabs" role="tablist" style="margin-bottom:22px;">
       <a href="#" class="subtab current" data-tab="exact" data-tabid="{{ page_ref }}a" role="tab">Keyword Matching</a>
-      <a href="#" class="subtab" data-tab="semantic" data-tabid="{{ page_ref }}b" role="tab">AI Pipeline</a>
       <a href="#" class="subtab" data-tab="hybrid" data-tabid="{{ page_ref }}d" role="tab" data-level="advanced">Hybrid Search</a>
     </div>
 
@@ -241,7 +241,10 @@
           Keyword terms are stemmed by Postgres at query time.</p></div></details>
     </section>
 
-    <section id="tab-semantic" class="subpanel" role="tabpanel" hidden>
+    {# The AI Pipeline now lives on its own page (guc-0004c); it's no longer a sub-tab here.
+       We keep the partial in the DOM but permanently hidden so the shared runs script still
+       loads the runs and feeds this page's Selection funnel Sankey (via the onRuns hook). #}
+    <section id="tab-semantic" class="subpanel" role="tabpanel" hidden aria-hidden="true">
       {% set ai_ref = page_ref ~ 'b' %}
       {% include "_ai_pipeline.html" %}
     </section>
@@ -910,9 +913,9 @@
     }
 
     // AI Pipeline runs UI (loadRuns, execute/stop/complete controls, active-run summary, run
-    // history, background polling) now lives in the shared /static/ai_pipeline.js, driven via
-    // window.AIPipeline. This page keeps the funnel-Sankey and Funnel-Results wiring below and
-    // feeds them through the onRuns / onPoll hooks passed to AIPipeline.init().
+    // history, background polling) lives in the shared /static/ai_pipeline.js, driven via
+    // window.AIPipeline. The pipeline is its own page now; its partial stays hidden here only
+    // so loadRuns still fires and feeds this page's funnel Sankey via the onRuns hook.
 
     function fillFunnelAiRow(stage, run) {
       const row = document.querySelector(`#funnel tr[data-stage="${stage}"]`);
@@ -944,17 +947,16 @@
     }
     window.AIPipeline.init(CID, { onRuns: aiOnRuns });
 
-    // Sub-tabs: Keyword Matching (deterministic funnel), AI Pipeline (runs), Hybrid Search.
+    // Sub-tabs: Keyword Matching (deterministic funnel) and Hybrid Search. (The AI Pipeline
+    // moved to its own page; its partial stays hidden above only to feed the Sankey.)
     (function () {
       const btns = document.querySelectorAll(".subtab");
       function show(tab) {
         btns.forEach(b => b.classList.toggle("current", b.dataset.tab === tab));
         document.getElementById("tab-exact").hidden = tab !== "exact";
-        document.getElementById("tab-semantic").hidden = tab !== "semantic";
         document.getElementById("tab-hybrid").hidden = tab !== "hybrid";
         const active = [...btns].find(b => b.dataset.tab === tab);
         document.getElementById("pane-id").textContent = active ? active.dataset.tabid : "";
-        if (tab === "semantic") window.AIPipeline.showNested();   // re-apply nested tab + pane-id
         if (tab === "exact") drawSankey();   // redraw at the now-visible width
         if (tab === "hybrid") gcPoll();   // lazy: loads the list, or resumes progress if a job is running
         try { localStorage.setItem("preview-subtab-" + CID, tab); } catch (e) {}
@@ -962,7 +964,7 @@
       btns.forEach(b => b.addEventListener("click", e => { e.preventDefault(); show(b.dataset.tab); }));
       let initial = "exact";
       try { initial = localStorage.getItem("preview-subtab-" + CID) || "exact"; } catch (e) {}
-      if (!["exact", "semantic", "hybrid"].includes(initial)) initial = "exact";  // "audit"/"results" are gone
+      if (!["exact", "hybrid"].includes(initial)) initial = "exact";  // "semantic"/"audit"/"results" are gone
       // Don't land on a tab hidden for this display level (e.g. Hybrid, which is advanced+).
       const initBtn = [...btns].find(b => b.dataset.tab === initial);
       if (!initBtn || initBtn.offsetParent === null) initial = "exact";
