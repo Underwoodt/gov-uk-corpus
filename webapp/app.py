@@ -3897,15 +3897,24 @@ async def save_prompt(request: Request):
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
     form = await request.form()
     name, body = (form.get("name") or ""), (form.get("body") or "")
-    if name in prompts.NAMES and body.strip():
-        conn = connect()
+    dest = str(request.url_for("settings_page"))
+    if name not in prompts.NAMES or not body.strip():
+        return RedirectResponse(url=dest + "?saved=1", status_code=303)
+    missing = prompts.missing_placeholders(name, body)
+    if missing:                                  # reject: a required token was removed
+        msg = f"{prompts.LABELS.get(name, name)}: keep the required placeholders {', '.join(missing)}."
+        return RedirectResponse(url=dest + "?prompt_error=" + quote(msg), status_code=303)
+    conn = connect()
+    try:
+        u = current_user(request)
         try:
-            u = current_user(request)
             prompts.save_version(conn, name, body, (form.get("note") or "").strip(),
                                  (u or {}).get("email", ""))
-        finally:
-            conn.close()
-    return RedirectResponse(url=str(request.url_for("settings_page")) + "?saved=1", status_code=303)
+        except ValueError as e:
+            return RedirectResponse(url=dest + "?prompt_error=" + quote(str(e)), status_code=303)
+    finally:
+        conn.close()
+    return RedirectResponse(url=dest + "?saved=1", status_code=303)
 
 
 @app.post("/settings/prompts/activate")
@@ -3932,7 +3941,8 @@ async def activate_prompt(request: Request):
 
 
 @app.get("/settings", response_class=HTMLResponse)
-def settings_page(request: Request, saved: int = 0, user_ok: int = 0, user_error: str = ""):
+def settings_page(request: Request, saved: int = 0, user_ok: int = 0, user_error: str = "",
+                  prompt_error: str = ""):
     if not authed(request):
         return login_redirect(request)
     conn = connect()
@@ -3961,7 +3971,8 @@ def settings_page(request: Request, saved: int = 0, user_ok: int = 0, user_error
         providers=list(PROVIDERS.keys()), phase_models=phase_models,
         provider_keys={k: _provider_key(k) is not None for k in PROVIDERS},
         daily_budget=_budget(conn), max_docs=_max_docs(conn),
-        spent_today=round(_daily_spend(conn), 4), saved=saved, prompts=_ai_prompts(conn)))
+        spent_today=round(_daily_spend(conn), 4), saved=saved, prompt_error=prompt_error,
+        prompts=_ai_prompts(conn)))
     conn.close()
     return resp
 

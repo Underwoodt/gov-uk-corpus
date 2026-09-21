@@ -58,6 +58,23 @@ _DEFAULTS = {
     "assistant": lambda: ASSISTANT_SYSTEM_PROMPT,
 }
 
+# Tokens a saved edit MUST keep, or the built prompt loses that value at run time. The two
+# evaluation templates carry per-page values; the system prompts (builder/assistant) have none.
+REQUIRED_PLACEHOLDERS = {
+    "inclusion": ("INCLUDE", "EXCLUDE", "TITLE", "DESCRIPTION", "BODY"),
+    "exclusion": ("NAME", "NAME_UPPER", "SPEC", "KEEP_SECTION", "DROP_SECTION",
+                  "PASS1_REASON", "TITLE_LINE", "BODY"),
+    "builder": (),
+    "assistant": (),
+}
+
+
+def missing_placeholders(name: str, body: str) -> List[str]:
+    """Required {{TOKEN}}s that `body` is missing (as they'd appear in the template, e.g. '{{BODY}}')."""
+    body = body or ""
+    return ["{{" + t + "}}" for t in REQUIRED_PLACEHOLDERS.get(name, ())
+            if ("{{" + t + "}}") not in body]
+
 
 def default_text(name: str) -> str:
     return _DEFAULTS[name]()
@@ -100,6 +117,9 @@ def save_version(conn, name: str, body: str, note: str = "", by: str = "") -> in
     """Store an edit as a new version and make it active. Returns the new version number."""
     if name not in _DEFAULTS:
         raise ValueError("unknown prompt")
+    missing = missing_placeholders(name, body)
+    if missing:
+        raise ValueError("Keep the required placeholders: " + ", ".join(missing))
     row = conn.execute(f"SELECT COALESCE(MAX(version), 0) AS m FROM prompt_versions WHERE name = {_P}",
                        (name,)).fetchone()
     v = int(dict(row)["m"]) + 1

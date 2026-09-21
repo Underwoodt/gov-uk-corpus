@@ -207,6 +207,7 @@
   <!-- Tab: AI Prompts (read-only) -->
   <section class="stabpanel" data-tab="prompts" hidden>
     <h2 style="margin-bottom:6px;">AI prompts</h2>
+    {% if prompt_error %}<div class="error-summary"><h2>There is a problem</h2><ul><li>{{ prompt_error }}</li></ul></div>{% endif %}
     <p class="hint" style="max-width:760px;">The prompts behind each AI feature. Edit and
       <strong>Save as a new version</strong> to change the wording; the newest saved version is used
       unless you revert. <span class="mono">{{ '{{' }}TOKEN{{ '}}' }}</span> placeholders are filled in at
@@ -275,6 +276,7 @@
     tabs.forEach(a => a.addEventListener("click", e => { e.preventDefault(); show(a.dataset.tab); }));
     let init = "models";
     try { init = localStorage.getItem("settings-tab") || "models"; } catch (e) {}
+    if ({{ 'true' if prompt_error else 'false' }}) init = "prompts";   // land on the tab that errored
     if (!tabs.some(a => a.dataset.tab === init)) init = "models";
     show(init);
   })();
