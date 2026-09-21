@@ -70,6 +70,9 @@
         <input id="audit-search" type="search" placeholder="Search titles…"
           style="padding:8px 10px;border:2px solid var(--black);border-radius:5px;min-width:220px;font:inherit;">
         <button class="btn secondary-btn" id="audit-download" type="button">Download…</button>
+        <button class="btn secondary-btn" id="retry-unparsable" type="button" data-level="advanced"
+          title="Re-ask the model for pages whose reply couldn't be parsed (Unscored). Uses API credit.">↻ Retry unparsable</button>
+        <span id="retry-status" class="secondary" data-level="advanced"></span>
       </div>
       <details style="margin:6px 0 14px;max-width:760px;">
         <summary class="rolldown">Select Columns for Display or download</summary>
@@ -278,6 +281,25 @@
       const params = new URLSearchParams({ stage: document.getElementById("audit-stage").value });
       auditFields().forEach(f => params.append("fields", f));
       window.location.href = `/categories/${CID}/download?${params}`;
+    });
+
+    // Retry unparsable (keep IS NULL) pages of the latest run chain, in place — a diagnostic to
+    // see whether they clear on a second ask (transient) or fail again (a real problem).
+    document.getElementById("retry-unparsable").addEventListener("click", async () => {
+      if (!confirm("Re-ask the model for pages whose reply couldn't be parsed, in the latest "
+        + "inclusion and exclusion runs. This uses API credit. Continue?")) return;
+      const btn = document.getElementById("retry-unparsable"), st = document.getElementById("retry-status");
+      btn.disabled = true; st.textContent = "Retrying…";
+      try {
+        const j = await (await fetch(`/api/categories/${CID}/retry-unparsable`, { method: "POST" })).json();
+        if (j.error) { st.textContent = "Error: " + j.error; return; }
+        if (!j.retried) { st.textContent = "Nothing to retry — no unparsable pages."; return; }
+        const per = (j.phases || []).map(p => `${p.phase}: ${p.now_parsed}/${p.retried} parsed, ${p.still_unparsable} still`).join(" · ");
+        st.textContent = `Retried ${j.retried}: ${j.now_parsed} now parsed, ${j.still_unparsable} still unparsable `
+          + `($${(j.cost_usd || 0).toFixed(2)}). ${per}`;
+        loadAudit();   // refresh the table (decisions may have changed)
+      } catch (e) { st.textContent = "Could not retry."; }
+      finally { btn.disabled = false; }
     });
 
     // ---- Dashboard sub-tab -------------------------------------------------

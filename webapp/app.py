@@ -1891,6 +1891,106 @@ async def api_bg_eval_resume(request: Request, cid: int):
                          "already_running": bool(res.get("already_running")), "status": res["status"]})
 
 
+def _retry_unparsable(cid: int, cap: int = 300) -> dict:
+    """Re-evaluate the pages whose model reply couldn't be parsed (keep IS NULL) in the latest
+    inclusion run and its exclusion run — in place, in each page's own run/phase — so you can see
+    whether they clear on a retry (a transient blip) or fail again (a real problem). Deletes the
+    stale unparsable rows, re-asks the model, and recomputes run totals. Respects the daily budget.
+    """
+    conn = connect()
+    try:
+        category = cat.get_category(conn, cid)
+        if not category:
+            return {"error": "Shortlist not found."}
+        budget, spent = _budget(conn), _daily_spend(conn)
+        if budget > 0 and spent >= budget:
+            return {"error": f"Daily AI budget of ${budget:.2f} reached (${spent:.4f} today) — "
+                    f"raise it in Settings or try again tomorrow."}
+        inc = evaluate.latest_inclusion_run(conn, cid)
+        if not inc:
+            return {"error": "No AI run yet — nothing to retry."}
+        exc = evaluate.latest_exclusion_run(conn, inc)
+        inclusion = category.get("inclusion_context") or ""
+        exclusion = category.get("exclusion_context") or ""
+        name = (category.get("description") or "").strip() or cat.prettify(category.get("slug")) or "the topic"
+        P = shortlist._P
+        out = {"retried": 0, "now_parsed": 0, "still_unparsable": 0, "cost_usd": 0.0, "phases": []}
+        left = cap
+        for run_id, is_excl in ((inc, False), (exc, True)):
+            if not run_id or left <= 0:
+                continue
+            run = evaluate.get_run(conn, run_id)
+            cfg = _cfg_for(conn, run["provider"], run["model"])
+            if not cfg["key"]:
+                out["phases"].append({"phase": run.get("phase"), "error": f"no API key for {cfg['label']}"})
+                continue
+            urls = [dict(r)["url"] for r in conn.execute(
+                f"SELECT url FROM evaluation_results WHERE run_id = {P} AND keep IS NULL LIMIT {int(left)}",
+                (run_id,)).fetchall()]
+            retried = parsed = 0
+            for url in urls:
+                c = conn.execute(
+                    f"SELECT title, description, search_text AS body FROM content WHERE url = {P}", (url,)).fetchone()
+                c = dict(c) if c else {"title": "", "description": "", "body": ""}
+                if is_excl:
+                    pr = conn.execute(
+                        f"SELECT reason FROM evaluation_results WHERE run_id = {P} AND url = {P}", (inc, url)).fetchone()
+                    prompt = evaluate.build_exclusion_prompt(
+                        name, inclusion, exclusion,
+                        category.get("adjudication_hints_keep") or "", category.get("adjudication_hints_drop") or "",
+                        c.get("title"), c.get("body"), (dict(pr)["reason"] if pr else "") or "")
+                else:
+                    prompt = evaluate.build_prompt(inclusion, exclusion, c.get("title"), c.get("description"), c.get("body"))
+                t0 = time.time()
+                res = _ai_reply(cfg, "", prompt)
+                ms = int((time.time() - t0) * 1000)
+                if res.get("error"):
+                    continue                                   # leave it unparsable; provider hiccup
+                decision = (evaluate.parse_exclusion(res.get("reply", "")) if is_excl
+                            else evaluate.parse_decision(res.get("reply", "")))
+                conn.execute(f"DELETE FROM evaluation_results WHERE run_id = {P} AND url = {P}", (run_id, url))
+                evaluate.save_page(conn, run_id, cid, url, decision, ms, raw_reply=res.get("reply"))
+                cost = res.get("cost_usd") or 0.0
+                evaluate.add_run_cost(conn, run_id, cost, res.get("input_tokens"), res.get("output_tokens"),
+                                      res.get("cache_hit_tokens"), res.get("cache_miss_tokens"))
+                _log_ai_usage(conn, cost, res.get("input_tokens"), res.get("output_tokens"), "retry-unparsable")
+                out["cost_usd"] += cost
+                retried += 1
+                if decision is not None and decision.get("keep") is not None:
+                    parsed += 1
+            # save_page's incremental totals drift after our DELETEs — recompute from the rows.
+            conn.execute(
+                f"UPDATE evaluation_runs SET "
+                f"pages = (SELECT COUNT(*) FROM evaluation_results WHERE run_id = {P}), "
+                f"kept = (SELECT COUNT(*) FROM evaluation_results WHERE run_id = {P} AND keep = 1), "
+                f"dropped = (SELECT COUNT(*) FROM evaluation_results WHERE run_id = {P} AND keep = 0), "
+                f"unparseable = (SELECT COUNT(*) FROM evaluation_results WHERE run_id = {P} AND keep IS NULL) "
+                f"WHERE run_id = {P}", (run_id, run_id, run_id, run_id, run_id))
+            conn.commit()
+            still = int(dict(conn.execute(
+                f"SELECT COUNT(*) AS n FROM evaluation_results WHERE run_id = {P} AND keep IS NULL",
+                (run_id,)).fetchone())["n"])
+            out["retried"] += retried
+            out["now_parsed"] += parsed
+            out["phases"].append({"phase": run.get("phase"), "retried": retried,
+                                  "now_parsed": parsed, "still_unparsable": still})
+            left -= retried
+        out["still_unparsable"] = sum(p.get("still_unparsable", 0) for p in out["phases"])
+        out["cost_usd"] = round(out["cost_usd"], 6)
+        return out
+    finally:
+        conn.close()
+
+
+@app.post("/api/categories/{cid}/retry-unparsable")
+async def api_retry_unparsable(request: Request, cid: int):
+    """Re-evaluate the unparsable (keep IS NULL) pages of the latest run chain, in place."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    result = await run_in_threadpool(_retry_unparsable, cid)
+    return JSONResponse(result)
+
+
 @app.get("/api/categories/{cid}/evaluate-bg/status")
 async def api_bg_eval_status(request: Request, cid: int):
     if not authed(request):
