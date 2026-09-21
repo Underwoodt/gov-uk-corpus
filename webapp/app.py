@@ -1324,10 +1324,33 @@ def shortlist_page(request: Request, cid: int, stage: str = "final"):
         audit_stages=_AUDIT_STAGES, audit_sections=_DOWNLOAD_SECTIONS))
 
 
+def _funnel_table_ctx(conn, category, cid: int):
+    """(stages, ai_cost) for the Selection-funnel table: the per-stage labels + the filter
+    values applied at each step, and total AI spend split by phase for the two AI rows."""
+    filters = _effective_filters(conn, category)
+    stage_value_key = {"all": None, "org": "organisations",
+                       "doctype": "document_types", "keyword": "keywords"}
+    stages = [{"stage": k, "label": v[0],
+               "vals": filters[stage_value_key[k]] if stage_value_key[k] else []}
+              for k, v in _FUNNEL_STAGES.items()]
+    ai_incl = ai_excl = 0.0
+    for r in conn.execute(
+            f"SELECT phase, COALESCE(SUM(cost), 0) AS c FROM evaluation_runs "
+            f"WHERE category_id = {shortlist._P} GROUP BY phase", (cid,)).fetchall():
+        d = dict(r)
+        c = float(d.get("c") or 0)
+        if "exclusion" in (d.get("phase") or "").lower():
+            ai_excl += c
+        else:
+            ai_incl += c
+    return stages, {"incl": ai_incl, "excl": ai_excl, "total": ai_incl + ai_excl}
+
+
 @app.get("/categories/{cid}/ai-pipeline", response_class=HTMLResponse)
 def ai_pipeline_page(request: Request, cid: int):
     """AI evaluation pipeline for a shortlist (guc-0004c) — its own top-level page
-    (Active Run / Run History). Behaviour lives in /static/ai_pipeline.js."""
+    (Active Run / Run History), with the Selection funnel table above. Behaviour lives
+    in /static/ai_pipeline.js plus this page's inline funnel script."""
     if not authed(request):
         return login_redirect(request)
     conn = connect()
@@ -1336,8 +1359,10 @@ def ai_pipeline_page(request: Request, cid: int):
         conn.close()
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
     category["display_name"] = cat.display_name(category)
+    stages, ai_cost = _funnel_table_ctx(conn, category, cid)
     resp = templates.TemplateResponse("ai_pipeline_page.html", ctx(
-        conn, request, category=category, eval_max_docs=_max_docs(conn)))
+        conn, request, category=category, eval_max_docs=_max_docs(conn),
+        stages=stages, ai_cost=ai_cost))
     conn.close()
     return resp
 

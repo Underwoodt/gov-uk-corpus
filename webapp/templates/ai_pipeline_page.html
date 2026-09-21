@@ -4,6 +4,15 @@
 {% block page_id %}{{ page_ref }}{% endblock %}
 {% block title %}{{ category.display_name }} — AI Pipeline{% endblock %}
 {% block content %}
+  <style>
+    /* Selection funnel table (deterministic filter stages + the two AI rows). */
+    #funnel { font-size:13px; }
+    #funnel th, #funnel td { padding:6px 10px; }
+    #funnel th { white-space:normal; }
+    #funnel td { white-space:nowrap; }
+    #funnel td .detail { white-space:normal; }
+  </style>
+
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Shortlists</a>
   <h1 style="margin:20px 0 20px;">{{ category.display_name }}</h1>
 
@@ -18,8 +27,43 @@
   </div>
 
   <div class="tabpanel">
-    {# The AI Pipeline (Active Run / Run History) — promoted from a Shortlist sub-tab to its
-       own page. Rendered in a visible .subpanel so the shared script claims the pane-id. #}
+    {# Selection funnel — how each filter narrows the corpus, then the AI keep/drop.
+       Shown above the Active Run / Run History tabs. #}
+    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;">
+      <h2 style="margin:0;">Selection funnel</h2>
+      <button type="button" class="btn secondary-btn" id="refresh-funnel"
+        style="padding:4px 12px;font-size:14px;" title="Clear the cached counts and re-run the funnel">↻ Refresh</button>
+    </div>
+    <p class="hint" style="margin-top:6px;">How each filter narrows the corpus, then how the AI kept or dropped
+      the shortlist. Deterministic rows are timed as they run; counts are cached until the definition or corpus
+      changes — use Refresh to force a recompute.</p>
+
+    {% set stage_names = {'all':'All Pages','org':'Matched Orgs','doctype':'Matched Doc Type','keyword':'Contains Keywords'} %}
+    <table id="funnel" style="max-width:560px;margin:0 0 30px;">
+      <thead><tr><th>Labels</th><th class="num">Next Stage</th><th class="num">Rejected</th><th class="num">Time</th><th class="num">Cost</th></tr></thead>
+      <tbody>
+        {% for s in stages %}
+        <tr data-stage="{{ s.stage }}">
+          <td>{% if s.vals %}<details class="filter-values">
+              <summary>{{ stage_names.get(s.stage, s.label) }} ({{ s.vals|length }})</summary>
+              <div class="detail" style="max-width:none;">{{ s.vals|join(', ') }}</div>
+            </details>{% else %}{{ stage_names.get(s.stage, s.label) }}{% endif %}
+          </td>
+          <td class="num val"><span class="spinner"></span></td>
+          <td class="num rejected"></td>
+          <td class="num timing"></td>
+          <td class="num cost secondary" title="Deterministic filters use no AI, so they cost nothing.">N/A</td>
+        </tr>
+        {% endfor %}
+        <tr data-stage="incl" hidden><td>Included by AI</td><td class="num val"></td><td class="num rejected"></td><td class="num timing"></td>
+          <td class="num cost" title="Total AI spend on the inclusion pass for this shortlist (all runs).">${{ '%.2f'|format(ai_cost.incl) }}</td></tr>
+        <tr data-stage="excl" hidden><td>Shortlist</td><td class="num val"></td><td class="num rejected"></td><td class="num timing"></td>
+          <td class="num cost" title="Total AI spend on the exclusion pass for this shortlist (all runs).">${{ '%.2f'|format(ai_cost.excl) }}</td></tr>
+      </tbody>
+    </table>
+
+    {# The AI Pipeline (Active Run / Run History) — rendered in a visible .subpanel so the
+       shared script claims the pane-id. #}
     <section class="subpanel" role="tabpanel">
       {% set ai_ref = page_ref %}
       {% include "_ai_pipeline.html" %}
@@ -30,6 +74,74 @@
   <script src="{{ url_for('static', path='ai_pipeline.js') }}"></script>
   <script>
     const CID = {{ category.id }};
-    if (window.AIPipeline) window.AIPipeline.init(CID);
+    const STAGES = [{% for s in stages %}"{{ s.stage }}"{{ "," if not loop.last }}{% endfor %}];
+    const fmtInt  = n => Number(n).toLocaleString();
+    const fmtSecs = ms => (ms / 1000).toFixed(ms < 1000 ? 2 : 1) + "s";
+    function fmtElapsed(a, b) {
+      if (!a || !b) return "—";
+      let s = Math.round((new Date(b) - new Date(a)) / 1000);
+      if (!isFinite(s) || s < 0) return "—";
+      const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+      return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+    }
+    async function timedFetch(url) {
+      const t = performance.now();
+      const j = await (await fetch(url, { headers: { "Accept": "application/json" } })).json();
+      return { j, ms: performance.now() - t };
+    }
+
+    // Deterministic funnel rows: one COUNT per stage, timed; "Rejected" = dropped since the previous stage.
+    const PREV_STAGE = { org: "all", doctype: "org", keyword: "doctype" };
+    const stageCounts = {};
+    async function runFunnel() {
+      for (const stage of STAGES) {
+        const row = document.querySelector(`#funnel tr[data-stage="${stage}"]`);
+        if (!row) continue;
+        try {
+          const { j, ms } = await timedFetch(`/api/categories/${CID}/funnel?stage=${stage}`);
+          row.querySelector(".val").textContent = fmtInt(j.count);
+          row.querySelector(".timing").textContent = stage === "all" ? "—" : fmtSecs(ms);
+          const prev = stageCounts[PREV_STAGE[stage]];
+          row.querySelector(".rejected").textContent =
+            stage === "all" || prev == null ? "—" : fmtInt(Math.max(0, prev - j.count));
+          stageCounts[stage] = j.count;
+        } catch (e) { row.querySelector(".val").textContent = "error"; }
+      }
+    }
+
+    // AI rows (Included by AI / Shortlist) — revealed once their runs exist, from the shared runs feed.
+    function fillFunnelAiRow(stage, run) {
+      const row = document.querySelector(`#funnel tr[data-stage="${stage}"]`);
+      if (!row) return;
+      if (!run) { row.hidden = true; return; }
+      row.hidden = false;
+      row.querySelector(".val").textContent = fmtInt(run.kept || 0);
+      row.querySelector(".rejected").textContent = fmtInt(run.dropped || 0);
+      row.querySelector(".timing").textContent = fmtElapsed(run.started_at, run.finished_at);
+    }
+    function aiOnRuns(j) {
+      const incl = j.runs.find(r => /inclusion/i.test(r.phase || ""));
+      const excl = incl && j.runs.find(r => /exclusion/i.test(r.phase || "") && r.source_run_id === incl.run_id);
+      fillFunnelAiRow("incl", incl);
+      fillFunnelAiRow("excl", excl);
+    }
+
+    if (window.AIPipeline) window.AIPipeline.init(CID, { onRuns: aiOnRuns });
+    runFunnel();
+
+    // Refresh: clear the cached counts server-side, reset the rows, and re-run.
+    document.getElementById("refresh-funnel").addEventListener("click", async e => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      try {
+        await fetch(`/api/categories/${CID}/funnel/refresh`, { method: "POST" });
+        document.querySelectorAll("#funnel tr[data-stage] .val").forEach(v => {
+          if (!v.closest("tr").hidden) v.innerHTML = '<span class="spinner"></span>';
+        });
+        document.querySelectorAll("#funnel .timing").forEach(t => t.textContent = "");
+        Object.keys(stageCounts).forEach(k => delete stageCounts[k]);
+        await runFunnel();
+      } finally { btn.disabled = false; }
+    });
   </script>
 {% endblock %}
