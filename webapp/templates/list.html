@@ -41,7 +41,7 @@
   <table id="cat-table">
     <thead><tr>
       <th>Shortlist</th><th>Owner</th><th>Last updated</th>
-      <th class="num">Pages kept</th><th>Status</th><th>Action</th>
+      <th class="num">Pages kept</th><th>Status</th>
     </tr></thead>
     <tbody>
       {% for c in categories %}
@@ -55,16 +55,6 @@
         <td class="num">{{ c.pages_kept }}
           {% if c.pages_kept_at %}<span class="sub" title="Recomputed nightly and on edit">as of {{ c.pages_kept_at }}</span>{% endif %}</td>
         <td><span class="pill {{ c.status }}">{{ c.status }}</span></td>
-        <td><span class="actions">
-          <a href="{{ url_for('preview_category_page', cid=c.id) }}">Retrieve</a>
-          <a href="{{ url_for('edit_category_page', cid=c.id) }}">Change</a>
-          <form method="post" action="{{ url_for('copy_category_route', cid=c.id) }}"
-            style="display:inline;margin:0;">
-            <input type="hidden" name="csrf" value="{{ csrf_token }}">
-            <button type="submit" class="linkish"
-              title="Duplicate this shortlist's filters into a new draft">Copy</button>
-          </form>
-        </span></td>
       </tr>
       {% endfor %}
     </tbody>
