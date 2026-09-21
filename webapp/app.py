@@ -2998,6 +2998,13 @@ def _safe_filename(name: str, default: str) -> str:
     return base[:120] or default
 
 
+# The on-screen funnel/audit tables prefix a header line above a non-empty exclusion reason
+# (added in JS). Mirror it in CSV exports so the two match; a newline inside the field is
+# valid CSV (csv.writer quotes it), giving the same two-line cell.
+def _excl_hit_csv(val):
+    return f"----- EXCLUSION_HIT ----\n{val}" if val else val
+
+
 @app.get("/categories/{cid}/runs/{run_id}/download")
 def download_run(request: Request, cid: int, run_id: str):
     if not authed(request):
@@ -3014,7 +3021,7 @@ def download_run(request: Request, cid: int, run_id: str):
         decision = "keep" if r["keep"] == 1 else "drop" if r["keep"] == 0 else "unparseable"
         incl = r.get("src_reason") if src else r.get("reason")
         excl = r.get("reason") if src else ""
-        w.writerow([r["url"], decision, r["score"], incl, excl])
+        w.writerow([r["url"], decision, r["score"], incl, _excl_hit_csv(excl)])
     return Response(buf.getvalue(), media_type="text/csv",
                     headers={"Content-Disposition": f'attachment; filename="gov-uk-funnel-pages-{_dl_stamp()}.csv"'})
 
@@ -3471,7 +3478,7 @@ def export_category(request: Request, cid: int, format: str = "csv", stage: str 
     w = csv.writer(buf)
     w.writerow(labels)
     for r in rows:
-        w.writerow([r.get(k) for k in keys])
+        w.writerow([_excl_hit_csv(r.get(k)) if k == "exclusion_reason" else r.get(k) for k in keys])
     return Response(buf.getvalue(), media_type="text/csv",
                     headers={"Content-Disposition": f'attachment; filename="{name}.csv"'})
 
