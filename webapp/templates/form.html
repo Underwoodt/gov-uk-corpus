@@ -35,11 +35,11 @@
       opacity:.55; background:var(--surface-2,#f3f2f1); pointer-events:none; }
     .dt-disabled .chk-search { cursor:not-allowed; }
     .dt-hint-locked { color:var(--muted,#6b7477); }
-    /* Plain-English preview of what the keywords will match. */
-    .kw-explain { max-width:640px; margin:8px 0 0; border:1px solid var(--border-mid,#b1b4b6);
+    /* Plain-English preview of what the keywords will match — collapsed into a rolldown. */
+    .kw-explain-wrap { max-width:640px; margin:8px 0 0; }
+    .kw-explain-wrap > summary { cursor:pointer; font-size:14px; color:var(--link,#1d70b8); }
+    .kw-explain { margin:6px 0 0; border:1px solid var(--border-mid,#b1b4b6);
       border-radius:6px; background:var(--surface-2,#f3f2f1); padding:6px 12px; font-size:14px; }
-    .kw-explain h4 { margin:6px 0; font-size:12px; text-transform:uppercase; letter-spacing:.04em;
-      color:var(--muted,#6b7477); font-weight:700; }
     .kw-explain .kx { padding:6px 0; border-top:1px solid var(--border,#e6e6e6); }
     .kw-explain .kx:first-of-type { border-top:0; }
     .kw-explain .kx-plain { display:block; margin-top:1px; color:var(--text,#0b0c0c); }
@@ -194,7 +194,10 @@
           </ul>
         </div></details>
       <textarea id="keywords" name="keywords" rows="4">{{ v.keywords or '' }}</textarea>
-      <div id="kw-explain" class="kw-explain" hidden></div>
+      <details id="kw-explain-wrap" class="kw-explain-wrap" hidden>
+        <summary>What these keywords will match</summary>
+        <div id="kw-explain" class="kw-explain"></div>
+      </details>
       <p class="hint" style="margin-top:12px;">After saving, GOV.UK's own Search is also run for these keywords
         (scoped to the organisations and document types above), pages are tagged by provenance, and any
         GOV.UK-only pages are fetched into the corpus so the AI Pipeline can evaluate them. This runs
@@ -453,13 +456,14 @@
     // Live plain-English preview of what the keywords will match after tokenisation.
     (function () {
       var ta = document.getElementById("keywords");
+      var wrap = document.getElementById("kw-explain-wrap");
       var panel = document.getElementById("kw-explain");
-      if (!ta || !panel) return;
+      if (!ta || !wrap || !panel) return;
       function esc(s){ return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
         return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
       var timer = null, seq = 0;
       async function run() {
-        if (!ta.value.trim()) { panel.hidden = true; panel.innerHTML = ""; return; }
+        if (!ta.value.trim()) { wrap.hidden = true; panel.innerHTML = ""; return; }
         var mine = ++seq;
         try {
           var r = await fetch("/api/keyword-explain", { method: "POST",
@@ -467,14 +471,14 @@
           var j = await r.json();
           if (mine !== seq) return;                       // a newer keystroke won
           var terms = (j && j.terms) || [];
-          if (!terms.length) { panel.hidden = true; return; }
-          panel.innerHTML = "<h4>What these keywords will match</h4>" + terms.map(function (t) {
+          if (!terms.length) { wrap.hidden = true; return; }
+          panel.innerHTML = terms.map(function (t) {
             return '<div class="kx"><strong>' + esc(t.term) + '</strong>'
               + '<span class="kx-plain">' + esc(t.plain) + '</span>'
               + (t.tsquery ? '<span class="kx-q">technical: ' + esc(t.tsquery) + '</span>' : '')
               + '</div>';
           }).join("");
-          panel.hidden = false;
+          wrap.hidden = false;
         } catch (e) { /* leave the last preview in place */ }
       }
       ta.addEventListener("input", function () { clearTimeout(timer); timer = setTimeout(run, 400); });
