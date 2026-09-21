@@ -1065,6 +1065,19 @@ async def copy_category_route(request: Request, cid: int):
     return RedirectResponse(url=str(request.url_for("edit_category_page", cid=new_id)), status_code=303)
 
 
+@app.post("/categories/{cid}/delete")
+async def delete_category_route(request: Request, cid: int):
+    """Permanently delete a shortlist and everything scoped to it, then return to the list."""
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    try:
+        cat.delete_category(conn, cid)
+    finally:
+        conn.close()
+    return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
+
+
 # ---- edit ---------------------------------------------------------------
 @app.get("/categories/{cid}/edit", response_class=HTMLResponse)
 def edit_category_page(request: Request, cid: int):

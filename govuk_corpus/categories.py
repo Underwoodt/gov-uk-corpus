@@ -152,6 +152,12 @@ def set_url_checklist(conn, cid: int, should_include_urls: str, should_exclude_u
 
 
 def delete_category(conn, cid: int) -> None:
+    """Delete a shortlist and everything scoped to it — its AI runs and per-page results,
+    the audit rows, the cached page counts, and the stored shortlist / GOV.UK-search
+    membership — then the category itself. One transaction; irreversible."""
+    for tbl in ("evaluation_results", "evaluation_runs", "category_audit",
+                "category_page_counts", "category_shortlist_pages", "category_search_pages"):
+        conn.execute(f"DELETE FROM {tbl} WHERE category_id={_P}", (cid,))
     conn.execute(f"DELETE FROM categories WHERE id={_P}", (cid,))
     conn.commit()
 

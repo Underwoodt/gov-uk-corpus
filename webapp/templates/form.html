@@ -48,9 +48,21 @@
 
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Shortlists</a>
 
-  <h1 style="margin:20px 0 20px;">{{ form_title }}</h1>
-  <p class="lede" style="margin:0 0 20px;">A shortlist is a saved set of filters that finds GOV.UK pages
-    about one topic. These filters build the shortlist, which you can then retrieve.</p>
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap;">
+    <div style="flex:1 1 420px;min-width:0;">
+      <h1 style="margin:20px 0 20px;">{{ form_title }}</h1>
+      <p class="lede" style="margin:0 0 20px;">A shortlist is a saved set of filters that finds GOV.UK pages
+        about one topic. These filters build the shortlist, which you can then retrieve.</p>
+    </div>
+    {% if is_edit %}
+    <form method="post" action="{{ url_for('delete_category_route', cid=category.id) }}"
+      style="flex:0 0 auto;margin:24px 0 0;"
+      onsubmit="return confirm('Delete “{{ form_title }}” permanently?\n\nThis removes the shortlist and all of its AI runs, results and stored pages. This cannot be undone.');">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <button type="submit" class="btn danger-btn">Delete shortlist</button>
+    </form>
+    {% endif %}
+  </div>
 
   {% if not is_edit %}
   <div data-level="advanced" style="margin:0 0 24px;padding:14px 16px;border:1px solid var(--border-mid,#b1b4b6);

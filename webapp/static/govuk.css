@@ -145,6 +145,8 @@ summary::-webkit-details-marker { display:none; }
 .btn.secondary-btn { background:var(--white); color:var(--ink); border-color:var(--border-mid);
   box-shadow:0 1px 0 rgba(11,12,12,.06); }
 .btn.secondary-btn:hover { background:var(--surface-3); color:var(--black); border-color:var(--muted); }
+.btn.danger-btn { background:var(--red,#d4351c); color:var(--white); box-shadow:0 2px 0 #942514; }
+.btn.danger-btn:hover { background:#a91b0d; color:var(--white); }
 
 /* ---- tabs ---- */
 .tabs { display:flex; gap:4px; border-bottom:1px solid var(--border); }
