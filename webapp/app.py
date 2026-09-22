@@ -4798,9 +4798,10 @@ async def test_model_route(request: Request, mid: int):
         return JSONResponse({"ok": False, "error": "Model not found."}, status_code=404)
     cfg = _cfg_for(conn, row["provider"], row["model_id"])
     conn.close()
-    if not cfg.get("key"):
+    if not _provider_configured(row["provider"]):   # API key, or AWS creds for Bedrock
+        creds = ("AWS credentials" if row["provider"] == "bedrock" else "API key")
         return JSONResponse({"ok": False,
-                             "error": f"No API key set for {cfg['label']}."})
+                             "error": f"No {creds} set for {cfg['label']}."})
     res = await run_in_threadpool(_ai_reply, cfg, "", "Reply with the single word: ok")
     if res.get("error"):
         return JSONResponse({"ok": False, "error": res["error"]})
