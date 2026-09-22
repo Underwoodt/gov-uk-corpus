@@ -184,6 +184,13 @@ class TestExclusion(unittest.TestCase):
         self.assertIn("x" * 100, p)
         self.assertNotIn("x" * 101, p)
 
+    def test_confidence_label_bands(self):
+        self.assertEqual(evaluate.confidence_label(0), "Wrong sense")
+        self.assertEqual(evaluate.confidence_label(0.2), "Mentioned in passing")
+        self.assertEqual(evaluate.confidence_label(0.5), "Discussed a moderate amount")
+        self.assertEqual(evaluate.confidence_label(0.9), "Major focus")
+        self.assertEqual(evaluate.confidence_label(None), "")
+
     def test_parse_exclusion_tags_hit(self):
         d = evaluate.parse_exclusion('{"keep": false, "exclusion_hit": "homonym", "reason": "wrong slurry"}')
         self.assertEqual(d["keep"], 0)

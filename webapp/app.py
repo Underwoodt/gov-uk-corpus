@@ -3199,6 +3199,7 @@ _VIRTUAL_FIELDS = {
     "matched_keywords": "Matched keywords",
     "inclusion_reason": "Inclusion reason",
     "exclusion_reason": "Exclusion reason",
+    "confidence": "Confidence",
     "inclusion_raw_reply": "Inclusion raw reply",
     "exclusion_raw_reply": "Exclusion raw reply",
     "stage": "Stage",
@@ -3232,6 +3233,9 @@ _DOWNLOAD_SECTIONS = [
          "the funnel stage / phase these rows are shown at (tags each row for the download)"),
         ("decision", "Stage decision", False, False,
          "the AI verdict for the page — Keep / Drop / Unscored (from the run relevant to the stage)"),
+        ("confidence", "Confidence", False, False,
+         "how central the topic is to the page, from the inclusion score (Wrong sense / Mentioned in "
+         "passing / Discussed a moderate amount / Major focus)"),
     ]),
     ("Ownership", [
         ("primary_org", "Primary publishing organisation", False, False, None),
@@ -3355,6 +3359,14 @@ def _enrich_audit_rows(conn, cid: int, rows: list, keys: list, stage: str = None
                 r["decision"] = _verdict(exc_keep if exc else inc_keep, u)
             else:                                # deterministic stage → furthest AI disposition
                 r["decision"] = _verdict(exc_keep, u) if u in exc_keep else _verdict(inc_keep, u)
+    if "confidence" in need:
+        # Confidence label from the inclusion score (pass 1 is the only phase that scores).
+        inc = evaluate.latest_inclusion_run(conn, cid)
+        sc = _map(f"SELECT url, score AS val FROM evaluation_results WHERE run_id = {P}", inc) if inc else {}
+        for r in rows:
+            s = sc.get(r.get("url"))
+            lab = evaluate.confidence_label(s)
+            r["confidence"] = f"{lab} ({float(s):.1f})" if lab and s is not None else ""
 
 
 # ---- results table (browse the shortlist with configurable columns) -----

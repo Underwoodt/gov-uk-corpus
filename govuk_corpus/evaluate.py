@@ -182,6 +182,26 @@ def parse_decision(text: str) -> Optional[Dict]:
             "score": score, "reason": str(d.get("reason") or "")[:1000]}
 
 
+# Inclusion-score bands -> a plain-English confidence label, matching the scoring rubric in
+# DEFAULT_INCLUSION_TEMPLATE (0 = wrong sense; 0.1-0.3 in passing; 0.4-0.6 moderate; 0.7-1.0 major).
+def confidence_label(score) -> str:
+    """The confidence label for an inclusion score (how central the topic is to the page).
+    Empty string when there's no score (page not evaluated / unparseable)."""
+    if score is None:
+        return ""
+    try:
+        s = float(score)
+    except (ValueError, TypeError):
+        return ""
+    if s <= 0:
+        return "Wrong sense"
+    if s <= 0.35:
+        return "Mentioned in passing"
+    if s <= 0.65:
+        return "Discussed a moderate amount"
+    return "Major focus"
+
+
 # ---- Phase 2: Exclusion --------------------------------------------------
 # Recall-priority second pass over the pages the inclusion run KEPT. It re-introduces
 # the exclusion criteria and only ever turns a keep into a drop (removing false
