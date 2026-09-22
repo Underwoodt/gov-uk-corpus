@@ -148,11 +148,12 @@
 
   {# Advanced-only: the actual completed prompt sent to the model for each phase. #}
   <details id="ex-prompts" data-level="advanced" style="margin-top:34px;max-width:960px;">
-    <summary style="cursor:pointer;font-weight:700;font-size:16px;color:var(--link,#1d70b8);">Example completed prompts (per phase)</summary>
+    <summary style="cursor:pointer;font-weight:700;font-size:16px;color:var(--link,#1d70b8);">Example completed prompts (per phase, reconstructed)</summary>
     <div style="margin-top:12px;">
-      <p class="hint" style="margin:0 0 12px;max-width:840px;">The exact text sent to the model for each phase — this
-        shortlist's Include / Exclude context and one sample shortlisted page filled into the currently active
-        prompt version (Settings &rsaquo; AI Prompts).</p>
+      <p class="hint" style="margin:0 0 12px;max-width:840px;"><strong>Reconstructed</strong> from the currently active
+        prompt version (Settings &rsaquo; AI Prompts) and a page this run evaluated. This is representative, not the
+        exact text sent during the run — the prompt or this shortlist's Include / Exclude context may have changed
+        since. (The prompt itself isn't stored per run.)</p>
       <p id="ex-prompt-status" class="secondary"><span class="spinner"></span> Loading…</p>
       <div id="ex-prompt-body" hidden>
         <p id="ex-prompt-sample" class="secondary" style="margin:0 0 12px;"></p>
@@ -265,12 +266,13 @@
         loaded = true;
         const statusEl = document.getElementById("ex-prompt-status");
         try {
-          const j = await (await fetch(`/api/categories/${CID}/example-prompts`)).json();
+          const j = await (await fetch(`/api/categories/${CID}/example-prompts?run_id=${encodeURIComponent(RUN_ID)}`)).json();
           if (j.error) { statusEl.textContent = "Error: " + j.error; loaded = false; return; }
           document.getElementById("ex-prompt-inclusion").textContent = j.inclusion || "(none)";
           document.getElementById("ex-prompt-exclusion").textContent = j.exclusion || "(none)";
           document.getElementById("ex-prompt-sample").textContent = j.sample_url
-            ? ("Sample page: " + (j.sample_title || j.sample_url))
+            ? ((j.sample_from_run ? "Sample page (evaluated in this run): " : "Sample page (from the current shortlist): ")
+               + (j.sample_title || j.sample_url))
             : "No shortlisted page yet — showing the templates with placeholders.";
           statusEl.hidden = true;
           document.getElementById("ex-prompt-body").hidden = false;

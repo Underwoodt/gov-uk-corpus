@@ -2917,54 +2917,79 @@ def run_detail_page(request: Request, cid: int, run_id: str):
     return resp
 
 
-def _example_phase_prompts(conn, category) -> dict:
-    """A filled example of each phase's prompt for this shortlist — the active template
-    (Settings > AI Prompts) with this shortlist's Include/Exclude context and one sample
-    shortlisted page substituted in, so the exact text sent to the model is visible."""
+def _example_phase_prompts(conn, category, run_id: str = "") -> dict:
+    """A reconstructed example of each phase's prompt for this shortlist: the CURRENTLY active
+    templates (Settings > AI Prompts) with this shortlist's Include/Exclude context and — when a
+    run is given — a page THIS run actually evaluated (a kept one first) filled in, plus that
+    page's real first-pass note. Not the exact bytes sent during the run (the prompt version or
+    the shortlist context may have changed since), but representative and page-real."""
     cid = category["id"]
-    f = _effective_filters(conn, category)
-    incl = category.get("inclusion_context") or ""
-    excl = category.get("exclusion_context") or ""
+    P = shortlist._P
+    incl_ctx = category.get("inclusion_context") or ""
+    excl_ctx = category.get("exclusion_context") or ""
     name = cat.display_name(category)
     keep_hints = category.get("adjudication_hints_keep") or ""
     drop_hints = category.get("adjudication_hints_drop") or ""
-    # One sample page from the shortlist (title / description / body) so the example is concrete.
-    sql, params = shortlist.build_query(
-        select_expr="c.url AS url, c.title AS title, c.description AS description, c.search_text AS body",
-        organisations=f["organisations"], document_types=f["document_types"],
-        keywords=f["keywords"], match=f["match"], limit=1)
-    row = conn.execute(sql, tuple(params)).fetchone()
-    if row:
-        d = dict(row)
-        url, title = d.get("url") or "", d.get("title") or ""
-        description, body = d.get("description") or "", d.get("body") or ""
-    else:                                        # empty shortlist: show the template with placeholders
-        url, title = "", "(example page title)"
+
+    url = title = description = body = ""
+    sample_from_run = False
+    if run_id:                                    # a page this run evaluated (kept pages first)
+        row = conn.execute(
+            f"SELECT c.url AS url, c.title AS title, c.description AS description, "
+            f"c.search_text AS body FROM evaluation_results er JOIN content c ON c.url = er.url "
+            f"WHERE er.run_id = {P} AND er.keep IS NOT NULL "
+            f"ORDER BY (CASE WHEN er.keep = 1 THEN 0 ELSE 1 END), c.url LIMIT 1",
+            (run_id,)).fetchone()
+        if row:
+            d = dict(row)
+            url, title = d.get("url") or "", d.get("title") or ""
+            description, body = d.get("description") or "", d.get("body") or ""
+            sample_from_run = bool(url)
+    if not url:                                   # fall back to the current shortlist's first page
+        f = _effective_filters(conn, category)
+        sql, params = shortlist.build_query(
+            select_expr="c.url AS url, c.title AS title, c.description AS description, c.search_text AS body",
+            organisations=f["organisations"], document_types=f["document_types"],
+            keywords=f["keywords"], match=f["match"], limit=1)
+        row = conn.execute(sql, tuple(params)).fetchone()
+        if row:
+            d = dict(row)
+            url, title = d.get("url") or "", d.get("title") or ""
+            description, body = d.get("description") or "", d.get("body") or ""
+    if not url:                                   # empty shortlist: show the templates with placeholders
+        title = "(example page title)"
         description, body = "(example page description)", "(the page's body text goes here)"
-    # The first pass's own note for that page, if an inclusion run exists (else a placeholder).
+
+    # The exclusion prompt's PASS1_REASON = the inclusion pass's own note for that page, taken from
+    # the inclusion run in THIS run's lineage (else the shortlist's latest inclusion run).
     pass1 = "(the first pass's 1-2 sentence note for this page)"
-    incl_run = evaluate.latest_inclusion_run(conn, cid)
-    if incl_run and url:
-        r = conn.execute(
-            f"SELECT reason FROM evaluation_results WHERE run_id = {shortlist._P} AND url = {shortlist._P}",
-            (incl_run, url)).fetchone()
-        if r and (dict(r).get("reason") or "").strip():
-            pass1 = dict(r)["reason"]
+    if url:
+        chain = evaluate.run_chain(conn, run_id) if run_id else []
+        incl_run = next((r["run_id"] for r in chain if "inclusion" in (r.get("phase") or "").lower()), None)
+        incl_run = incl_run or evaluate.latest_inclusion_run(conn, cid)
+        if incl_run:
+            r = conn.execute(
+                f"SELECT reason FROM evaluation_results WHERE run_id = {P} AND url = {P}",
+                (incl_run, url)).fetchone()
+            if r and (dict(r).get("reason") or "").strip():
+                pass1 = dict(r)["reason"]
+
     return {
         "sample_url": url,
         "sample_title": title or url,
+        "sample_from_run": sample_from_run,
         "inclusion": evaluate.build_prompt(
-            incl, excl, title, description, body,
+            incl_ctx, excl_ctx, title, description, body,
             template=prompts.active_text(conn, "inclusion")),
         "exclusion": evaluate.build_exclusion_prompt(
-            name, incl, excl, keep_hints, drop_hints, title, body, pass1,
+            name, incl_ctx, excl_ctx, keep_hints, drop_hints, title, body, pass1,
             template=prompts.active_text(conn, "exclusion")),
     }
 
 
 @app.get("/api/categories/{cid}/example-prompts")
-def api_example_prompts(request: Request, cid: int):
-    """The completed inclusion + exclusion prompts for one sample page of this shortlist —
+def api_example_prompts(request: Request, cid: int, run_id: str = ""):
+    """The reconstructed inclusion + exclusion prompts for a page this run evaluated —
     fed to the advanced-only rolldown on the run-detail page (guc-0006)."""
     if not authed(request):
         return JSONResponse({"error": "auth"}, status_code=401)
@@ -2973,7 +2998,7 @@ def api_example_prompts(request: Request, cid: int):
         category = cat.get_category(conn, cid)
         if not category:
             return JSONResponse({"error": "not found"}, status_code=404)
-        return JSONResponse(_example_phase_prompts(conn, category))
+        return JSONResponse(_example_phase_prompts(conn, category, run_id))
     finally:
         conn.close()
 
