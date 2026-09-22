@@ -2530,8 +2530,10 @@ def _chain_of(conn, head_run_id: str):
         return None, None
     r = conn.execute(f"SELECT * FROM evaluation_runs WHERE run_id = {P}", (head_run_id,)).fetchone()
     incl = dict(r) if r else None
+    # The exclusion (Phase 2) run is the child that points back at this head. The stored phase
+    # label varies ("Phase 2 - Exclusion"), so identify it by source_run_id, not the label.
     r = conn.execute(
-        f"SELECT * FROM evaluation_runs WHERE source_run_id = {P} AND phase = 'exclusion' "
+        f"SELECT * FROM evaluation_runs WHERE source_run_id = {P} "
         f"ORDER BY started_at DESC LIMIT 1", (head_run_id,)).fetchone()
     excl = dict(r) if r else None
     return incl, excl
