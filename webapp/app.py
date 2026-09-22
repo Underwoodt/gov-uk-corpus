@@ -1454,10 +1454,12 @@ def ai_pipeline_page(request: Request, cid: int):
 
 
 @app.get("/categories/{cid}/govuk-additions", response_class=HTMLResponse)
-def govuk_additions_page(request: Request, cid: int):
+def govuk_additions_page(request: Request, cid: int, only: str = ""):
     """Review the GOV.UK-Search-only pages the hybrid step adds to this shortlist's AI input
     (guc-0027): pages the keyword filter missed but GOV.UK Search returned — their URL,
-    document type, publishing organisations, and the GOV.UK keyword(s) that caught them."""
+    document type, publishing organisations, and the GOV.UK keyword(s) that caught them.
+    `only=forwarded` narrows the list to just the pages actually forwarded to the AI
+    (in the corpus and at/above the relevance floor) — the 'GOV.UK only' count on the funnel."""
     if not authed(request):
         return login_redirect(request)
     conn = connect()
@@ -1495,8 +1497,12 @@ def govuk_additions_page(request: Request, cid: int):
         # A page is fed to the AI only if it's in the corpus and above the relevance floor
         # (a page with no es_score is kept — unknown, not low).
         r["evaluated"] = r["in_corpus"] and (es is None or not floor or es >= floor)
+    forwarded_only = (only == "forwarded")
+    if forwarded_only:                       # the 'GOV.UK only' funnel row links here
+        rows = [r for r in rows if r["evaluated"]]
     resp = templates.TemplateResponse("govuk_additions.html", ctx(
-        conn, request, category=category, rows=rows, govuk_min_es_score=floor))
+        conn, request, category=category, rows=rows, govuk_min_es_score=floor,
+        forwarded_only=forwarded_only))
     conn.close()
     return resp
 

@@ -15,6 +15,14 @@
     GOV.UK relevance is at or above the floor{% if govuk_min_es_score %} (<span class="mono">{{ '%.3f'|format(govuk_min_es_score) }}</span>, set by <span class="mono">GOVUK_MIN_ES_SCORE</span>){% endif %};
     weaker matches are skipped. The funnel's <em>+ GOV.UK Search</em> figure reflects a specific run's additions.</p>
 
+  {% if forwarded_only %}
+  <p class="hint" style="max-width:860px;background:#e8f1fb;border-left:4px solid var(--dark-blue,#003078);padding:8px 12px;margin:10px 0;">
+    Showing only the <strong>{{ rows|length }}</strong> GOV.UK-only page{{ '' if rows|length == 1 else 's' }}
+    <strong>forwarded to the AI</strong> — in the corpus and at/above the relevance floor{% if govuk_min_es_score %}
+    (<span class="mono">{{ '%.3f'|format(govuk_min_es_score) }}</span>){% endif %} — i.e. the <em>GOV.UK only</em>
+    figure on the funnel. <a href="{{ url_for('govuk_additions_page', cid=category.id) }}">Show all GOV.UK-only pages</a>.</p>
+  {% endif %}
+
   {% if rows %}
   <p class="secondary" style="margin:12px 0;">{{ rows|length }} GOV.UK-Search-only page{{ '' if rows|length == 1 else 's' }}
     · {{ rows|selectattr('in_corpus')|list|length }} in the corpus
