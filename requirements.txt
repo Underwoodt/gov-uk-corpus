@@ -12,5 +12,5 @@ sqlparse==0.5.5
 jinja2==3.1.4
 python-multipart==0.0.9
 argon2-cffi>=23,<25          # Argon2id password hashing (user accounts / auth)
-anthropic>=0.40,<1.0
+anthropic[bedrock]>=0.40,<1.0
 openpyxl==3.1.5

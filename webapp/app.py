@@ -276,6 +276,15 @@ PROVIDERS = {
                  "model": "deepseek-chat",
                  "key_envs": ("DEEPSEEK_API_KEY", "AI_API_KEY"),
                  "price_in": 0.27, "price_out": 1.10},
+    # AWS Bedrock serves Claude models through the same Anthropic SDK (AnthropicBedrock
+    # client). It authenticates with AWS credentials rather than a single API key — see
+    # _bedrock_creds — and takes Bedrock model IDs / cross-region inference-profile IDs,
+    # which are entered per model on the Settings page. The default below is only a
+    # placeholder fallback; add the real IDs (e.g. eu.anthropic.claude-...:0) in Settings.
+    "bedrock": {"label": "AWS Bedrock (Claude)", "base_url": "",
+                "model": "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+                "key_envs": (),
+                "price_in": 1.0, "price_out": 5.0},
 }
 DEFAULT_PROVIDER = "anthropic"
 
@@ -286,6 +295,28 @@ def _provider_key(provider: str) -> Optional[str]:
         if v:
             return v
     return None
+
+
+def _bedrock_creds() -> Optional[dict]:
+    """AWS credentials for the Bedrock client, or None if not fully configured. Uses
+    explicit keys (Lightsail has no instance IAM role): an access key, a secret and a
+    region are required; AWS_REGION or BEDROCK_AWS_REGION both work. A session token is
+    passed through when present (for temporary STS credentials)."""
+    region = (os.getenv("BEDROCK_AWS_REGION") or os.getenv("AWS_REGION")
+              or os.getenv("AWS_DEFAULT_REGION"))
+    ak = os.getenv("AWS_ACCESS_KEY_ID")
+    sk = os.getenv("AWS_SECRET_ACCESS_KEY")
+    if region and ak and sk:
+        return {"aws_region": region, "aws_access_key": ak, "aws_secret_key": sk,
+                "aws_session_token": os.getenv("AWS_SESSION_TOKEN") or None}
+    return None
+
+
+def _provider_configured(provider: str) -> bool:
+    """Whether a provider has usable credentials — an API key, or AWS creds for Bedrock."""
+    if provider == "bedrock":
+        return _bedrock_creds() is not None
+    return _provider_key(provider) is not None
 
 
 DEFAULT_DAILY_BUDGET = 20.0     # USD/day
@@ -350,7 +381,7 @@ def _config_from_model(conn, m: dict) -> dict:
     p = PROVIDERS.get(provider) or PROVIDERS[DEFAULT_PROVIDER]
     return {"provider": provider, "label": p["label"], "base_url": p["base_url"],
             "model": m["model_id"], "key": _provider_key(provider),
-            "has_key": _provider_key(provider) is not None,
+            "has_key": _provider_configured(provider),
             "price_in": m["input_per_m"], "price_out": m["output_per_m"],
             "grid": dict(m), "peak_bitmap": peak_schedule.get_bitmap(conn, provider)}
 
@@ -359,7 +390,7 @@ def _default_config(conn) -> dict:
     p = PROVIDERS[DEFAULT_PROVIDER]
     return {"provider": DEFAULT_PROVIDER, "label": p["label"], "base_url": p["base_url"],
             "model": p["model"], "key": _provider_key(DEFAULT_PROVIDER),
-            "has_key": _provider_key(DEFAULT_PROVIDER) is not None,
+            "has_key": _provider_configured(DEFAULT_PROVIDER),
             "price_in": p["price_in"], "price_out": p["price_out"]}
 
 
@@ -396,7 +427,13 @@ def _ai_reply(config: dict, system: str, prompt: str) -> dict:
 
 def _ai_chat(config: dict, system: str, messages: list, max_tokens: int = 1024,
              cache_system: bool = False) -> dict:
-    if not config.get("key"):
+    is_bedrock = config.get("provider") == "bedrock"
+    bedrock_creds = _bedrock_creds() if is_bedrock else None
+    if is_bedrock and not bedrock_creds:
+        return {"fatal": True, "error": "AWS Bedrock credentials not set. Add AWS_ACCESS_KEY_ID, "
+                "AWS_SECRET_ACCESS_KEY and a region (BEDROCK_AWS_REGION or AWS_REGION) to "
+                "~/gov-uk-corpus.env and restart."}
+    if not is_bedrock and not config.get("key"):
         return {"fatal": True, "error": f"No API key set for {config['label']}. Add its key to "
                 f"~/gov-uk-corpus.env and restart, or pick a provider that has one in Settings."}
     try:
@@ -408,15 +445,31 @@ def _ai_chat(config: dict, system: str, messages: list, max_tokens: int = 1024,
         # Retry transient errors (429 / 5xx / timeouts) at the SDK, honouring Retry-After,
         # so a single hiccup from a rate-limiting or slow provider self-heals instead of
         # aborting an evaluation run. Tune with AI_MAX_RETRIES / AI_TIMEOUT.
-        client_kwargs = dict(api_key=config["key"], timeout=float(os.getenv("AI_TIMEOUT", "45")),
-                             max_retries=int(os.getenv("AI_MAX_RETRIES", "4")))
-        if config["base_url"]:               # empty => anthropic SDK default (Claude API)
-            client_kwargs["base_url"] = config["base_url"]
-        # Org-scoped ("Default") Anthropic keys need the workspace id header.
-        ws = os.getenv("ANTHROPIC_WORKSPACE_ID")
-        if ws and config["provider"] == "anthropic":
-            client_kwargs["default_headers"] = {"anthropic-workspace-id": ws}
-        client = anthropic.Anthropic(**client_kwargs)
+        timeout = float(os.getenv("AI_TIMEOUT", "45"))
+        max_retries = int(os.getenv("AI_MAX_RETRIES", "4"))
+        if is_bedrock:
+            # Bedrock uses AWS credentials + a Bedrock model id (or inference-profile id).
+            # Same .messages.create() interface, so everything downstream is unchanged.
+            BedrockClient = getattr(anthropic, "AnthropicBedrock", None)
+            if BedrockClient is None:
+                return {"fatal": True, "error": "This 'anthropic' build has no Bedrock support. "
+                        "Run: pip install -U 'anthropic[bedrock]'"}
+            bkw = dict(aws_region=bedrock_creds["aws_region"],
+                       aws_access_key=bedrock_creds["aws_access_key"],
+                       aws_secret_key=bedrock_creds["aws_secret_key"],
+                       timeout=timeout, max_retries=max_retries)
+            if bedrock_creds.get("aws_session_token"):
+                bkw["aws_session_token"] = bedrock_creds["aws_session_token"]
+            client = BedrockClient(**bkw)
+        else:
+            client_kwargs = dict(api_key=config["key"], timeout=timeout, max_retries=max_retries)
+            if config["base_url"]:               # empty => anthropic SDK default (Claude API)
+                client_kwargs["base_url"] = config["base_url"]
+            # Org-scoped ("Default") Anthropic keys need the workspace id header.
+            ws = os.getenv("ANTHROPIC_WORKSPACE_ID")
+            if ws and config["provider"] == "anthropic":
+                client_kwargs["default_headers"] = {"anthropic-workspace-id": ws}
+            client = anthropic.Anthropic(**client_kwargs)
         kwargs = dict(model=config["model"], max_tokens=max_tokens, messages=list(messages))
         if system.strip():
             # Cache the stable system prefix on Anthropic (cache_control) so a run's repeated
@@ -4616,7 +4669,7 @@ def settings_page(request: Request, saved: int = 0, user_ok: int = 0, user_error
     if not active and models:
         active = str(models[0]["id"])
     for m in models:                      # is this model's provider usable?
-        m["has_key"] = _provider_key(m["provider"]) is not None
+        m["has_key"] = _provider_configured(m["provider"])
         m["active"] = str(m["id"]) == str(active)
     phase_models = [
         {"phase": ph, "key": PHASE_MODEL_KEYS[ph],
@@ -4633,7 +4686,7 @@ def settings_page(request: Request, saved: int = 0, user_ok: int = 0, user_error
         accounts_mode=accounts_mode, users=users, account_roles=accounts.ROLES,
         user_ok=user_ok, user_error=user_error,
         providers=list(PROVIDERS.keys()), phase_models=phase_models,
-        provider_keys={k: _provider_key(k) is not None for k in PROVIDERS},
+        provider_keys={k: _provider_configured(k) for k in PROVIDERS},
         daily_budget=_budget(conn), max_docs=_max_docs(conn),
         spent_today=round(_daily_spend(conn), 4), saved=saved, prompt_error=prompt_error,
         prompts=_ai_prompts(conn)))
