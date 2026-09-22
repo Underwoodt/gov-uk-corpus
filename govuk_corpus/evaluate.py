@@ -402,9 +402,13 @@ def create_run(conn, category_id: int, model: str, provider: str,
     reproducible later even if the active template or the shortlist definition changes."""
     run_id = f"run_{int(time.time() * 1000):x}_{uuid.uuid4().hex[:6]}"
     if not name:
-        n = conn.execute(f"SELECT COUNT(*) AS c FROM evaluation_runs WHERE category_id = {_P}",
-                         (category_id,)).fetchone()["c"]
-        name = f"Test-{n + 1}"
+        # Sequential per day: "Run YY-MM-DD - N", N = the next new run (chain head) for today.
+        now = db.now_iso()
+        seq = conn.execute(
+            f"SELECT COUNT(*) AS c FROM evaluation_runs "
+            f"WHERE category_id = {_P} AND source_run_id IS NULL AND started_at LIKE {_P}",
+            (category_id, now[:10] + "%")).fetchone()["c"] + 1
+        name = f"Run {now[2:10]} - {seq}"
     conn.execute(
         f"INSERT INTO evaluation_runs (run_id, category_id, name, source_run_id, phase, model, provider, started_at, prompt_spec) "
         f"VALUES ({_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P})",

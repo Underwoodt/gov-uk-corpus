@@ -13,7 +13,7 @@
 
   <a class="back" href="{{ url_for('ai_pipeline_page', cid=category.id) }}">‹ Back to AI Pipeline</a>
 
-  <h1 style="margin:18px 0 4px;">Run Details for {{ run.name or run.run_id }}</h1>
+  <h1 id="run-title" style="margin:18px 0 4px;">Run Details for {{ run.name or run.run_id }}</h1>
   <p class="secondary" style="margin:0 0 18px;">{{ category.display_name }}
     (<span class="mono">{{ category.slug or '' }}</span>) · run <span class="mono">{{ run.run_id }}</span></p>
 
@@ -47,14 +47,20 @@
     <span class="spinner"></span> <span id="run-live-text">Checking…</span>
   </div>
 
-  {% if continue_reason %}
+  {% if run_state != 'complete' %}
   <p style="margin:12px 0 0;">
-    <button class="btn" id="complete-run" type="button">Continue LLM evaluation</button>
+    {% if run_state == 'fresh' %}
+    <button class="btn" id="complete-run" type="button" data-fresh="1">Start Run</button>
+    {% else %}
+    <button class="btn" id="complete-run" type="button">Complete run</button>
+    {% endif %}
     <span id="complete-status" class="secondary" style="margin-left:10px;"></span>
   </p>
-  <p class="hint" style="margin:6px 0 0;">{{ continue_reason }}
-    Continues the unfinished phase on the server (in the background) so that input = kept + dropped —
-    you can close this page and come back.</p>
+  <p class="hint" style="margin:6px 0 0;">
+    {% if run_state == 'fresh' %}Give the run a name (more than 3 characters) above, then Start Run. It runs on the
+      server in the background — you can leave this page and come back.
+    {% else %}{{ continue_reason }} Continues the unfinished phase on the server (in the background) so that
+      input = kept + dropped — you can close this page and come back.{% endif %}</p>
   {% else %}
   <p class="secondary" style="margin:12px 0 0;">✅ Evaluation complete — every phase reconciles (input = kept + dropped).</p>
   {% endif %}
@@ -236,14 +242,27 @@
         const res = await fetch(`/api/categories/${CID}/runs/${RUN_ID}/rename`,
           { method: "POST", body: new URLSearchParams({ name }) });
         const j = await res.json();
-        status.textContent = res.ok && j.ok ? "Saved." : ("Error: " + (j.error || res.status));
+        if (res.ok && j.ok) {
+          status.textContent = "Saved.";
+          const t = document.getElementById("run-title"); if (t) t.textContent = "Run Details for " + name;
+        } else { status.textContent = "Error: " + (j.error || res.status); }
       } catch (e) { status.textContent = "Could not save."; }
     }
     document.getElementById("save-name").addEventListener("click", saveName);
     nameInput.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); saveName(); } });
 
-    // Complete this run: make it the active run, then finish it in the background.
+    // Start / continue this run: make it the active run, then run it in the background.
     const completeBtn = document.getElementById("complete-run");
+    const isFreshRun = !!(completeBtn && completeBtn.dataset.fresh);
+    // "Start Run" is enabled only once the run name has more than 3 chars; always disabled while running.
+    function refreshActionBtn(running) {
+      if (!completeBtn) return;
+      completeBtn.disabled = running || (isFreshRun && nameInput.value.trim().length <= 3);
+    }
+    if (completeBtn) {
+      refreshActionBtn(false);
+      nameInput.addEventListener("input", () => refreshActionBtn(false));
+    }
     if (completeBtn) {
       const cs = document.getElementById("complete-status");
       completeBtn.addEventListener("click", async () => {
@@ -289,7 +308,7 @@
         try { s = await (await fetch(`/api/categories/${CID}/evaluate-bg/status`)).json(); }
         catch (e) { return; }
         const mine = !!(s.running && s.run_id != null && CHAIN.includes(String(s.run_id)));
-        if (completeBtn) completeBtn.disabled = mine;   // don't offer "Continue" while it runs
+        refreshActionBtn(mine);   // disabled while running (and Start Run needs a >3-char name)
         if (mine) {
           everRan = true;
           box.hidden = false;

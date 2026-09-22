@@ -3031,10 +3031,13 @@ def run_detail_page(request: Request, cid: int, run_id: str):
             "prompt_variant": tr["prompt_variant"], "concurrency": tr["concurrency"],
             "caching": tr["caching"], "template_version": spec.get("template_version"),
             "body_limit": spec.get("body_limit"), "stamped": bool(spec)})
+    # Run lifecycle state for the action button: fresh (never run) | partial (started, unfinished) | complete.
+    started = (totals.get("pages") or 0) > 0
+    run_state = "complete" if not continue_reason else ("partial" if started else "fresh")
     resp = templates.TemplateResponse("run_detail.html", ctx(
         conn, request, category=category, run=run, chain=chain, totals=totals,
         commentary=commentary, unparsed=unparsed, continue_reason=continue_reason,
-        run_trial=_run_trial(conn, run_id), run_configs=run_configs))
+        run_trial=_run_trial(conn, run_id), run_configs=run_configs, run_state=run_state))
     conn.close()
     return resp
 

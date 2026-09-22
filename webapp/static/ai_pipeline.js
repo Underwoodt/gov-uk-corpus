@@ -195,13 +195,11 @@
       const v = $("trial-variant"), c = $("trial-concurrency"), ca = $("trial-caching");
       const body = v ? { prompt_variant: v.value, concurrency: Number(c && c.value) || 1,
                          caching: !!(ca && ca.checked) } : {};
-      await fetch(`/api/categories/${CID}/runs`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const j = await (await fetch(`/api/categories/${CID}/runs`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })).json();
+      if (j && j.run_id) { window.location.href = `/categories/${CID}/runs/${j.run_id}`; return; }
       await loadRuns();
-      const note = (body.prompt_variant === "cached" || body.concurrency > 1 || body.caching)
-        ? ` (trial: ${body.prompt_variant}${body.concurrency > 1 ? ", " + body.concurrency + "×" : ""}${body.caching ? ", cached" : ""})`
-        : "";
-      $("new-run-status").textContent = "New run created" + note + " — switch to Active Run to execute it.";
+      $("new-run-status").textContent = j && j.error ? ("Error: " + j.error) : "New run created.";
     } finally { btn.disabled = false; }
   }
   async function deleteRun(runIds, pages) {
