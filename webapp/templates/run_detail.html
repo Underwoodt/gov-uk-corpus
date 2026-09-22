@@ -146,6 +146,26 @@
   <p class="secondary" style="margin:0 0 18px;">None — every evaluated page was scored (kept or dropped).</p>
   {% endif %}
 
+  {# Advanced-only: the actual completed prompt sent to the model for each phase. #}
+  <details id="ex-prompts" data-level="advanced" style="margin-top:34px;max-width:960px;">
+    <summary style="cursor:pointer;font-weight:700;font-size:16px;color:var(--link,#1d70b8);">Example completed prompts (per phase)</summary>
+    <div style="margin-top:12px;">
+      <p class="hint" style="margin:0 0 12px;max-width:840px;">The exact text sent to the model for each phase — this
+        shortlist's Include / Exclude context and one sample shortlisted page filled into the currently active
+        prompt version (Settings &rsaquo; AI Prompts).</p>
+      <p id="ex-prompt-status" class="secondary"><span class="spinner"></span> Loading…</p>
+      <div id="ex-prompt-body" hidden>
+        <p id="ex-prompt-sample" class="secondary" style="margin:0 0 12px;"></p>
+        <h3 style="margin:14px 0 6px;">Phase 1 — Inclusion</h3>
+        <pre class="mono" id="ex-prompt-inclusion" style="white-space:pre-wrap;word-break:break-word;font-size:13px;
+          background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin:0;"></pre>
+        <h3 style="margin:20px 0 6px;">Phase 2 — Exclusion</h3>
+        <pre class="mono" id="ex-prompt-exclusion" style="white-space:pre-wrap;word-break:break-word;font-size:13px;
+          background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin:0;"></pre>
+      </div>
+    </div>
+  </details>
+
   <script>
     const CID = {{ category.id }}, RUN_ID = {{ run.run_id|tojson }};
     const CHAIN_IDS = {{ (chain|map(attribute='run_id')|list)|tojson }};
@@ -233,6 +253,29 @@
         }
       }
       check();
+    })();
+
+    // Advanced-only: lazily fetch the completed example prompts the first time the rolldown opens.
+    (function () {
+      const det = document.getElementById("ex-prompts");
+      if (!det) return;
+      let loaded = false;
+      det.addEventListener("toggle", async () => {
+        if (!det.open || loaded) return;
+        loaded = true;
+        const statusEl = document.getElementById("ex-prompt-status");
+        try {
+          const j = await (await fetch(`/api/categories/${CID}/example-prompts`)).json();
+          if (j.error) { statusEl.textContent = "Error: " + j.error; loaded = false; return; }
+          document.getElementById("ex-prompt-inclusion").textContent = j.inclusion || "(none)";
+          document.getElementById("ex-prompt-exclusion").textContent = j.exclusion || "(none)";
+          document.getElementById("ex-prompt-sample").textContent = j.sample_url
+            ? ("Sample page: " + (j.sample_title || j.sample_url))
+            : "No shortlisted page yet — showing the templates with placeholders.";
+          statusEl.hidden = true;
+          document.getElementById("ex-prompt-body").hidden = false;
+        } catch (e) { statusEl.textContent = "Could not load the example prompts."; loaded = false; }
+      });
     })();
   </script>
 {% endblock %}

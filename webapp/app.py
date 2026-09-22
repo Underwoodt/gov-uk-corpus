@@ -2917,6 +2917,67 @@ def run_detail_page(request: Request, cid: int, run_id: str):
     return resp
 
 
+def _example_phase_prompts(conn, category) -> dict:
+    """A filled example of each phase's prompt for this shortlist — the active template
+    (Settings > AI Prompts) with this shortlist's Include/Exclude context and one sample
+    shortlisted page substituted in, so the exact text sent to the model is visible."""
+    cid = category["id"]
+    f = _effective_filters(conn, category)
+    incl = category.get("inclusion_context") or ""
+    excl = category.get("exclusion_context") or ""
+    name = cat.display_name(category)
+    keep_hints = category.get("adjudication_hints_keep") or ""
+    drop_hints = category.get("adjudication_hints_drop") or ""
+    # One sample page from the shortlist (title / description / body) so the example is concrete.
+    sql, params = shortlist.build_query(
+        select_expr="c.url AS url, c.title AS title, c.description AS description, c.search_text AS body",
+        organisations=f["organisations"], document_types=f["document_types"],
+        keywords=f["keywords"], match=f["match"], limit=1)
+    row = conn.execute(sql, tuple(params)).fetchone()
+    if row:
+        d = dict(row)
+        url, title = d.get("url") or "", d.get("title") or ""
+        description, body = d.get("description") or "", d.get("body") or ""
+    else:                                        # empty shortlist: show the template with placeholders
+        url, title = "", "(example page title)"
+        description, body = "(example page description)", "(the page's body text goes here)"
+    # The first pass's own note for that page, if an inclusion run exists (else a placeholder).
+    pass1 = "(the first pass's 1-2 sentence note for this page)"
+    incl_run = evaluate.latest_inclusion_run(conn, cid)
+    if incl_run and url:
+        r = conn.execute(
+            f"SELECT reason FROM evaluation_results WHERE run_id = {shortlist._P} AND url = {shortlist._P}",
+            (incl_run, url)).fetchone()
+        if r and (dict(r).get("reason") or "").strip():
+            pass1 = dict(r)["reason"]
+    return {
+        "sample_url": url,
+        "sample_title": title or url,
+        "inclusion": evaluate.build_prompt(
+            incl, excl, title, description, body,
+            template=prompts.active_text(conn, "inclusion")),
+        "exclusion": evaluate.build_exclusion_prompt(
+            name, incl, excl, keep_hints, drop_hints, title, body, pass1,
+            template=prompts.active_text(conn, "exclusion")),
+    }
+
+
+@app.get("/api/categories/{cid}/example-prompts")
+def api_example_prompts(request: Request, cid: int):
+    """The completed inclusion + exclusion prompts for one sample page of this shortlist —
+    fed to the advanced-only rolldown on the run-detail page (guc-0006)."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    conn = connect()
+    try:
+        category = cat.get_category(conn, cid)
+        if not category:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        return JSONResponse(_example_phase_prompts(conn, category))
+    finally:
+        conn.close()
+
+
 @app.post("/api/categories/{cid}/runs/{run_id}/activate")
 async def api_activate_run(request: Request, cid: int, run_id: str):
     """Make this run the active run for the category — Evaluate / background runs
