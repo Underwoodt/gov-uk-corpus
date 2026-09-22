@@ -22,7 +22,8 @@ class TestPromptAndParse(unittest.TestCase):
         p = evaluate.build_prompt("slurry storage", "sewage sludge", "Title", "Desc",
                                   "x" * 10000, body_limit=100)
         self.assertIn("slurry storage", p)
-        self.assertIn("sewage sludge", p)
+        self.assertNotIn("sewage sludge", p)      # phase 1 no longer carries the EXCLUDE text
+        self.assertNotIn("EXCLUDE", p)
         self.assertIn("Title", p)
         self.assertIn("x" * 100, p)
         self.assertNotIn("x" * 101, p)
@@ -180,6 +181,9 @@ class TestExclusion(unittest.TestCase):
         self.assertIn("Inclusion criteria:\nslurry storage", p)   # both halves labelled
         self.assertIn("Exclusion criteria:\nsewage sludge is out of scope", p)
         self.assertIn("pass 1 said relevant", p)
+        # No exclusion text -> the exclusion half still shows, with (none given).
+        p2 = evaluate.build_exclusion_prompt("Probate", "Probate", "", "", "", "T", "b", "note")
+        self.assertIn("Exclusion criteria:\n(none given)", p2)
         self.assertIn("Default to KEEP", p)
         self.assertIn("x" * 100, p)
         self.assertNotIn("x" * 101, p)

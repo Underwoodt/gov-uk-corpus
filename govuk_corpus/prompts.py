@@ -44,7 +44,7 @@ LABELS = {
 # The {{PLACEHOLDER}} tokens each template fills at run time — shown to the editor so they know
 # which tokens to keep. Removing a token just omits that value from the built prompt.
 PLACEHOLDERS = {
-    "inclusion": "{{INCLUDE}}, {{EXCLUDE}}, {{TITLE}}, {{DESCRIPTION}}, {{BODY}}",
+    "inclusion": "{{INCLUDE}}, {{TITLE}}, {{DESCRIPTION}}, {{BODY}}",
     "exclusion": ("{{NAME}}, {{NAME_UPPER}}, {{SPEC}}, {{KEEP_SECTION}}, {{DROP_SECTION}}, "
                   "{{PASS1_REASON}}, {{TITLE_LINE}}, {{BODY}}"),
     "builder": "(none — a system prompt; the current-fields summary is appended automatically in edit mode)",
@@ -61,7 +61,7 @@ _DEFAULTS = {
 # Tokens a saved edit MUST keep, or the built prompt loses that value at run time. The two
 # evaluation templates carry per-page values; the system prompts (builder/assistant) have none.
 REQUIRED_PLACEHOLDERS = {
-    "inclusion": ("INCLUDE", "EXCLUDE", "TITLE", "DESCRIPTION", "BODY"),
+    "inclusion": ("INCLUDE", "TITLE", "DESCRIPTION", "BODY"),
     "exclusion": ("NAME", "NAME_UPPER", "SPEC", "KEEP_SECTION", "DROP_SECTION",
                   "PASS1_REASON", "TITLE_LINE", "BODY"),
     "builder": (),

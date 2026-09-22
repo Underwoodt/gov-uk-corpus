@@ -49,7 +49,6 @@ def normalise_mode(value: Optional[str]) -> str:
 DEFAULT_INCLUSION_TEMPLATE = (
     "You are assessing whether a GOV.UK page is relevant to a topic.\n\n"
     "Topic to INCLUDE (keep pages about this):\n{{INCLUDE}}\n\n"
-    "EXCLUDE (looks relevant but is not):\n{{EXCLUDE}}\n\n"
     "Page title: {{TITLE}}\n"
     "Page description: {{DESCRIPTION}}\n\n"
     "Page content (may be truncated):\n{{BODY}}\n\n"
@@ -212,10 +211,10 @@ def build_exclusion_prompt(name: str, inclusion: str, exclusion: str,
                            template: Optional[str] = None) -> str:
     body = (body or "")[:body_limit]
     nm = (name or "the topic").strip()
-    # SPEC labels both halves so the model isn't left inferring which block is which.
-    spec = "Inclusion criteria:\n" + ((inclusion or "").strip() or "(not specified)")
-    if (exclusion or "").strip():
-        spec = f"{spec}\n\nExclusion criteria:\n{exclusion.strip()}"
+    # SPEC labels both halves so the model isn't left inferring which block is which; the
+    # exclusion half always shows, with (none given) when no exclusion text was provided.
+    spec = ("Inclusion criteria:\n" + ((inclusion or "").strip() or "(not specified)")
+            + "\n\nExclusion criteria:\n" + ((exclusion or "").strip() or "(none given)"))
     keep_section = ""
     if (keep_hints or "").strip():
         keep_section = ("\nKEEP examples (keep = true) — lean toward keeping when similar "
