@@ -76,6 +76,8 @@
 
         <tr data-metric="total"><td>Total Evaluations <span class="metric-i" tabindex="0" title="Pages scored across both phases = sum of each phase's `pages`. Inclusion scores the whole shortlist; exclusion re-scores only the pages inclusion kept." style="cursor:help;color:var(--link,#1d70b8);font-weight:700;font-size:13px;">&#9432;</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="total-p1"><td class="secondary" style="padding-left:26px;">Phase 1 – Inclusion</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="src-corpus"><td class="secondary" style="padding-left:26px;">of which from corpus keyword search <span class="metric-i" tabindex="0" title="Phase-1 pages that came from the deterministic shortlist (organisation + document type + keyword). = Phase 1 pages − GOV.UK Search pages." style="cursor:help;color:var(--link,#1d70b8);font-weight:700;font-size:13px;">&#9432;</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="src-govuk"><td class="secondary" style="padding-left:26px;">of which from GOV.UK Search <span class="metric-i" tabindex="0" title="Phase-1 pages added by the hybrid GOV.UK-Search top-up (pages the keyword filter missed but GOV.UK Search found and fetched into the corpus). Tagged source='search' in category_search_pages." style="cursor:help;color:var(--link,#1d70b8);font-weight:700;font-size:13px;">&#9432;</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="total-p2"><td class="secondary" style="padding-left:26px;">Phase 2 – Exclusion</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
 
         <tr data-metric="totalcost"><td>Total Evaluation Cost <span class="metric-i" tabindex="0" title="Money spent = sum of each phase's `cost` (USD), priced per model from its input/output tokens." style="cursor:help;color:var(--link,#1d70b8);font-weight:700;font-size:13px;">&#9432;</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
@@ -163,7 +165,7 @@
     function renderColumn(col) {
       const set = (m, v) => { const c = cell(m, col); if (c) c.textContent = v; };
       const ALL = ["name","datetime","trial","model-p1","model-p2",
-        "total","total-p1","total-p2","totalcost","totalcost-p1","totalcost-p2",
+        "total","total-p1","src-corpus","src-govuk","total-p2","totalcost","totalcost-p1","totalcost-p2",
         "avgcost","avgcost-p1","avgcost-p2","avgtime","avgtime-p1","avgtime-p2",
         "intokens","intokens-p1","intokens-p2","hittokens","hittokens-p1","hittokens-p2",
         "misstokens","misstokens-p1","misstokens-p2","outtokens","outtokens-p1","outtokens-p2",
@@ -199,6 +201,9 @@
       // additive integer metric: total + phases
       const grp = (base, f) => { set(base, fmtInt(sum(f))); set(base + "-p1", iInt(incl, f)); set(base + "-p2", iInt(excl, f)); };
       grp("total", "pages");
+      // Phase-1 page sources (inclusion run): corpus keyword shortlist vs GOV.UK-Search top-up.
+      set("src-corpus", incl && incl.src_corpus != null ? fmtInt(incl.src_corpus) : "—");
+      set("src-govuk", incl && incl.src_govuk != null ? fmtInt(incl.src_govuk) : "—");
       grp("intokens", "in_tokens"); grp("hittokens", "hit_tokens"); grp("misstokens", "miss_tokens");
       grp("outtokens", "out_tokens"); grp("keep", "kept"); grp("drop", "dropped");
 

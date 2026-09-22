@@ -3342,6 +3342,18 @@ def api_list_runs(request: Request, cid: int):
                 _shortlist_total[0] = None
         return _shortlist_total[0]
 
+    # Per-run count of evaluated pages that came from the GOV.UK-Search-only top-up (source='search'),
+    # so an inclusion run's Phase-1 pages can be split into corpus-keyword vs GOV.UK-sourced.
+    P = shortlist._P
+    govuk_by_run = {}
+    for row in conn.execute(
+            f"SELECT er.run_id AS run_id, COUNT(*) AS n FROM evaluation_results er "
+            f"WHERE er.category_id = {P} AND er.url IN "
+            f"(SELECT url FROM category_search_pages WHERE category_id = {P} AND source = 'search') "
+            f"GROUP BY er.run_id", (cid, cid)).fetchall():
+        d = dict(row)
+        govuk_by_run[d["run_id"]] = d.get("n") or 0
+
     by_id = {r["run_id"]: r for r in runs}
     stalled = None
     for r in runs:
@@ -3350,6 +3362,9 @@ def api_list_runs(request: Request, cid: int):
             r["target"] = src.get("kept") if src else None   # exclusion re-checks the inclusion's keeps
         else:
             r["target"] = shortlist_total()
+            g = govuk_by_run.get(r["run_id"], 0)              # GOV.UK-Search-only pages this run evaluated
+            r["src_govuk"] = g
+            r["src_corpus"] = max(0, (r.get("pages") or 0) - g)   # the rest = corpus keyword shortlist
         # Live driver state for the UI: is a process actually working this run, and is it a
         # stalled run (marked running but its driver is gone) that could be resumed?
         r["alive"] = evaluate.run_is_alive(r)
