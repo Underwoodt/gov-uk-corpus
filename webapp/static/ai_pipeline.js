@@ -173,9 +173,16 @@
     const btn = $("new-run");
     btn.disabled = true;
     try {
-      await fetch(`/api/categories/${CID}/runs`, { method: "POST" });
+      const v = $("trial-variant"), c = $("trial-concurrency"), ca = $("trial-caching");
+      const body = v ? { prompt_variant: v.value, concurrency: Number(c && c.value) || 1,
+                         caching: !!(ca && ca.checked) } : {};
+      await fetch(`/api/categories/${CID}/runs`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       await loadRuns();
-      $("new-run-status").textContent = "New run created — switch to Active Run to execute it.";
+      const note = (body.prompt_variant === "cached" || body.concurrency > 1 || body.caching)
+        ? ` (trial: ${body.prompt_variant}${body.concurrency > 1 ? ", " + body.concurrency + "×" : ""}${body.caching ? ", cached" : ""})`
+        : "";
+      $("new-run-status").textContent = "New run created" + note + " — switch to Active Run to execute it.";
     } finally { btn.disabled = false; }
   }
   async function deleteRun(runId, pages) {

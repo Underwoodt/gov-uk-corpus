@@ -16,6 +16,7 @@ import csv
 import hashlib
 import hmac
 import html
+import concurrent.futures
 import gzip
 import io
 import json
@@ -393,7 +394,8 @@ def _ai_reply(config: dict, system: str, prompt: str) -> dict:
                     max_tokens=int(os.getenv("AI_EVAL_MAX_TOKENS", "4096")))
 
 
-def _ai_chat(config: dict, system: str, messages: list, max_tokens: int = 1024) -> dict:
+def _ai_chat(config: dict, system: str, messages: list, max_tokens: int = 1024,
+             cache_system: bool = False) -> dict:
     if not config.get("key"):
         return {"fatal": True, "error": f"No API key set for {config['label']}. Add its key to "
                 f"~/gov-uk-corpus.env and restart, or pick a provider that has one in Settings."}
@@ -417,7 +419,14 @@ def _ai_chat(config: dict, system: str, messages: list, max_tokens: int = 1024) 
         client = anthropic.Anthropic(**client_kwargs)
         kwargs = dict(model=config["model"], max_tokens=max_tokens, messages=list(messages))
         if system.strip():
-            kwargs["system"] = system.strip()
+            # Cache the stable system prefix on Anthropic (cache_control) so a run's repeated
+            # instructions are cheap cache-reads after the first call. DeepSeek's endpoint ignores
+            # cache_control but auto-caches the same prefix, so a plain string is enough there.
+            if cache_system and config.get("provider") == "anthropic":
+                kwargs["system"] = [{"type": "text", "text": system.strip(),
+                                     "cache_control": {"type": "ephemeral"}}]
+            else:
+                kwargs["system"] = system.strip()
         msg = client.messages.create(**kwargs)
         text = "".join(getattr(b, "text", "") for b in msg.content)
         actual_model = getattr(msg, "model", None)   # what the API actually served
@@ -1809,21 +1818,45 @@ def _active_run(conn, cid: int) -> str:
     return settings.get_setting(conn, f"active_run_{cid}", "") or ""
 
 
-def _prompt_spec_json(conn, cid: int, phase: str) -> str:
+def _norm_trial(trial) -> dict:
+    """Clamp/validate the A/B trial knobs; the defaults reproduce today's behaviour."""
+    t = trial or {}
+    return {
+        "prompt_variant": "cached" if str(t.get("prompt_variant") or "current").lower() == "cached" else "current",
+        "concurrency": max(1, min(int(t.get("concurrency") or 1), 10)),
+        "caching": bool(t.get("caching")),
+    }
+
+
+def _prompt_spec_json(conn, cid: int, phase: str, trial=None) -> str:
     """A JSON snapshot of the prompt inputs a run will use — stamped on the run so its prompts
-    stay exactly reproducible even if the active template or the shortlist definition changes."""
+    stay exactly reproducible. `trial` carries the A/B knobs (prompt_variant / concurrency /
+    caching); the 'cached' variant stamps the reordered template so the run uses it end-to-end."""
     c = cat.get_category(conn, cid) or {}
     pname = "exclusion" if phase == evaluate.PHASE_EXCLUSION else "inclusion"
+    tr = _norm_trial(trial)
+    if tr["prompt_variant"] == "cached":
+        template, template_version = evaluate.cached_template(pname), "cached"
+    else:
+        template, template_version = prompts.active_text(conn, pname), prompts.active_version(conn, pname)
     return json.dumps({
-        "template": prompts.active_text(conn, pname),
-        "template_version": prompts.active_version(conn, pname),
+        "template": template,
+        "template_version": template_version,
         "inclusion_context": c.get("inclusion_context") or "",
         "exclusion_context": c.get("exclusion_context") or "",
         "name": (c.get("description") or "").strip() or cat.prettify(c.get("slug")) or "the topic",
         "keep_hints": c.get("adjudication_hints_keep") or "",
         "drop_hints": c.get("adjudication_hints_drop") or "",
         "body_limit": evaluate.BODY_CHAR_LIMIT,
+        "prompt_variant": tr["prompt_variant"],
+        "concurrency": tr["concurrency"],
+        "caching": tr["caching"],
     }, ensure_ascii=False)
+
+
+def _run_trial(conn, run_id: str) -> dict:
+    """The A/B trial knobs stamped on a run (prompt_variant / concurrency / caching), defaulted."""
+    return _norm_trial(evaluate.run_prompt_spec(conn, run_id) or {})
 
 
 def _run_prompt_inputs(conn, category, run_id: str, phase: str):
@@ -1851,6 +1884,29 @@ def _ensure_run(conn, cid: int) -> str:
                                  prompt_spec=_prompt_spec_json(conn, cid, evaluate.PHASE_INCLUSION))
     settings.set_setting(conn, f"active_run_{cid}", run_id)
     return run_id
+
+
+def _evaluate_one_page(cfg, is_exclusion, variant, caching, tmpl, inclusion, exclusion,
+                       name, keep_hints, drop_hints, r):
+    """Build one page's prompt (current or cached variant) and call the model. Touches NO DB, so
+    it's safe to run concurrently across pages; the caller persists the result. Returns (res, ms,
+    prompt). The 'cached' variant sends the stable half as a (cacheable) system prompt and the page
+    half as the user message."""
+    t0 = time.time()
+    if is_exclusion:
+        prompt = evaluate.build_exclusion_prompt(
+            name, inclusion, exclusion, keep_hints, drop_hints,
+            r["title"], r["body"], r.get("pass1_reason") or "", template=tmpl)
+    else:
+        prompt = evaluate.build_prompt(inclusion, exclusion, r["title"], r.get("description"),
+                                       r["body"], template=tmpl)
+    if variant == "cached":
+        stable, variable = evaluate.split_cached(prompt)
+        res = _ai_chat(cfg, stable, [{"role": "user", "content": variable}],
+                       max_tokens=int(os.getenv("AI_EVAL_MAX_TOKENS", "4096")), cache_system=caching)
+    else:
+        res = _ai_reply(cfg, "", prompt)
+    return res, int((time.time() - t0) * 1000), prompt
 
 
 def _run_evaluation(cid: int, limit: int) -> dict:
@@ -1885,66 +1941,80 @@ def _run_evaluation(cid: int, limit: int) -> dict:
             rows = evaluate.exclusion_candidates(conn, run_id, run.get("source_run_id"), limit)
         else:
             rows = evaluate.run_candidates(conn, run_id, cid, limit, **filters)
+        trial = _run_trial(conn, run_id)
+        concurrency, variant, caching = trial["concurrency"], trial["prompt_variant"], trial["caching"]
         done = 0
         cost = 0.0
         stopped = None
         skipped = 0
         consec_err = 0        # AI errors in a row -> likely a provider outage, so bail out
-        for r in rows:
+        fatal_return = None
+        # Pages are evaluated in waves of `concurrency` (1 = the original sequential path). Each page
+        # is still its own call + JSON verdict; only the API round-trips overlap. Every DB write stays
+        # on this worker thread, after each wave completes.
+        idx = 0
+        while idx < len(rows):
             if budget > 0 and spent >= budget:
                 stopped = "budget"
                 break
-            t0 = time.time()
-            if is_exclusion:
-                prompt = evaluate.build_exclusion_prompt(
-                    name, inclusion, exclusion, keep_hints, drop_hints,
-                    r["title"], r["body"], r.get("pass1_reason") or "", template=prompt_tmpl)
+            wave = rows[idx:idx + concurrency]
+            idx += len(wave)
+            evone = lambda rr: (rr,) + _evaluate_one_page(
+                cfg, is_exclusion, variant, caching, prompt_tmpl,
+                inclusion, exclusion, name, keep_hints, drop_hints, rr)
+            if concurrency > 1 and len(wave) > 1:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=len(wave)) as ex:
+                    packed = list(ex.map(evone, wave))
             else:
-                prompt = evaluate.build_prompt(inclusion, exclusion, r["title"], r["description"],
-                                               r["body"], template=prompt_tmpl)
-            res = _ai_reply(cfg, "", prompt)
-            ms = int((time.time() - t0) * 1000)
-            if res.get("error"):
-                # Fatal (no key / bad config) -> stop the run and report it.
-                if res.get("fatal"):
-                    evaluate.mark_run_stopped(conn, run_id)
-                    return {"error": res["error"], "fatal": True, "run_id": run_id,
-                            "evaluated_this_run": done, "skipped": skipped,
-                            "cost_usd": round(cost, 6), "spent_today": round(spent, 4), "budget": budget}
-                # Transient (the SDK has already retried): if it keeps failing the
-                # provider is likely down — stop cleanly so we don't mark hundreds of
-                # pages unscored; the user re-executes to resume where it left off.
-                consec_err += 1
-                if consec_err >= MAX_CONSEC_EVAL_ERRORS:
-                    evaluate.mark_run_stopped(conn, run_id)
-                    return {"error": f"Stopped after {consec_err} evaluation errors in a row "
-                            f"(last: {res['error']}). The provider may be down or rate-limiting — "
-                            f"re-execute to resume where it left off.",
-                            "run_id": run_id, "evaluated_this_run": done, "skipped": skipped,
-                            "cost_usd": round(cost, 6), "spent_today": round(spent, 4),
-                            "budget": budget, "stopped": "errors"}
-                # Isolated failure: record the page as unscored (so it's excluded next
-                # time and shows on the Run detail 'Not parsed' list) and carry on.
-                evaluate.save_page(conn, run_id, cid, r["url"],
-                                   {"keep": None, "score": None,
-                                    "reason": f"skipped after AI error: {str(res['error'])[:300]}"}, ms,
-                                   raw_reply=res.get("reply") or res.get("error"))
-                skipped += 1
+                packed = [evone(rr) for rr in wave]
+            for r, res, ms, _prompt in packed:
+                if res.get("error"):
+                    # Fatal (no key / bad config) -> stop the run and report it.
+                    if res.get("fatal"):
+                        evaluate.mark_run_stopped(conn, run_id)
+                        fatal_return = {"error": res["error"], "fatal": True, "run_id": run_id,
+                                        "evaluated_this_run": done, "skipped": skipped,
+                                        "cost_usd": round(cost, 6), "spent_today": round(spent, 4),
+                                        "budget": budget}
+                        break
+                    # Transient (the SDK has already retried): if it keeps failing the provider is
+                    # likely down — stop cleanly; the user re-executes to resume where it left off.
+                    consec_err += 1
+                    if consec_err >= MAX_CONSEC_EVAL_ERRORS:
+                        evaluate.mark_run_stopped(conn, run_id)
+                        fatal_return = {"error": f"Stopped after {consec_err} evaluation errors in a row "
+                                        f"(last: {res['error']}). The provider may be down or rate-limiting — "
+                                        f"re-execute to resume where it left off.",
+                                        "run_id": run_id, "evaluated_this_run": done, "skipped": skipped,
+                                        "cost_usd": round(cost, 6), "spent_today": round(spent, 4),
+                                        "budget": budget, "stopped": "errors"}
+                        break
+                    # Isolated failure: record the page as unscored (so it's excluded next time and
+                    # shows on the Run detail 'Not parsed' list) and carry on.
+                    evaluate.save_page(conn, run_id, cid, r["url"],
+                                       {"keep": None, "score": None,
+                                        "reason": f"skipped after AI error: {str(res['error'])[:300]}"}, ms,
+                                       raw_reply=res.get("reply") or res.get("error"))
+                    skipped += 1
+                    done += 1
+                    continue
+                consec_err = 0
+                decision = (evaluate.parse_exclusion(res.get("reply", "")) if is_exclusion
+                            else evaluate.parse_decision(res.get("reply", "")))
+                evaluate.save_page(conn, run_id, cid, r["url"], decision, ms,
+                                   raw_reply=res.get("reply"))
+                evaluate.set_actual_model(conn, run_id, res.get("actual_model"))
+                c = res.get("cost_usd") or 0.0
+                evaluate.add_run_cost(conn, run_id, c, res.get("input_tokens"), res.get("output_tokens"),
+                                      res.get("cache_hit_tokens"), res.get("cache_miss_tokens"))
+                _log_ai_usage(conn, c, res.get("input_tokens"), res.get("output_tokens"), "evaluate")
                 done += 1
-                continue
-            consec_err = 0
-            decision = (evaluate.parse_exclusion(res.get("reply", "")) if is_exclusion
-                        else evaluate.parse_decision(res.get("reply", "")))
-            evaluate.save_page(conn, run_id, cid, r["url"], decision, ms,
-                               raw_reply=res.get("reply"))
-            evaluate.set_actual_model(conn, run_id, res.get("actual_model"))
-            c = res.get("cost_usd") or 0.0
-            evaluate.add_run_cost(conn, run_id, c, res.get("input_tokens"), res.get("output_tokens"),
-                                  res.get("cache_hit_tokens"), res.get("cache_miss_tokens"))
-            _log_ai_usage(conn, c, res.get("input_tokens"), res.get("output_tokens"), "evaluate")
-            done += 1
-            cost += c
-            spent += c
+                cost += c
+                spent += c
+            if fatal_return is not None:
+                break
+        if fatal_return is not None:
+            return fatal_return
         run = evaluate.get_run(conn, run_id)
         if is_exclusion:
             total = evaluate.kept_count(conn, run.get("source_run_id")) if run.get("source_run_id") else 0
@@ -1964,7 +2034,8 @@ def _run_evaluation(cid: int, limit: int) -> dict:
                     excfg = _ai_config_for_phase(conn, evaluate.PHASE_EXCLUSION)
                     new_id = evaluate.create_run(conn, cid, excfg["model"], excfg["provider"],
                                                  phase=evaluate.PHASE_EXCLUSION, source_run_id=run_id,
-                                                 prompt_spec=_prompt_spec_json(conn, cid, evaluate.PHASE_EXCLUSION))
+                                                 prompt_spec=_prompt_spec_json(conn, cid, evaluate.PHASE_EXCLUSION,
+                                                                               _run_trial(conn, run_id)))
                     settings.set_setting(conn, f"active_run_{cid}", new_id)
                     advanced = {"run_id": new_id, "phase": evaluate.PHASE_EXCLUSION, "remaining": keeps}
                     remaining = keeps
@@ -1983,6 +2054,13 @@ def _run_evaluation(cid: int, limit: int) -> dict:
 async def api_new_run(request: Request, cid: int):
     if not authed(request):
         return JSONResponse({"error": "auth"}, status_code=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    trial = {"prompt_variant": (body or {}).get("prompt_variant"),
+             "concurrency": (body or {}).get("concurrency"),
+             "caching": (body or {}).get("caching")}
     conn = connect()
     if not cat.get_category(conn, cid):
         conn.close()
@@ -1990,7 +2068,7 @@ async def api_new_run(request: Request, cid: int):
     cfg = _ai_config_for_phase(conn, evaluate.PHASE_INCLUSION)   # new manual run = a fresh inclusion run
     run_id = evaluate.create_run(conn, cid, cfg["model"], cfg["provider"],
                                  phase=evaluate.PHASE_INCLUSION,
-                                 prompt_spec=_prompt_spec_json(conn, cid, evaluate.PHASE_INCLUSION))
+                                 prompt_spec=_prompt_spec_json(conn, cid, evaluate.PHASE_INCLUSION, trial))
     settings.set_setting(conn, f"active_run_{cid}", run_id)
     run = evaluate.get_run(conn, run_id)
     conn.close()
@@ -2221,9 +2299,11 @@ def _retry_unparsable(cid: int, cap: int = 300) -> dict:
             if not cfg["key"]:
                 out["phases"].append({"phase": run.get("phase"), "error": f"no API key for {cfg['label']}"})
                 continue
-            # Reproduce THIS run's prompt exactly: its stamped spec (else live for legacy runs).
+            # Reproduce THIS run's prompt exactly: its stamped spec (template + variant + caching),
+            # else live for legacy runs.
             prompt_tmpl, inclusion, exclusion, name, keep_hints, drop_hints = _run_prompt_inputs(
                 conn, category, run_id, evaluate.PHASE_EXCLUSION if is_excl else evaluate.PHASE_INCLUSION)
+            rt = _run_trial(conn, run_id)
             urls = [dict(r)["url"] for r in conn.execute(
                 f"SELECT url FROM evaluation_results WHERE run_id = {P} AND keep IS NULL LIMIT {int(left)}",
                 (run_id,)).fetchall()]
@@ -2232,18 +2312,16 @@ def _retry_unparsable(cid: int, cap: int = 300) -> dict:
                 c = conn.execute(
                     f"SELECT title, description, search_text AS body FROM content WHERE url = {P}", (url,)).fetchone()
                 c = dict(c) if c else {"title": "", "description": "", "body": ""}
+                pass1 = ""
                 if is_excl:
                     pr = conn.execute(
                         f"SELECT reason FROM evaluation_results WHERE run_id = {P} AND url = {P}", (inc, url)).fetchone()
-                    prompt = evaluate.build_exclusion_prompt(
-                        name, inclusion, exclusion, keep_hints, drop_hints,
-                        c.get("title"), c.get("body"), (dict(pr)["reason"] if pr else "") or "", template=prompt_tmpl)
-                else:
-                    prompt = evaluate.build_prompt(inclusion, exclusion, c.get("title"), c.get("description"),
-                                                   c.get("body"), template=prompt_tmpl)
-                t0 = time.time()
-                res = _ai_reply(cfg, "", prompt)
-                ms = int((time.time() - t0) * 1000)
+                    pass1 = (dict(pr)["reason"] if pr else "") or ""
+                row = {"url": url, "title": c.get("title"), "description": c.get("description"),
+                       "body": c.get("body"), "pass1_reason": pass1}
+                res, ms, _prompt = _evaluate_one_page(cfg, is_excl, rt["prompt_variant"], rt["caching"],
+                                                      prompt_tmpl, inclusion, exclusion, name,
+                                                      keep_hints, drop_hints, row)
                 if res.get("error"):
                     continue                                   # leave it unparsable; provider hiccup
                 decision = (evaluate.parse_exclusion(res.get("reply", "")) if is_excl
@@ -2943,7 +3021,8 @@ def run_detail_page(request: Request, cid: int, run_id: str):
         u["phase"] = phase_by_id.get(u["run_id"])
     resp = templates.TemplateResponse("run_detail.html", ctx(
         conn, request, category=category, run=run, chain=chain, totals=totals,
-        commentary=commentary, unparsed=unparsed, continue_reason=continue_reason))
+        commentary=commentary, unparsed=unparsed, continue_reason=continue_reason,
+        run_trial=_run_trial(conn, run_id)))
     conn.close()
     return resp
 
@@ -3121,7 +3200,8 @@ async def api_continue_run(request: Request, cid: int, run_id: str):
             excfg = _ai_config_for_phase(conn, evaluate.PHASE_EXCLUSION)
             new_id = evaluate.create_run(conn, cid, excfg["model"], excfg["provider"],
                                          phase=evaluate.PHASE_EXCLUSION, source_run_id=incl["run_id"],
-                                         prompt_spec=_prompt_spec_json(conn, cid, evaluate.PHASE_EXCLUSION))
+                                         prompt_spec=_prompt_spec_json(conn, cid, evaluate.PHASE_EXCLUSION,
+                                                                       _run_trial(conn, incl["run_id"])))
             settings.set_setting(conn, f"active_run_{cid}", new_id)
             return JSONResponse({"active": new_id, "action": "start_exclusion"})
 

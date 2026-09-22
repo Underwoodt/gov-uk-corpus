@@ -36,6 +36,7 @@
         <tr data-metric="datetime"><td>Run Date/Time</td><td></td><td></td><td></td></tr>
         <tr data-metric="phase"><td>Phase</td><td></td><td></td><td></td></tr>
         <tr data-metric="model"><td>Model</td><td></td><td></td><td></td></tr>
+        <tr data-metric="trial"><td>Trial config</td><td></td><td></td><td></td></tr>
         <tr data-metric="total"><td>Total Evaluations</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="avgcost"><td>Average Evaluation Cost (per 100)</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="avgtime"><td>Average Evaluation Elapsed (min:sec)</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
@@ -70,13 +71,16 @@
       const runId = document.getElementById(`pick-${col}`).value;
       const r = byId[runId];
       const set = (metric, v) => { cell(metric, col).textContent = v; };
-      if (!r) { ["name","datetime","phase","model","total","avgcost","avgtime","intokens","hittokens","misstokens","outtokens","totalcost","totaltime"].forEach(m => set(m, "—")); return; }
+      if (!r) { ["name","datetime","phase","model","trial","total","avgcost","avgtime","intokens","hittokens","misstokens","outtokens","totalcost","totaltime"].forEach(m => set(m, "—")); return; }
       const pages = r.pages || 0;
       const secsTotal = (r.total_ms || 0) / 1000;
       set("name", r.name || "—");
       set("datetime", fmtDate(r.started_at));
       set("phase", r.phase || "—");
       set("model", `${r.provider || ""} / ${r.actual_model || r.model || ""}`);
+      set("trial", r.trial ? (r.trial.variant
+        + (r.trial.concurrency > 1 ? " · " + r.trial.concurrency + "×" : "")
+        + (r.trial.caching ? " · cached" : "")) : "current");
       set("total", pages.toLocaleString());
       set("avgcost", pages ? "$" + ((r.cost || 0) / pages * 100).toFixed(4) : "—");
       set("avgtime", pages ? fmtMS(secsTotal / pages) : "—");

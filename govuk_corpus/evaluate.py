@@ -82,6 +82,62 @@ DEFAULT_EXCLUSION_TEMPLATE = (
     '"reason": "1-2 sentence explanation"}')
 
 
+# ---- Cached prompt variant (A/B trial) -----------------------------------
+# The same wording, reordered so ALL the stable instruction text comes first and the per-page
+# content comes last, separated by PROMPT_SPLIT. The caller sends the stable half as the (cacheable)
+# system prompt and the page half as the user message — so a run's repeated prefix is a cache-read
+# on Anthropic, and DeepSeek's automatic prefix cache kicks in too. `current` variant is unchanged.
+PROMPT_SPLIT = "\n\n<<<PAGE>>>\n\n"
+
+DEFAULT_INCLUSION_TEMPLATE_CACHED = (
+    "You are assessing whether a GOV.UK page is relevant to a topic.\n\n"
+    "Topic to INCLUDE (keep pages about this):\n{{INCLUDE}}\n\n"
+    "Decide whether to KEEP the page below for the topic. A page is relevant if it "
+    "concerns the topic in the sense described, even if only part of the page does. "
+    "Mark it FALSE only when every mention is the wrong sense; otherwise keep it.\n\n"
+    "Scoring guidance (amount, not the boolean):\n"
+    "- 0.1–0.3: mentioned once or in passing — still TRUE if the sense is right\n"
+    "- 0.4–0.6: discussed to a moderate extent\n"
+    "- 0.7–1.0: a major focus of the page\n"
+    "- 0.0: every hit is the wrong sense — the only case for FALSE\n\n"
+    "Return ONLY a JSON object, no prose:\n"
+    '{"keep": true|false, "score": 0.0-1.0, "reason": "1-2 sentence explanation"}'
+    + PROMPT_SPLIT +
+    "Page title: {{TITLE}}\nPage description: {{DESCRIPTION}}\n\n"
+    "Page content (may be truncated):\n{{BODY}}")
+
+DEFAULT_EXCLUSION_TEMPLATE_CACHED = (
+    "You curate a GOV.UK corpus for a {{NAME_UPPER}} audit. A fast first pass flagged this "
+    "page because it looked relevant; it forces KEEP on any mention. Remove ONLY pages that "
+    "are clearly not about {{NAME}} at all. Missing a genuinely {{NAME}}-relevant page is "
+    "unacceptable; keeping a borderline one is fine. Default to KEEP.\n\n"
+    "=== {{NAME_UPPER}} SPEC ===\n{{SPEC}}\n=== END SPEC ===\n\n"
+    "Apply the inclusion and exclusion criteria above.\n"
+    "KEEP (keep = true) — keep if the page has any audit-relevant {{NAME}} content, even briefly.\n"
+    "DROP (keep = false) — drop ONLY when the page is clearly out of scope per the exclusion "
+    "criteria (homonyms, incidental-only mentions, wrong domain).\n"
+    "{{KEEP_SECTION}}{{DROP_SECTION}}"
+    "If you are unsure, KEEP.\n\n"
+    "Return ONLY a JSON object, no prose:\n"
+    '{"keep": true|false, "exclusion_hit": "none"|"incidental"|"homonym"|"wrong_domain", '
+    '"reason": "1-2 sentence explanation"}'
+    + PROMPT_SPLIT +
+    "For context, the first pass wrote this note (it may be wrong): {{PASS1_REASON}}\n\n"
+    "{{TITLE_LINE}}\nPage content (may be truncated):\n{{BODY}}")
+
+
+def cached_template(name: str) -> str:
+    """The reordered (stable-prefix) default template for a phase — 'inclusion' | 'exclusion'."""
+    return DEFAULT_EXCLUSION_TEMPLATE_CACHED if name == "exclusion" else DEFAULT_INCLUSION_TEMPLATE_CACHED
+
+
+def split_cached(filled: str):
+    """(stable, variable) for a filled cached template. If it carries no PROMPT_SPLIT marker (e.g.
+    a non-cached template), the whole thing is the variable half with an empty stable prefix."""
+    stable, sep, variable = filled.partition(PROMPT_SPLIT)
+    return (stable, variable) if sep else ("", filled)
+
+
 def _fill(template: str, values: Dict[str, str]) -> str:
     """Substitute {{KEY}} tokens (str.replace, so literal { } in the text are left alone)."""
     out = template
@@ -528,8 +584,19 @@ def list_runs_query(category_id: int):
 
 def list_runs(conn, category_id: int) -> List[dict]:
     sql, params = list_runs_query(category_id)
-    rows = conn.execute(sql, tuple(params)).fetchall()
-    return [dict(r) for r in rows]
+    rows = [dict(r) for r in conn.execute(sql, tuple(params)).fetchall()]
+    for d in rows:
+        spec = d.pop("prompt_spec", None)   # keep the list light; expose only the A/B trial knobs
+        d["trial"] = None
+        if spec:
+            try:
+                s = json.loads(spec)
+                d["trial"] = {"variant": s.get("prompt_variant") or "current",
+                              "concurrency": int(s.get("concurrency") or 1),
+                              "caching": bool(s.get("caching"))}
+            except (ValueError, TypeError):
+                pass
+    return rows
 
 
 def reconcile_to_shortlist(conn, category_id: int) -> dict:

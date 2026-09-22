@@ -31,6 +31,14 @@
     {% if run.finished_at %}· Finished {{ run.finished_at[:19]|replace('T',' ') }}{% endif %}
     {% if run.status %}· {{ run.status }}{% endif %}
   </p>
+  {% if run_trial and (run_trial.prompt_variant != 'current' or run_trial.concurrency > 1 or run_trial.caching) %}
+  <p class="secondary" data-level="advanced" style="margin:0 0 6px;">
+    <span style="font-weight:700;">Trial (A/B):</span>
+    prompt <span class="mono">{{ run_trial.prompt_variant }}</span>
+    · concurrency <span class="mono">{{ run_trial.concurrency }}×</span>
+    · caching <span class="mono">{{ 'on' if run_trial.caching else 'off' }}</span>
+  </p>
+  {% endif %}
 
   {# Live status: shown only while a background evaluation for this run's lineage is
      in progress. Populated by JS polling evaluate-bg/status; auto-refreshes on finish. #}
