@@ -49,9 +49,9 @@
         <tr data-metric="elapsed"><td>Total wall-clock time <span class="secondary" style="font-weight:400;">start → finish</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="elapsed-p1"><td style="padding-left:26px;" class="secondary">Phase 1 – Inclusion</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="elapsed-p2"><td style="padding-left:26px;" class="secondary">Phase 2 – Exclusion</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
-        <tr data-metric="cmp-keep"><td>Decisions Keep (Sum, shared pages)</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
-        <tr data-metric="cmp-drop"><td>Decisions Drop (Sum, shared pages)</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
-        <tr data-metric="cmp-disagree"><td>Decisions disagree with Run 1 (Sum)</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="cmp-keep"><td>Decisions Kept <span class="secondary" style="font-weight:400;">(this run)</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="cmp-drop"><td>Decisions Dropped <span class="secondary" style="font-weight:400;">(this run)</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="cmp-disagree"><td>Decisions disagree with Run 1 <span class="secondary" style="font-weight:400;">(shared pages)</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr><td colspan="4" style="font-weight:700;padding-top:18px;border-top:2px solid var(--border-mid);">Run configuration</td></tr>
         <tr data-metric="cfg-variant"><td>Prompt variant</td><td></td><td></td><td></td></tr>
         <tr data-metric="cfg-concurrency"><td>Concurrency</td><td></td><td></td><td></td></tr>
@@ -80,7 +80,7 @@
       const runId = document.getElementById(`pick-${col}`).value;
       const r = byId[runId];
       const set = (metric, v) => { cell(metric, col).textContent = v; };
-      if (!r) { ["name","datetime","phase","model","trial","total","avgcost","avgtime","intokens","hittokens","misstokens","outtokens","totalcost","totaltime","elapsed","elapsed-p1","elapsed-p2","cfg-variant","cfg-concurrency","cfg-caching","cfg-version","cfg-bodylimit"].forEach(m => set(m, "—")); return; }
+      if (!r) { ["name","datetime","phase","model","trial","total","avgcost","avgtime","intokens","hittokens","misstokens","outtokens","totalcost","totaltime","elapsed","elapsed-p1","elapsed-p2","cfg-variant","cfg-concurrency","cfg-caching","cfg-version","cfg-bodylimit","cmp-keep","cmp-drop"].forEach(m => set(m, "—")); return; }
       const pages = r.pages || 0;
       const secsTotal = (r.total_ms || 0) / 1000;
       set("name", r.name || "—");
@@ -116,24 +116,23 @@
       set("cfg-caching", tr.caching ? "on" : "off");
       set("cfg-version", (tr.template_version != null) ? tr.template_version : "—");
       set("cfg-bodylimit", tr.body_limit ? Number(tr.body_limit).toLocaleString() : "—");
+      set("cmp-keep", (r.kept || 0).toLocaleString());     // this run's own totals — shown for every run
+      set("cmp-drop", (r.dropped || 0).toLocaleString());
     }
     const fmtInt = n => Number(n || 0).toLocaleString();
 
-    // Runs 2 & 3 compared to Run 1 (baseline) over pages evaluated in both.
+    // Disagreement of Runs 2 & 3 vs Run 1 (baseline) over pages evaluated in both. (The Kept/Dropped
+    // rows are each run's own totals, set per-column in renderColumn.)
     async function renderComparisons() {
       const base = document.getElementById("pick-0").value;
-      const CMP = ["cmp-keep", "cmp-drop", "cmp-disagree"];
-      CMP.forEach(m => cell(m, 0).textContent = "-");   // baseline column
+      cell("cmp-disagree", 0).textContent = "—";        // baseline can't disagree with itself
       for (const col of [1, 2]) {
         const other = document.getElementById(`pick-${col}`).value;
-        const setAll = v => CMP.forEach(m => cell(m, col).textContent = v);
-        if (!base || !other || other === base) { setAll("—"); continue; }
+        if (!base || !other || other === base) { cell("cmp-disagree", col).textContent = "—"; continue; }
         try {
           const j = await (await fetch(`/api/categories/${CID}/compare?base=${base}&other=${other}`)).json();
-          cell("cmp-keep", col).textContent = fmtInt(j.kept);
-          cell("cmp-drop", col).textContent = fmtInt(j.dropped);
           cell("cmp-disagree", col).textContent = fmtInt(j.disagree);
-        } catch (e) { setAll("—"); }
+        } catch (e) { cell("cmp-disagree", col).textContent = "—"; }
       }
     }
     function renderAll() { [0, 1, 2].forEach(renderColumn); renderComparisons(); }
