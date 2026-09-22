@@ -63,6 +63,15 @@
             <td class="num cost secondary" title="Deterministic filters use no AI, so they cost nothing.">N/A</td>
           </tr>
           {% endfor %}
+          {% if govuk_additions and govuk_additions > 0 %}
+          <tr data-stage="govuk" title="GOV.UK-Search-only pages the keyword filter missed, now in the corpus, added to the AI's input on top of the keyword shortlist.">
+            <td>+ GOV.UK Search</td>
+            <td class="num" style="color:var(--green,#00703c);font-weight:700;">+{{ '{:,}'.format(govuk_additions) }}</td>
+            <td class="num secondary">—</td>
+            <td class="num secondary">—</td>
+            <td class="num cost secondary" title="GOV.UK Search is used to add coverage, not to filter — no AI cost at this step.">N/A</td>
+          </tr>
+          {% endif %}
           <tr data-stage="incl" hidden><td>Included by AI</td><td class="num val"></td><td class="num rejected"></td><td class="num timing"></td>
             <td class="num cost" title="Total AI spend on the inclusion pass for this shortlist (all runs).">${{ '%.2f'|format(ai_cost.incl) }}</td></tr>
           <tr data-stage="excl" hidden><td>Shortlist</td><td class="num val"></td><td class="num rejected"></td><td class="num timing"></td>
