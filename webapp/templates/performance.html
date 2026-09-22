@@ -19,7 +19,42 @@
   <div class="tabpanel">
     <h2>Compare runs</h2>
     <p class="hint" style="margin-top:-20px;">Pick up to three runs to compare. Each column is a full run
-      (Phase 1 – Inclusion → Phase 2 – Exclusion); every figure shows the total and the per-phase split.</p>
+      (Phase 1 – Inclusion → Phase 2 – Exclusion); every figure shows the total and the per-phase split.
+      Hover the <span style="cursor:help;color:var(--muted);">&#9432;</span> on any row for its definition, or open
+      the reference below.</p>
+
+    <details style="margin:0 0 18px;max-width:900px;">
+      <summary style="cursor:pointer;font-weight:700;color:var(--link,#1d70b8);">How to read this table — what each figure means</summary>
+      <div class="detail" style="max-width:none;">
+        <p class="secondary" style="margin:10px 0;">Every measure is shown as a <strong>Total</strong> for the run with
+          indented <strong>Phase 1 – Inclusion</strong> and <strong>Phase 2 – Exclusion</strong> rows beneath it. Runs are
+          stored one row per phase in <span class="mono">evaluation_runs</span>; the figures below combine a run's two phases.</p>
+        <div class="table-wrap">
+          <table style="font-size:14px;">
+            <thead><tr><th>Measure</th><th>What it means</th><th>How it's calculated</th></tr></thead>
+            <tbody>
+              <tr><td>Model · Phase&nbsp;1/2</td><td>The model that actually served each phase.</td><td><span class="mono">provider</span> / <span class="mono">actual_model</span> (the model the API reported, which can differ from the one requested).</td></tr>
+              <tr><td>Total Evaluations</td><td>Pages scored across both phases.</td><td>Sum of each phase's <span class="mono">pages</span>. Inclusion scores the whole shortlist; exclusion re-scores only the pages inclusion kept.</td></tr>
+              <tr><td>Total Evaluation Cost</td><td>Money spent on the run.</td><td>Sum of each phase's <span class="mono">cost</span> (USD), priced per model from its input/output tokens.</td></tr>
+              <tr><td>Average Evaluation Cost (per 100)</td><td>Cost to score 100 pages.</td><td>total <span class="mono">cost</span> ÷ total <span class="mono">pages</span> × 100.</td></tr>
+              <tr><td>Average LLM latency per call</td><td>Typical model wait for one page.</td><td>total LLM wait ÷ total <span class="mono">pages</span> (i.e. mean of the per-page round-trips).</td></tr>
+              <tr><td>Total Input Tokens</td><td>Prompt tokens sent to the model.</td><td>Sum of <span class="mono">in_tokens</span> = cache hit + cache miss.</td></tr>
+              <tr><td>&nbsp;&nbsp;of which cache hit / miss</td><td>Input tokens served from / not from the prompt cache.</td><td><span class="mono">hit_tokens</span> / <span class="mono">miss_tokens</span>. Hits are far cheaper — high hits mean caching is working.</td></tr>
+              <tr><td>Total Output Tokens</td><td>Tokens the model generated (the JSON verdicts).</td><td>Sum of <span class="mono">out_tokens</span>.</td></tr>
+              <tr><td>Total LLM wait (sum of calls)</td><td>All the model waiting, added up — <em>not</em> real time.</td><td>Sum of each page's measured round-trip (<span class="mono">total_ms</span>). Unaffected by concurrency.</td></tr>
+              <tr><td>Total wall-clock time</td><td>Real elapsed time, start to finish.</td><td>Per phase: <span class="mono">finished_at − started_at</span>; the total sums the phases. With concurrency this falls well below the LLM-wait figure (calls overlap).</td></tr>
+              <tr><td>Decisions Kept</td><td>The run's final shortlist size.</td><td>The last phase's <span class="mono">kept</span> (exclusion if it ran, else inclusion). Phase rows show each phase's own <span class="mono">kept</span>.</td></tr>
+              <tr><td>Decisions Dropped</td><td>Pages the run removed.</td><td>Sum of each phase's <span class="mono">dropped</span> (inclusion + exclusion).</td></tr>
+              <tr><td>Decisions disagree with Run&nbsp;1</td><td>How differently this run judged vs the baseline (Run 1).</td><td>Over the pages <strong>both</strong> runs scored (same URL), the count where the keep/drop verdict differs — compared per phase (inclusion vs inclusion, exclusion vs exclusion). ≈ 0 means they agreed. <strong>Run 1 shows “—”</strong> — it's the baseline, so it can't disagree with itself.</td></tr>
+              <tr><td>Run configuration</td><td>The A/B settings that governed the run.</td><td>Stamped when the run was created: prompt variant (current/cached), concurrency, caching, prompt version, body limit.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="secondary" style="margin:10px 0 0;"><strong>Baseline:</strong> Run 1 is the reference column. Kept /
+          Dropped / cost / time are each run's <em>own</em> totals (directly comparable when both ran the same shortlist);
+          only the “disagree with Run 1” row is a like-for-like comparison restricted to the pages both runs evaluated.</p>
+      </div>
+    </details>
 
     <div class="controls" id="run-pickers">
       <label>Run 1 <select id="pick-0" class="run-pick"></select></label>
@@ -33,68 +68,68 @@
     <table id="perf-table">
       <thead><tr><th>Run characteristic</th><th>Run 1</th><th>Run 2</th><th>Run 3</th></tr></thead>
       <tbody>
-        <tr data-metric="name"><td>Name (chain)</td><td></td><td></td><td></td></tr>
-        <tr data-metric="datetime"><td>Run Date/Time</td><td></td><td></td><td></td></tr>
-        <tr data-metric="trial"><td>Trial config</td><td></td><td></td><td></td></tr>
-        <tr data-metric="model-p1"><td class="secondary" style="padding-left:26px;">Model · Phase 1</td><td class="mono"></td><td class="mono"></td><td class="mono"></td></tr>
-        <tr data-metric="model-p2"><td class="secondary" style="padding-left:26px;">Model · Phase 2</td><td class="mono"></td><td class="mono"></td><td class="mono"></td></tr>
+        <tr data-metric="name"><td>Name (chain) <span class="metric-i" tabindex="0" title="The run's name. Both phases of a run share one name (taken from Phase 1)." style="cursor:help;color:var(--muted);font-weight:400;font-size:12px;">&#9432;</span></td><td></td><td></td><td></td></tr>
+        <tr data-metric="datetime"><td>Run Date/Time <span class="metric-i" tabindex="0" title="When Phase 1 started (evaluation_runs.started_at)." style="cursor:help;color:var(--muted);font-weight:400;font-size:12px;">&#9432;</span></td><td></td><td></td><td></td></tr>
+        <tr data-metric="trial"><td>Trial config <span class="metric-i" tabindex="0" title="The A/B settings this run used: prompt variant · concurrency · caching." style="cursor:help;color:var(--muted);font-weight:400;font-size:12px;">&#9432;</span></td><td></td><td></td><td></td></tr>
+        <tr data-metric="model-p1"><td class="secondary" style="padding-left:26px;">Model · Phase 1 <span class="metric-i" tabindex="0" title="The model that actually served Phase 1 (provider / actual_model reported by the API)." style="cursor:help;color:var(--muted);font-weight:400;font-size:12px;">&#9432;</span></td><td class="mono"></td><td class="mono"></td><td class="mono"></td></tr>
+        <tr data-metric="model-p2"><td class="secondary" style="padding-left:26px;">Model · Phase 2 <span class="metric-i" tabindex="0" title="The model that actually served Phase 2 (provider / actual_model reported by the API)." style="cursor:help;color:var(--muted);font-weight:400;font-size:12px;">&#9432;</span></td><td class="mono"></td><td class="mono"></td><td class="mono"></td></tr>
 
-        <tr data-metric="total"><td>Total Evaluations</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="total"><td>Total Evaluations <span class="metric-i" tabindex="0" title="Pages scored across both phases = sum of each phase's `pages`. Inclusion scores the whole shortlist; exclusion re-scores only the pages inclusion kept." style="cursor:help;color:var(--muted);font-weight:400;font-size:12px;">&#9432;</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="total-p1"><td class="secondary" style="padding-left:26px;">Phase 1 – Inclusion</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="total-p2"><td class="secondary" style="padding-left:26px;">Phase 2 – Exclusion</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
 
-        <tr data-metric="totalcost"><td>Total Evaluation Cost</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="totalcost"><td>Total Evaluation Cost <span class="metric-i" tabindex="0" title="Money spent = sum of each phase's `cost` (USD), priced per model from its input/output tokens." style="cursor:help;color:var(--muted);font-weight:400;font-size:12px;">&#9432;</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="totalcost-p1"><td class="secondary" style="padding-left:26px;">Phase 1 – Inclusion</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="totalcost-p2"><td class="secondary" style="padding-left:26px;">Phase 2 – Exclusion</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
 
-        <tr data-metric="avgcost"><td>Average Evaluation Cost <span class="secondary" style="font-weight:400;">(per 100)</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="avgcost"><td>Average Evaluation Cost <span class="secondary" style="font-weight:400;">(per 100)</span> <span class="metric-i" tabindex="0" title="Cost to score 100 pages = total cost ÷ total pages × 100." style="cursor:help;color:var(--muted);font-weight:400;font-size:12px;">&#9432;</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="avgcost-p1"><td class="secondary" style="padding-left:26px;">Phase 1 – Inclusion</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="avgcost-p2"><td class="secondary" style="padding-left:26px;">Phase 2 – Exclusion</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
 
-        <tr data-metric="avgtime"><td>Average LLM latency per call <span class="secondary" style="font-weight:400;">(min:sec)</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="avgtime"><td>Average LLM latency per call <span class="secondary" style="font-weight:400;">(min:sec)</span> <span class="metric-i" tabindex="0" title="Typical model wait for one page = total LLM wait ÷ total pages (mean per-page round-trip)." style="cursor:help;color:var(--muted);font-weight:400;font-size:12px;">&#9432;</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="avgtime-p1"><td class="secondary" style="padding-left:26px;">Phase 1 – Inclusion</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="avgtime-p2"><td class="secondary" style="padding-left:26px;">Phase 2 – Exclusion</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
 
-        <tr data-metric="intokens"><td>Total Input Tokens</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="intokens"><td>Total Input Tokens <span class="metric-i" tabindex="0" title="Prompt tokens sent to the model = sum of `in_tokens` (= cache hit + cache miss)." style="cursor:help;color:var(--muted);font-weight:400;font-size:12px;">&#9432;</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="intokens-p1"><td class="secondary" style="padding-left:26px;">Phase 1 – Inclusion</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="intokens-p2"><td class="secondary" style="padding-left:26px;">Phase 2 – Exclusion</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
-        <tr data-metric="hittokens"><td class="secondary">of which cache hit</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="hittokens"><td class="secondary">of which cache hit <span class="metric-i" tabindex="0" title="Input tokens served from the prompt cache (`hit_tokens`) — far cheaper. High = caching working." style="cursor:help;color:var(--muted);font-weight:400;font-size:12px;">&#9432;</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="hittokens-p1"><td class="secondary" style="padding-left:26px;">Phase 1 – Inclusion</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="hittokens-p2"><td class="secondary" style="padding-left:26px;">Phase 2 – Exclusion</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
-        <tr data-metric="misstokens"><td class="secondary">of which cache miss</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="misstokens"><td class="secondary">of which cache miss <span class="metric-i" tabindex="0" title="Input tokens NOT served from cache (`miss_tokens`) — charged at full rate." style="cursor:help;color:var(--muted);font-weight:400;font-size:12px;">&#9432;</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="misstokens-p1"><td class="secondary" style="padding-left:26px;">Phase 1 – Inclusion</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="misstokens-p2"><td class="secondary" style="padding-left:26px;">Phase 2 – Exclusion</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
 
-        <tr data-metric="outtokens"><td>Total Output Tokens</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="outtokens"><td>Total Output Tokens <span class="metric-i" tabindex="0" title="Tokens the model generated — the JSON verdicts (sum of `out_tokens`)." style="cursor:help;color:var(--muted);font-weight:400;font-size:12px;">&#9432;</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="outtokens-p1"><td class="secondary" style="padding-left:26px;">Phase 1 – Inclusion</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="outtokens-p2"><td class="secondary" style="padding-left:26px;">Phase 2 – Exclusion</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
 
-        <tr data-metric="totaltime"><td>Total LLM wait <span class="secondary" style="font-weight:400;">(sum of calls)</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="totaltime"><td>Total LLM wait <span class="secondary" style="font-weight:400;">(sum of calls)</span> <span class="metric-i" tabindex="0" title="All per-page model round-trips added up (sum of `total_ms`). NOT real time — unaffected by concurrency." style="cursor:help;color:var(--muted);font-weight:400;font-size:12px;">&#9432;</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="totaltime-p1"><td class="secondary" style="padding-left:26px;">Phase 1 – Inclusion</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="totaltime-p2"><td class="secondary" style="padding-left:26px;">Phase 2 – Exclusion</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
 
-        <tr data-metric="elapsed"><td>Total wall-clock time <span class="secondary" style="font-weight:400;">start → finish</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="elapsed"><td>Total wall-clock time <span class="secondary" style="font-weight:400;">start → finish</span> <span class="metric-i" tabindex="0" title="Real elapsed time. Per phase = finished_at − started_at; total sums the phases. Falls below LLM wait when calls overlap (concurrency)." style="cursor:help;color:var(--muted);font-weight:400;font-size:12px;">&#9432;</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="elapsed-p1"><td class="secondary" style="padding-left:26px;">Phase 1 – Inclusion</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="elapsed-p2"><td class="secondary" style="padding-left:26px;">Phase 2 – Exclusion</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
 
-        <tr data-metric="keep"><td>Decisions Kept</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="keep"><td>Decisions Kept <span class="metric-i" tabindex="0" title="The run's final shortlist size = the last phase's `kept` (exclusion if it ran, else inclusion)." style="cursor:help;color:var(--muted);font-weight:400;font-size:12px;">&#9432;</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="keep-p1"><td class="secondary" style="padding-left:26px;">Phase 1 – Inclusion</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="keep-p2"><td class="secondary" style="padding-left:26px;">Phase 2 – Exclusion</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
 
-        <tr data-metric="drop"><td>Decisions Dropped</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="drop"><td>Decisions Dropped <span class="metric-i" tabindex="0" title="Pages the run removed = sum of each phase's `dropped` (inclusion + exclusion)." style="cursor:help;color:var(--muted);font-weight:400;font-size:12px;">&#9432;</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="drop-p1"><td class="secondary" style="padding-left:26px;">Phase 1 – Inclusion</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="drop-p2"><td class="secondary" style="padding-left:26px;">Phase 2 – Exclusion</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
 
-        <tr data-metric="dis"><td>Decisions disagree with Run 1 <span class="secondary" style="font-weight:400;">(shared pages)</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="dis"><td>Decisions disagree with Run 1 <span class="secondary" style="font-weight:400;">(shared pages)</span> <span class="metric-i" tabindex="0" title="Over pages BOTH runs scored (same URL), how many keep/drop verdicts differ from Run 1, compared per phase. ≈0 = they agreed. Run 1 shows “—” (baseline)." style="cursor:help;color:var(--muted);font-weight:400;font-size:12px;">&#9432;</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="dis-p1"><td class="secondary" style="padding-left:26px;">Phase 1 – Inclusion</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="dis-p2"><td class="secondary" style="padding-left:26px;">Phase 2 – Exclusion</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
 
         <tr><td colspan="4" style="font-weight:700;padding-top:18px;border-top:2px solid var(--border-mid);">Run configuration</td></tr>
-        <tr data-metric="cfg-variant"><td>Prompt variant</td><td></td><td></td><td></td></tr>
-        <tr data-metric="cfg-concurrency"><td>Concurrency</td><td></td><td></td><td></td></tr>
-        <tr data-metric="cfg-caching"><td>Caching</td><td></td><td></td><td></td></tr>
-        <tr data-metric="cfg-version"><td>Prompt version</td><td></td><td></td><td></td></tr>
-        <tr data-metric="cfg-bodylimit"><td>Body limit (chars)</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="cfg-variant"><td>Prompt variant <span class="metric-i" tabindex="0" title="Prompt build used: current (today's wording) or cached (reordered, cache-enabled). Stamped at run creation." style="cursor:help;color:var(--muted);font-weight:400;font-size:12px;">&#9432;</span></td><td></td><td></td><td></td></tr>
+        <tr data-metric="cfg-concurrency"><td>Concurrency <span class="metric-i" tabindex="0" title="How many pages were sent to the model at once (1 = sequential). Stamped at run creation." style="cursor:help;color:var(--muted);font-weight:400;font-size:12px;">&#9432;</span></td><td></td><td></td><td></td></tr>
+        <tr data-metric="cfg-caching"><td>Caching <span class="metric-i" tabindex="0" title="Whether a cache breakpoint was set on the stable prompt prefix. Stamped at run creation." style="cursor:help;color:var(--muted);font-weight:400;font-size:12px;">&#9432;</span></td><td></td><td></td><td></td></tr>
+        <tr data-metric="cfg-version"><td>Prompt version <span class="metric-i" tabindex="0" title="Version of the prompt template the run was stamped with." style="cursor:help;color:var(--muted);font-weight:400;font-size:12px;">&#9432;</span></td><td></td><td></td><td></td></tr>
+        <tr data-metric="cfg-bodylimit"><td>Body limit (chars) <span class="metric-i" tabindex="0" title="Max characters of page body sent to the model; longer bodies are trimmed head+tail." style="cursor:help;color:var(--muted);font-weight:400;font-size:12px;">&#9432;</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
       </tbody>
     </table>
   </div>
