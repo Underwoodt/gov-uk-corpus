@@ -194,6 +194,35 @@
     </div>
   </details>
 
+  {# What actually controlled each phase of this run — so a run's real settings are unmistakable. #}
+  <h2 style="margin-top:34px;">Run configuration</h2>
+  <p class="hint">The settings that governed each phase of this run (stamped when the run was created,
+    so they're what actually ran — not just the run's name).</p>
+  <div class="table-wrap">
+    <table style="font-size:14px;">
+      <thead><tr>
+        <th>Phase</th><th>Supplier / model</th><th>Prompt variant</th>
+        <th class="num">Concurrency</th><th>Caching</th><th>Prompt version</th><th class="num">Body limit</th>
+      </tr></thead>
+      <tbody>
+        {% for rc in run_configs %}
+        <tr {% if rc.phase == run.phase %}style="background:var(--surface-3);font-weight:600;"{% endif %}>
+          <td>{{ rc.phase or '—' }}</td>
+          <td class="mono">{{ rc.provider or '—' }} / {{ rc.model or '—' }}</td>
+          <td>{{ rc.prompt_variant }}</td>
+          <td class="num">{{ rc.concurrency }}×</td>
+          <td>{{ 'on' if rc.caching else 'off' }}</td>
+          <td>{% if rc.template_version is not none %}{{ rc.template_version }}{% else %}—{% endif %}{% if not rc.stamped %} <span class="secondary">(legacy)</span>{% endif %}</td>
+          <td class="num">{{ '{:,}'.format(rc.body_limit) if rc.body_limit else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="hint" style="margin-top:8px;">Concurrency &gt; 1 evaluates that many pages in parallel; the
+    <em>cached</em> prompt variant reorders the prompt so its stable half can be cached (and, with caching on,
+    sets an Anthropic cache breakpoint). Both phases inherit the trial chosen at “Create New Run”.</p>
+
   <script>
     const CID = {{ category.id }}, RUN_ID = {{ run.run_id|tojson }};
     const CHAIN_IDS = {{ (chain|map(attribute='run_id')|list)|tojson }};

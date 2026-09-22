@@ -3019,10 +3019,21 @@ def run_detail_page(request: Request, cid: int, run_id: str):
     phase_by_id = {r["run_id"]: r.get("phase") for r in chain}
     for u in unparsed:
         u["phase"] = phase_by_id.get(u["run_id"])
+    # The settings that actually controlled each phase of this run (from its stamp).
+    run_configs = []
+    for rr in chain:
+        spec = evaluate.run_prompt_spec(conn, rr["run_id"]) or {}
+        tr = _norm_trial(spec)
+        run_configs.append({
+            "phase": rr.get("phase"), "provider": rr.get("provider"),
+            "model": rr.get("actual_model") or rr.get("model"),
+            "prompt_variant": tr["prompt_variant"], "concurrency": tr["concurrency"],
+            "caching": tr["caching"], "template_version": spec.get("template_version"),
+            "body_limit": spec.get("body_limit"), "stamped": bool(spec)})
     resp = templates.TemplateResponse("run_detail.html", ctx(
         conn, request, category=category, run=run, chain=chain, totals=totals,
         commentary=commentary, unparsed=unparsed, continue_reason=continue_reason,
-        run_trial=_run_trial(conn, run_id)))
+        run_trial=_run_trial(conn, run_id), run_configs=run_configs))
     conn.close()
     return resp
 
