@@ -1446,16 +1446,9 @@ def ai_pipeline_page(request: Request, cid: int):
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
     category["display_name"] = cat.display_name(category)
     stages, ai_cost = _funnel_table_ctx(conn, category, cid)
-    # GOV.UK-Search-only pages, in the corpus, that the AI top-up adds on top of the keyword
-    # shortlist (matches run_candidates: source='search', fetched, non-redirect). Shown as a
-    # funnel row under "Contains Keywords" so the keyword-count -> AI-input jump is explained.
-    govuk_additions = dict(conn.execute(
-        f"SELECT COUNT(*) AS n FROM category_search_pages sp JOIN content c ON c.url = sp.url "
-        f"WHERE sp.category_id = {shortlist._P} AND sp.source = 'search' "
-        f"AND c.is_redirect = 0 AND c.content_hash IS NOT NULL", (cid,)).fetchone())["n"] or 0
     resp = templates.TemplateResponse("ai_pipeline_page.html", ctx(
         conn, request, category=category, eval_max_docs=_max_docs(conn),
-        stages=stages, ai_cost=ai_cost, govuk_additions=govuk_additions))
+        stages=stages, ai_cost=ai_cost))
     conn.close()
     return resp
 
