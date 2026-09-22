@@ -24,7 +24,25 @@ from . import shortlist
 _IS_PG = db.__name__.endswith("db_pg")
 _P = "%s" if _IS_PG else "?"
 
-BODY_CHAR_LIMIT = 6000   # ~1.5k tokens of body sent to the model
+BODY_CHAR_LIMIT = 20000   # ~5k tokens of body; covers ~97% of pages in full (median page ~600 chars)
+
+_TRUNC_MARKER = "\n\n…[middle of page trimmed]…\n\n"
+
+
+def truncate_body(body: str, limit: int = BODY_CHAR_LIMIT) -> str:
+    """Fit a page body into `limit` chars, keeping the HEAD and the TAIL (dropping the middle)
+    when it's too long — so a long page's ending (summaries, related links, the actual topic
+    if it appears late) isn't lost the way a plain head-only cut loses it. Short pages are
+    returned unchanged."""
+    body = body or ""
+    if len(body) <= limit:
+        return body
+    keep = limit - len(_TRUNC_MARKER)
+    if keep <= 0:                       # pathologically small limit: just take the head
+        return body[:limit]
+    head = (keep * 2) // 3              # 2:1 head:tail — the topic is usually introduced early
+    tail = keep - head
+    return body[:head] + _TRUNC_MARKER + body[len(body) - tail:]
 
 PHASE_INCLUSION = "Phase 1 - Inclusion"
 PHASE_EXCLUSION = "Phase 2 - Exclusion"
@@ -148,7 +166,7 @@ def _fill(template: str, values: Dict[str, str]) -> str:
 
 def build_prompt(inclusion: str, exclusion: str, title: str, description: str,
                  body: str, body_limit: int = BODY_CHAR_LIMIT, template: Optional[str] = None) -> str:
-    body = (body or "")[:body_limit]
+    body = truncate_body(body, body_limit)
     return _fill(template or DEFAULT_INCLUSION_TEMPLATE, {
         "INCLUDE": inclusion.strip() or "(not specified)",
         "EXCLUDE": exclusion.strip() or "(none given)",
@@ -265,7 +283,7 @@ def build_exclusion_prompt(name: str, inclusion: str, exclusion: str,
                            keep_hints: str, drop_hints: str, title: str, body: str,
                            pass1_reason: str, body_limit: int = BODY_CHAR_LIMIT,
                            template: Optional[str] = None) -> str:
-    body = (body or "")[:body_limit]
+    body = truncate_body(body, body_limit)
     nm = (name or "the topic").strip()
     # SPEC labels both halves so the model isn't left inferring which block is which; the
     # exclusion half always shows, with (none given) when no exclusion text was provided.
