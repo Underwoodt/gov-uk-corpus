@@ -441,11 +441,13 @@ def rename_run(conn, run_id: str, name: str) -> None:
 def run_candidates(conn, run_id: str, category_id: int, limit: int, *,
                    organisations: Sequence[str], document_types: Sequence[str] = (),
                    keywords: Sequence[str] = (), match: str = "any",
-                   include_search_only: bool = True) -> List[dict]:
+                   include_search_only: bool = True, min_es_score: float = 0.0) -> List[dict]:
     """Next `limit` shortlisted pages not yet evaluated IN THIS RUN. The deterministic
     shortlist is evaluated first; if there's room left, top up with the category's pinned
     GOV.UK-Search-only pages that have since been fetched into the corpus (so search-only
-    coverage gaps are evaluated too)."""
+    coverage gaps are evaluated too). `min_es_score` drops GOV.UK-Search-only pages whose
+    relevance is below the floor (a page with no es_score is kept — the score is unknown,
+    not low)."""
     select_expr = ("c.url AS url, c.title AS title, c.description AS description, "
                    "c.search_text AS body")
     extra_where = (f"c.url NOT IN (SELECT url FROM evaluation_results WHERE run_id = {_P})")
@@ -457,16 +459,20 @@ def run_candidates(conn, run_id: str, category_id: int, limit: int, *,
     if not include_search_only or len(rows) >= limit:
         return rows[:limit]
     # Top up with pinned GOV.UK-Search-only pages that are now in the corpus (have a body)
-    # and not yet evaluated in this run.
+    # and not yet evaluated in this run — above the relevance floor.
+    floor_sql, floor_params = "", []
+    if min_es_score and min_es_score > 0:
+        floor_sql = f" AND (sp.es_score IS NULL OR sp.es_score >= {_P})"
+        floor_params = [min_es_score]
     got = {r["url"] for r in rows}
     top = conn.execute(
         f"SELECT c.url AS url, c.title AS title, c.description AS description, c.search_text AS body "
         f"FROM category_search_pages sp JOIN content c ON c.url = sp.url "
-        f"WHERE sp.category_id = {_P} AND sp.source = 'search' "
+        f"WHERE sp.category_id = {_P} AND sp.source = 'search'{floor_sql} "
         f"AND c.is_redirect = 0 AND c.content_hash IS NOT NULL "
         f"AND c.url NOT IN (SELECT url FROM evaluation_results WHERE run_id = {_P}) "
         f"ORDER BY c.url LIMIT {_P}",
-        (category_id, run_id, limit - len(rows))).fetchall()
+        tuple([category_id] + floor_params + [run_id, limit - len(rows)])).fetchall()
     for r in top:
         d = dict(r)
         if d["url"] not in got:

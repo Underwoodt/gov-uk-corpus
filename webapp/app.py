@@ -1487,11 +1487,16 @@ def govuk_additions_page(request: Request, cid: int):
                 f"WHERE po.page_url IN ({ph})", tuple(ch)).fetchall():
             d = dict(orow)
             org_map.setdefault(d["url"], []).append(d["org"])
+    floor = _GOVUK_MIN_ES_SCORE
     for r in rows:
         r["organisations"] = ", ".join(dict.fromkeys(org_map.get(r["url"], [])))
         r["in_corpus"] = bool(r.get("in_corpus"))
+        es = r.get("es_score")
+        # A page is fed to the AI only if it's in the corpus and above the relevance floor
+        # (a page with no es_score is kept — unknown, not low).
+        r["evaluated"] = r["in_corpus"] and (es is None or not floor or es >= floor)
     resp = templates.TemplateResponse("govuk_additions.html", ctx(
-        conn, request, category=category, rows=rows))
+        conn, request, category=category, rows=rows, govuk_min_es_score=floor))
     conn.close()
     return resp
 
@@ -2046,7 +2051,8 @@ def _run_evaluation(cid: int, limit: int) -> dict:
         if is_exclusion:
             rows = evaluate.exclusion_candidates(conn, run_id, run.get("source_run_id"), limit)
         else:
-            rows = evaluate.run_candidates(conn, run_id, cid, limit, **filters)
+            rows = evaluate.run_candidates(conn, run_id, cid, limit,
+                                           min_es_score=_GOVUK_MIN_ES_SCORE, **filters)
         trial = _run_trial(conn, run_id)
         concurrency, variant, caching = trial["concurrency"], trial["prompt_variant"], trial["caching"]
         done = 0
@@ -3092,6 +3098,9 @@ _GOVUK_UA = {"User-Agent": "gov-uk-corpus-shortlist-builder", "Accept": "applica
 _GOVUK_MAX_PHRASES = int(os.getenv("GOVUK_MAX_PHRASES", "25"))     # phrase lines searched per run
 _GOVUK_PER_PHRASE = int(os.getenv("GOVUK_PER_PHRASE", "10000"))    # pages listed per phrase (GOV.UK ceiling)
 _GOVUK_DOCTYPE_AGG = int(os.getenv("GOVUK_DOCTYPE_AGG", "200"))    # doc-type facet buckets (complete set)
+# Relevance floor: GOV.UK-Search-only pages below this es_score are NOT fed to the AI (they're
+# likely false positives). A page with no es_score is kept (unknown, not low). 0 disables it.
+_GOVUK_MIN_ES_SCORE = float(os.getenv("GOVUK_MIN_ES_SCORE", "0.015"))
 
 
 def _govuk_get(params) -> tuple:
