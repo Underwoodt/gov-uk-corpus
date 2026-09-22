@@ -298,15 +298,21 @@ def _provider_key(provider: str) -> Optional[str]:
 
 
 def _bedrock_creds() -> Optional[dict]:
-    """AWS credentials for the Bedrock client, or None if not fully configured. Uses
-    explicit keys (Lightsail has no instance IAM role): an access key, a secret and a
-    region are required; AWS_REGION or BEDROCK_AWS_REGION both work. A session token is
-    passed through when present (for temporary STS credentials)."""
+    """Credentials for the Bedrock client, or None if not fully configured. A region is
+    always required (AWS_REGION or BEDROCK_AWS_REGION). Then either method works:
+      * a Bedrock API key (bearer token) in AWS_BEARER_TOKEN_BEDROCK — simplest; or
+      * IAM SigV4 keys: AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY (+ optional session token).
+    The two are mutually exclusive at the SDK, so the bearer token wins when both are set."""
     region = (os.getenv("BEDROCK_AWS_REGION") or os.getenv("AWS_REGION")
               or os.getenv("AWS_DEFAULT_REGION"))
+    if not region:
+        return None
+    token = os.getenv("AWS_BEARER_TOKEN_BEDROCK")
+    if token:
+        return {"aws_region": region, "api_key": token}
     ak = os.getenv("AWS_ACCESS_KEY_ID")
     sk = os.getenv("AWS_SECRET_ACCESS_KEY")
-    if region and ak and sk:
+    if ak and sk:
         return {"aws_region": region, "aws_access_key": ak, "aws_secret_key": sk,
                 "aws_session_token": os.getenv("AWS_SESSION_TOKEN") or None}
     return None
@@ -430,9 +436,10 @@ def _ai_chat(config: dict, system: str, messages: list, max_tokens: int = 1024,
     is_bedrock = config.get("provider") == "bedrock"
     bedrock_creds = _bedrock_creds() if is_bedrock else None
     if is_bedrock and not bedrock_creds:
-        return {"fatal": True, "error": "AWS Bedrock credentials not set. Add AWS_ACCESS_KEY_ID, "
-                "AWS_SECRET_ACCESS_KEY and a region (BEDROCK_AWS_REGION or AWS_REGION) to "
-                "~/gov-uk-corpus.env and restart."}
+        return {"fatal": True, "error": "AWS Bedrock credentials not set. Set a region "
+                "(BEDROCK_AWS_REGION or AWS_REGION) plus EITHER a Bedrock API key "
+                "(AWS_BEARER_TOKEN_BEDROCK) OR AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY in "
+                "~/gov-uk-corpus.env, then restart."}
     if not is_bedrock and not config.get("key"):
         return {"fatal": True, "error": f"No API key set for {config['label']}. Add its key to "
                 f"~/gov-uk-corpus.env and restart, or pick a provider that has one in Settings."}
@@ -455,11 +462,14 @@ def _ai_chat(config: dict, system: str, messages: list, max_tokens: int = 1024,
                 return {"fatal": True, "error": "This 'anthropic' build has no Bedrock support. "
                         "Run: pip install -U 'anthropic[bedrock]'"}
             bkw = dict(aws_region=bedrock_creds["aws_region"],
-                       aws_access_key=bedrock_creds["aws_access_key"],
-                       aws_secret_key=bedrock_creds["aws_secret_key"],
                        timeout=timeout, max_retries=max_retries)
-            if bedrock_creds.get("aws_session_token"):
-                bkw["aws_session_token"] = bedrock_creds["aws_session_token"]
+            if bedrock_creds.get("api_key"):     # Bedrock API key -> Authorization: Bearer
+                bkw["api_key"] = bedrock_creds["api_key"]
+            else:                                # IAM SigV4 keys
+                bkw["aws_access_key"] = bedrock_creds["aws_access_key"]
+                bkw["aws_secret_key"] = bedrock_creds["aws_secret_key"]
+                if bedrock_creds.get("aws_session_token"):
+                    bkw["aws_session_token"] = bedrock_creds["aws_session_token"]
             client = BedrockClient(**bkw)
         else:
             client_kwargs = dict(api_key=config["key"], timeout=timeout, max_retries=max_retries)
