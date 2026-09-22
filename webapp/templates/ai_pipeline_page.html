@@ -63,6 +63,21 @@
             <td class="num cost secondary" title="Deterministic filters use no AI, so they cost nothing.">N/A</td>
           </tr>
           {% endfor %}
+          {# By-source breakdown of the pages available to evaluate (category pool from GOV.UK
+             coverage). Indented under the funnel stages they relate to; filled by
+             loadSourceSubrows(), hidden until the hybrid search has run. #}
+          <tr class="src-sub" data-src-sub hidden title="In your corpus keyword shortlist AND returned by GOV.UK Search">
+            <td style="padding-left:26px;color:#505a5f;">· Both</td>
+            <td class="num" data-src="both"></td>
+            <td class="num secondary">—</td><td class="num secondary">—</td>
+            <td class="num cost secondary">N/A</td>
+          </tr>
+          <tr class="src-sub" data-src-sub hidden title="In your corpus keyword shortlist; GOV.UK Search did not return it">
+            <td style="padding-left:26px;color:#505a5f;">· Shortlister only</td>
+            <td class="num" data-src="shortlister"></td>
+            <td class="num secondary">—</td><td class="num secondary">—</td>
+            <td class="num cost secondary">N/A</td>
+          </tr>
           <tr id="funnel-govuk" data-stage="govuk" hidden title="GOV.UK-Search-only pages the keyword filter missed, added to the AI's input on top of the keyword shortlist = what the AI evaluated minus the keyword shortlist.">
             <td><a href="{{ url_for('govuk_additions_page', cid=category.id) }}" title="Review the GOV.UK-Search additions — URL, document type, organisations, and which GOV.UK keyword caught each">+ GOV.UK Search</a></td>
             <td class="num" id="govuk-val" style="color:var(--green,#00703c);font-weight:700;"></td>
@@ -70,32 +85,16 @@
             <td class="num secondary">—</td>
             <td class="num cost secondary" title="GOV.UK Search adds coverage, not a filter — no AI cost at this step.">N/A</td>
           </tr>
+          <tr class="src-sub" data-src-sub hidden title="Returned by GOV.UK Search only — the keyword filter missed it. This is the full pool; only those in the corpus and above the relevance floor are added above.">
+            <td style="padding-left:26px;color:#505a5f;">· GOV.UK only (pool)</td>
+            <td class="num" data-src="search"></td>
+            <td class="num secondary">—</td><td class="num secondary">—</td>
+            <td class="num cost secondary">N/A</td>
+          </tr>
           <tr data-stage="incl" hidden><td>Included by AI</td><td class="num val"></td><td class="num rejected"></td><td class="num timing"></td>
             <td class="num cost" title="Total AI spend on the inclusion pass for this shortlist (all runs).">${{ '%.2f'|format(ai_cost.incl) }}</td></tr>
           <tr data-stage="excl" hidden><td>Shortlist</td><td class="num val"></td><td class="num rejected"></td><td class="num timing"></td>
             <td class="num cost" title="Total AI spend on the exclusion pass for this shortlist (all runs).">${{ '%.2f'|format(ai_cost.excl) }}</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    {# Provenance of the pages available to evaluate — corpus keyword shortlist vs GOV.UK Search.
-       Category-level (the pool every run draws from). Filled by the shared fetch in the included
-       partial below, which targets [data-src-count] / [data-src-box] on the whole page. #}
-    <div class="src-breakdown" data-src-box hidden style="margin:22px 0 0;max-width:440px;">
-      <h3 style="margin:0 0 8px;font-size:16px;">Pages by source</h3>
-      <p class="hint" style="margin:0 0 8px;">The pool each run draws from — pages found by your corpus
-        keyword shortlist, by GOV.UK's own Search, or by both.</p>
-      <table style="font-size:14px;width:100%;">
-        <thead><tr><th>Source</th><th class="num">Pages</th></tr></thead>
-        <tbody>
-          <tr title="In your corpus keyword shortlist AND returned by GOV.UK Search">
-            <td>Both</td><td class="num" data-src-count="both">—</td></tr>
-          <tr title="In your corpus keyword shortlist; GOV.UK Search did not return it">
-            <td>Shortlister Only</td><td class="num" data-src-count="shortlister">—</td></tr>
-          <tr title="Returned by GOV.UK Search only — the keyword filter missed it (added to the AI's input on top of the shortlist)">
-            <td>GOV.UK Only</td><td class="num" data-src-count="search">—</td></tr>
-          <tr style="font-weight:700;border-top:2px solid var(--black);" title="All pages tagged for this shortlist">
-            <td>Total</td><td class="num" data-src-count="total">—</td></tr>
         </tbody>
       </table>
     </div>
@@ -272,8 +271,22 @@
     }
     window.addEventListener("resize", drawSankey);
 
+    // By-source sub-rows (category pool from the stored GOV.UK coverage): Both / Shortlister only
+    // / GOV.UK only. Independent of the run, so fetched once and shown when the pool is non-empty.
+    async function loadSourceSubrows() {
+      try {
+        const j = await (await fetch(`/api/categories/${CID}/augmented-pages?limit=1`, { headers: { "Accept": "application/json" } })).json();
+        const c = ((j && j.summary) || {}).counts || {};
+        const map = { both: Number(c.both) || 0, shortlister: Number(c.shortlister) || 0, search: Number(c.search) || 0 };
+        if (!(map.both + map.shortlister + map.search)) return;   // hybrid search not run — leave sub-rows hidden
+        document.querySelectorAll("#funnel [data-src]").forEach(td => { td.textContent = fmtInt(map[td.dataset.src] || 0); });
+        document.querySelectorAll("#funnel tr[data-src-sub]").forEach(tr => { tr.hidden = false; });
+      } catch (e) {}
+    }
+
     if (window.AIPipeline) window.AIPipeline.init(CID, { onRuns: aiOnRuns });
     runFunnel();
+    loadSourceSubrows();
 
     // Refresh: clear the cached counts server-side, reset the rows, and re-run.
     document.getElementById("refresh-funnel").addEventListener("click", async e => {
@@ -287,6 +300,7 @@
         document.querySelectorAll("#funnel .timing").forEach(t => t.textContent = "");
         Object.keys(sankeyCounts).forEach(k => delete sankeyCounts[k]);
         await runFunnel();
+        loadSourceSubrows();
       } finally { btn.disabled = false; }
     });
   </script>
