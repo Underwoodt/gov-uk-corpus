@@ -9,6 +9,12 @@
     {%- else -%}<span class="kd none">—</span>{%- endif -%}
   {% endmacro %}
 
+  {% macro dec(cell) %}
+    {%- if cell -%}{{ chip(cell.keep) }}
+      {%- if cell.score is not none %}<span class="score" title="Model confidence score">{{ '%.2f'|format(cell.score|float) }}</span>{% endif -%}
+    {%- else -%}{{ chip(None) }}{%- endif -%}
+  {% endmacro %}
+
   {% macro reason(cell) %}
     {%- if cell and cell.reason -%}<div class="rsn">{{ cell.reason }}</div>
     {%- elif cell -%}<span class="muted-sm">(no reason recorded)</span>
@@ -32,16 +38,16 @@
           <tbody>
             <tr>
               <th class="rowlab">Run 1<br><span class="muted-sm">baseline</span></th>
-              <td class="{{ 'hot' if c.phase == 'inclusion' }}">{{ chip(c.b_incl.keep if c.b_incl else None) }}</td>
+              <td class="{{ 'hot' if c.phase == 'inclusion' }}">{{ dec(c.b_incl) }}</td>
               <td class="rsn-col {{ 'hot' if c.phase == 'inclusion' }}">{{ reason(c.b_incl) }}</td>
-              <td class="{{ 'hot' if c.phase == 'exclusion' }}">{{ chip(c.b_excl.keep if c.b_excl else None) }}</td>
+              <td class="{{ 'hot' if c.phase == 'exclusion' }}">{{ dec(c.b_excl) }}</td>
               <td class="rsn-col {{ 'hot' if c.phase == 'exclusion' }}">{{ reason(c.b_excl) }}</td>
             </tr>
             <tr>
               <th class="rowlab">Run 2</th>
-              <td class="{{ 'hot' if c.phase == 'inclusion' }}">{{ chip(c.o_incl.keep if c.o_incl else None) }}</td>
+              <td class="{{ 'hot' if c.phase == 'inclusion' }}">{{ dec(c.o_incl) }}</td>
               <td class="rsn-col {{ 'hot' if c.phase == 'inclusion' }}">{{ reason(c.o_incl) }}</td>
-              <td class="{{ 'hot' if c.phase == 'exclusion' }}">{{ chip(c.o_excl.keep if c.o_excl else None) }}</td>
+              <td class="{{ 'hot' if c.phase == 'exclusion' }}">{{ dec(c.o_excl) }}</td>
               <td class="rsn-col {{ 'hot' if c.phase == 'exclusion' }}">{{ reason(c.o_excl) }}</td>
             </tr>
           </tbody>
@@ -135,6 +141,8 @@
     .kd.keep { background:#d9f2e4; color:var(--green-dark); }
     .kd.drop { background:#fbe0db; color:#a5200f; }
     .kd.none { background:var(--surface-3); color:var(--muted); }
+    .score { display:inline-block; margin-left:6px; font-size:12px; font-weight:600; color:var(--muted);
+      font-variant-numeric:tabular-nums; }
     .verdict { margin-top:12px; border-top:1px dashed var(--border); padding-top:10px; }
     .v-note { font-size:12px; color:var(--muted); margin-left:10px; }
     .v-body { background:var(--surface-2); border-left:4px solid var(--blue); border-radius:0 var(--radius-sm) var(--radius-sm) 0;
