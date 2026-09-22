@@ -157,18 +157,31 @@
       <p id="ex-prompt-status" class="secondary"><span class="spinner"></span> Loading…</p>
       <div id="ex-prompt-body" hidden>
         <p id="ex-prompt-sample" class="secondary" style="margin:0 0 12px;"></p>
-        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:14px 0 6px;">
-          <h3 style="margin:0;">Phase 1 — Inclusion <span id="ex-incl-tag" class="secondary" style="font-size:13px;font-weight:400;"></span></h3>
-          <button type="button" class="btn secondary-btn ex-copy" data-target="ex-prompt-inclusion" style="padding:4px 12px;font-size:13px;">Copy</button>
+
+        {% macro cmp(phase_label, tag_id, tmpl_id, filled_id) %}
+        <h3 style="margin:16px 0 8px;">{{ phase_label }} <span id="{{ tag_id }}" class="secondary" style="font-size:13px;font-weight:400;"></span></h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;align-items:start;">
+          <div>
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:0 0 6px;">
+              <span class="secondary" style="font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;">Original template</span>
+              <button type="button" class="btn secondary-btn ex-copy" data-target="{{ tmpl_id }}" style="padding:3px 10px;font-size:12px;">Copy</button>
+            </div>
+            <pre class="mono" id="{{ tmpl_id }}" style="white-space:pre-wrap;word-break:break-word;font-size:12px;
+              background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin:0;"></pre>
+          </div>
+          <div>
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:0 0 6px;">
+              <span class="secondary" style="font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;">Completed for this page</span>
+              <button type="button" class="btn secondary-btn ex-copy" data-target="{{ filled_id }}" style="padding:3px 10px;font-size:12px;">Copy</button>
+            </div>
+            <pre class="mono" id="{{ filled_id }}" style="white-space:pre-wrap;word-break:break-word;font-size:12px;
+              background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin:0;"></pre>
+          </div>
         </div>
-        <pre class="mono" id="ex-prompt-inclusion" style="white-space:pre-wrap;word-break:break-word;font-size:13px;
-          background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin:0;"></pre>
-        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:20px 0 6px;">
-          <h3 style="margin:0;">Phase 2 — Exclusion <span id="ex-excl-tag" class="secondary" style="font-size:13px;font-weight:400;"></span></h3>
-          <button type="button" class="btn secondary-btn ex-copy" data-target="ex-prompt-exclusion" style="padding:4px 12px;font-size:13px;">Copy</button>
-        </div>
-        <pre class="mono" id="ex-prompt-exclusion" style="white-space:pre-wrap;word-break:break-word;font-size:13px;
-          background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin:0;"></pre>
+        {% endmacro %}
+
+        {{ cmp("Phase 1 — Inclusion", "ex-incl-tag", "ex-tmpl-inclusion", "ex-prompt-inclusion") }}
+        {{ cmp("Phase 2 — Exclusion", "ex-excl-tag", "ex-tmpl-exclusion", "ex-prompt-exclusion") }}
       </div>
     </div>
   </details>
@@ -274,6 +287,8 @@
         try {
           const j = await (await fetch(`/api/categories/${CID}/example-prompts?run_id=${encodeURIComponent(RUN_ID)}`)).json();
           if (j.error) { statusEl.textContent = "Error: " + j.error; loaded = false; return; }
+          document.getElementById("ex-tmpl-inclusion").textContent = j.inclusion_template || "(none)";
+          document.getElementById("ex-tmpl-exclusion").textContent = j.exclusion_template || "(none)";
           document.getElementById("ex-prompt-inclusion").textContent = j.inclusion || "(none)";
           document.getElementById("ex-prompt-exclusion").textContent = j.exclusion || "(none)";
           const tag = (exact, ver) => exact

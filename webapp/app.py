@@ -2999,38 +2999,44 @@ def _example_phase_prompts(conn, category, run_id: str = "") -> dict:
             if r and (dict(r).get("reason") or "").strip():
                 pass1 = dict(r)["reason"]
 
+    # The raw template each phase used (from the run's stamp, else the current active version) —
+    # shown alongside the completed prompt for comparison.
     incl_spec = evaluate.run_prompt_spec(conn, incl_run["run_id"]) if incl_run else None
+    incl_template = (incl_spec or {}).get("template") or prompts.active_text(conn, "inclusion")
     if incl_spec:
         inclusion_prompt = evaluate.build_prompt(
             incl_spec.get("inclusion_context", ""), incl_spec.get("exclusion_context", ""),
             title, description, body, body_limit=incl_spec.get("body_limit", evaluate.BODY_CHAR_LIMIT),
-            template=incl_spec.get("template"))
+            template=incl_template)
     else:
         inclusion_prompt = evaluate.build_prompt(
             category.get("inclusion_context") or "", category.get("exclusion_context") or "",
-            title, description, body, template=prompts.active_text(conn, "inclusion"))
+            title, description, body, template=incl_template)
 
     excl_spec = evaluate.run_prompt_spec(conn, excl_run["run_id"]) if excl_run else None
+    excl_template = (excl_spec or {}).get("template") or prompts.active_text(conn, "exclusion")
     if excl_spec:
         exclusion_prompt = evaluate.build_exclusion_prompt(
             excl_spec.get("name") or "the topic", excl_spec.get("inclusion_context", ""),
             excl_spec.get("exclusion_context", ""), excl_spec.get("keep_hints", ""),
             excl_spec.get("drop_hints", ""), title, body, pass1,
-            body_limit=excl_spec.get("body_limit", evaluate.BODY_CHAR_LIMIT), template=excl_spec.get("template"))
+            body_limit=excl_spec.get("body_limit", evaluate.BODY_CHAR_LIMIT), template=excl_template)
     else:
         exclusion_prompt = evaluate.build_exclusion_prompt(
             (category.get("description") or "").strip() or cat.prettify(category.get("slug")) or "the topic",
             category.get("inclusion_context") or "", category.get("exclusion_context") or "",
             category.get("adjudication_hints_keep") or "", category.get("adjudication_hints_drop") or "",
-            title, body, pass1, template=prompts.active_text(conn, "exclusion"))
+            title, body, pass1, template=excl_template)
 
     return {
         "sample_url": url,
         "sample_title": title or url,
         "sample_from_run": sample_from_run,
+        "inclusion_template": incl_template,
         "inclusion": inclusion_prompt,
         "inclusion_exact": bool(incl_spec),
         "inclusion_version": (incl_spec or {}).get("template_version"),
+        "exclusion_template": excl_template,
         "exclusion": exclusion_prompt,
         "exclusion_exact": bool(excl_spec),
         "exclusion_version": (excl_spec or {}).get("template_version"),
