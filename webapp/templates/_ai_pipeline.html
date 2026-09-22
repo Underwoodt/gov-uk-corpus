@@ -89,6 +89,28 @@
         style="padding:6px 14px;">Complete the shortlist</button>
       <span id="complete-status" class="secondary" style="margin-left:10px;"></span>
     </div>
+    {# Provenance of the pages a run draws on — the corpus keyword shortlist vs GOV.UK Search,
+       tagged in category_search_pages. Category-level (the same pool every run works from), not
+       per-run. Filled by the small inline fetch at the foot of this partial. #}
+    <div id="src-breakdown" class="src-breakdown" hidden style="margin:0 0 22px;max-width:440px;">
+      <h3 style="margin:0 0 8px;font-size:16px;">Pages by source</h3>
+      <p class="hint" style="margin:0 0 8px;">Where the pages each run evaluates come from — your corpus
+        keyword shortlist, GOV.UK's own Search, or both.</p>
+      <table style="font-size:14px;width:100%;">
+        <thead><tr><th>Source</th><th class="num">Pages</th></tr></thead>
+        <tbody>
+          <tr title="In your corpus keyword shortlist AND returned by GOV.UK Search">
+            <td>Both</td><td class="num" id="src-both">—</td></tr>
+          <tr title="In your corpus keyword shortlist; GOV.UK Search did not return it">
+            <td>Shortlister Only</td><td class="num" id="src-shortlister">—</td></tr>
+          <tr title="Returned by GOV.UK Search only — the keyword filter missed it (added to the AI's input on top of the shortlist)">
+            <td>GOV.UK Only</td><td class="num" id="src-search">—</td></tr>
+          <tr style="font-weight:700;border-top:2px solid var(--black);" title="All pages tagged for this shortlist">
+            <td>Total</td><td class="num" id="src-total">—</td></tr>
+        </tbody>
+      </table>
+    </div>
+
     <p class="hint" style="margin-top:0;">Every run for this shortlist. Select a run's radio to make it the
       <strong>active</strong> run (what <em>Execute Active Run</em> adds to); open a run's name for its per-page details.</p>
     <table id="runs-table" hidden>
@@ -103,3 +125,25 @@
     {{ sql_panel("runs-sql") }}
   </div>
 </div>
+
+{# Fill the "Pages by source" table from the stored GOV.UK-coverage breakdown. Self-contained so
+   it works on both hosts of this partial (the Shortlist page's ai_pipeline.js and the
+   Explainability page's inline script), without depending on either driver. #}
+<script>
+(function () {
+  var cid = {{ category.id }};
+  var fmt = function (n) { return (n == null || isNaN(n)) ? "0" : Number(n).toLocaleString(); };
+  var set = function (id, n) { var el = document.getElementById(id); if (el) el.textContent = fmt(n); };
+  fetch("/api/categories/" + cid + "/augmented-pages?limit=1", { headers: { "Accept": "application/json" } })
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      var s = (j && j.summary) || {}, c = s.counts || {};
+      var total = (Number(c.both) || 0) + (Number(c.shortlister) || 0) + (Number(c.search) || 0);
+      if (!total) return;                       // hybrid search hasn't run yet — leave hidden
+      set("src-both", c.both); set("src-shortlister", c.shortlister);
+      set("src-search", c.search); set("src-total", total);
+      var box = document.getElementById("src-breakdown"); if (box) box.hidden = false;
+    })
+    .catch(function () {});
+})();
+</script>
