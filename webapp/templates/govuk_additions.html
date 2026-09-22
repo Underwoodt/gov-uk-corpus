@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% set page_ref = "guc-0027" %}
+{% block page_id %}{{ page_ref }}{% endblock %}
+{% block title %}{{ category.display_name }} — GOV.UK Search additions{% endblock %}
+{% block content %}
+  <a class="back" href="{{ url_for('ai_pipeline_page', cid=category.id) }}">‹ Back to AI Pipeline</a>
+
+  <h1 style="margin:18px 0 6px;">GOV.UK Search additions</h1>
+  <p class="secondary" style="margin:0 0 10px;">{{ category.display_name }}
+    (<span class="mono">{{ category.slug or '' }}</span>)</p>
+  <p class="hint" style="max-width:860px;">Pages the deterministic keyword filter missed, but GOV.UK's own Search
+    returned — scoped to this shortlist's organisations and document types — so they were added to the AI's input on
+    top of the keyword shortlist. Review why each came in: its document type, publishing organisations, and the
+    GOV.UK keyword(s) that matched it. Only pages <strong>in the corpus</strong> are actually evaluated by the AI;
+    the funnel's <em>+ GOV.UK Search</em> figure reflects a specific run's additions.</p>
+
+  {% if rows %}
+  <p class="secondary" style="margin:12px 0;">{{ rows|length }} GOV.UK-Search-only page{{ '' if rows|length == 1 else 's' }}
+    · {{ rows|selectattr('in_corpus')|list|length }} in the corpus.</p>
+  <div style="overflow-x:auto;">
+    <table style="font-size:14px;width:100%;">
+      <thead><tr>
+        <th>Title</th>
+        <th>Document type</th>
+        <th>Organisations</th>
+        <th>GOV.UK keyword(s) matched</th>
+        <th class="num">Relevance</th>
+        <th style="text-align:center;">In corpus</th>
+        <th>URL</th>
+      </tr></thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td><a href="{{ r.url }}">{{ r.title or r.url }}</a></td>
+          <td>{{ r.document_type or '—' }}</td>
+          <td>{{ r.organisations or '—' }}</td>
+          <td>{{ r.phrases or '—' }}</td>
+          <td class="num">{{ '%.3f'|format(r.es_score) if r.es_score is not none else '—' }}</td>
+          <td style="text-align:center;">{% if r.in_corpus %}<span style="color:var(--green,#00703c);font-weight:700;">✔</span>{% else %}<span class="secondary">—</span>{% endif %}</td>
+          <td><a href="{{ r.url }}" class="mono" style="font-size:13px;word-break:break-all;">{{ r.url }}</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="secondary" style="margin:16px 0;">No GOV.UK-Search-only additions for this shortlist — the keyword filter
+    and GOV.UK Search agree, or the hybrid search hasn't run yet (it runs automatically on save).</p>
+  {% endif %}
+{% endblock %}

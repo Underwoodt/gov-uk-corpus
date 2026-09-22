@@ -1453,6 +1453,49 @@ def ai_pipeline_page(request: Request, cid: int):
     return resp
 
 
+@app.get("/categories/{cid}/govuk-additions", response_class=HTMLResponse)
+def govuk_additions_page(request: Request, cid: int):
+    """Review the GOV.UK-Search-only pages the hybrid step adds to this shortlist's AI input
+    (guc-0027): pages the keyword filter missed but GOV.UK Search returned — their URL,
+    document type, publishing organisations, and the GOV.UK keyword(s) that caught them."""
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    category = cat.get_category(conn, cid)
+    if not category:
+        conn.close()
+        return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
+    category["display_name"] = cat.display_name(category)
+    P = shortlist._P
+    rows = [dict(r) for r in conn.execute(
+        f"SELECT sp.url AS url, sp.title AS title, sp.document_type AS document_type, "
+        f"sp.phrases AS phrases, sp.es_score AS es_score, "
+        f"(CASE WHEN c.content_hash IS NOT NULL AND c.is_redirect = 0 THEN 1 ELSE 0 END) AS in_corpus "
+        f"FROM category_search_pages sp LEFT JOIN content c ON c.url = sp.url "
+        f"WHERE sp.category_id = {P} AND sp.source = 'search' "
+        f"ORDER BY (CASE WHEN c.content_hash IS NOT NULL AND c.is_redirect = 0 THEN 0 ELSE 1 END), sp.url",
+        (cid,)).fetchall()]
+    # Publishing organisations per page (title, falling back to slug), deduped, order-preserving.
+    urls = [r["url"] for r in rows if r.get("url")]
+    org_map = {}
+    for i in range(0, len(urls), 500):
+        ch = urls[i:i + 500]
+        ph = ",".join([P] * len(ch))
+        for orow in conn.execute(
+                f"SELECT po.page_url AS url, COALESCE(o.title, po.organisation_slug) AS org "
+                f"FROM page_organisations po LEFT JOIN organisations o ON o.slug = po.organisation_slug "
+                f"WHERE po.page_url IN ({ph})", tuple(ch)).fetchall():
+            d = dict(orow)
+            org_map.setdefault(d["url"], []).append(d["org"])
+    for r in rows:
+        r["organisations"] = ", ".join(dict.fromkeys(org_map.get(r["url"], [])))
+        r["in_corpus"] = bool(r.get("in_corpus"))
+    resp = templates.TemplateResponse("govuk_additions.html", ctx(
+        conn, request, category=category, rows=rows))
+    conn.close()
+    return resp
+
+
 @app.get("/categories/{cid}/gds-compliance", response_class=HTMLResponse)
 def gds_compliance_page(request: Request, cid: int):
     """GDS Compliance (Non-LLM) quality/freshness dashboard for a shortlist (guc-0004b) —

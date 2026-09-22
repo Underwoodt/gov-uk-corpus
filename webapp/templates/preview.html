@@ -139,7 +139,7 @@
         </tr>
         {% endfor %}
         <tr id="funnel-govuk" data-stage="govuk" hidden title="GOV.UK-Search-only pages the keyword filter missed, added to the AI's input on top of the keyword shortlist = what the AI evaluated minus the keyword shortlist.">
-          <td>+ GOV.UK Search</td>
+          <td><a href="{{ url_for('govuk_additions_page', cid=category.id) }}" title="Review the GOV.UK-Search additions — URL, document type, organisations, and which GOV.UK keyword caught each">+ GOV.UK Search</a></td>
           <td class="num" id="govuk-val" style="color:var(--green,#00703c);font-weight:700;"></td>
           <td class="num secondary">—</td>
           <td class="num secondary">—</td>
