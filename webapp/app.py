@@ -3100,7 +3100,7 @@ _GOVUK_PER_PHRASE = int(os.getenv("GOVUK_PER_PHRASE", "10000"))    # pages liste
 _GOVUK_DOCTYPE_AGG = int(os.getenv("GOVUK_DOCTYPE_AGG", "200"))    # doc-type facet buckets (complete set)
 # Relevance floor: GOV.UK-Search-only pages below this es_score are NOT fed to the AI (they're
 # likely false positives). A page with no es_score is kept (unknown, not low). 0 disables it.
-_GOVUK_MIN_ES_SCORE = float(os.getenv("GOVUK_MIN_ES_SCORE", "0.015"))
+_GOVUK_MIN_ES_SCORE = float(os.getenv("GOVUK_MIN_ES_SCORE", "0.005"))
 
 
 def _govuk_get(params) -> tuple:
