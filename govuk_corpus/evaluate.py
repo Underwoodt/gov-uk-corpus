@@ -187,7 +187,8 @@ def build_exclusion_prompt(name: str, inclusion: str, exclusion: str,
                            template: Optional[str] = None) -> str:
     body = (body or "")[:body_limit]
     nm = (name or "the topic").strip()
-    spec = (inclusion or "").strip() or "(not specified)"
+    # SPEC labels both halves so the model isn't left inferring which block is which.
+    spec = "Inclusion criteria:\n" + ((inclusion or "").strip() or "(not specified)")
     if (exclusion or "").strip():
         spec = f"{spec}\n\nExclusion criteria:\n{exclusion.strip()}"
     keep_section = ""

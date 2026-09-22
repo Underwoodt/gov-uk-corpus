@@ -177,7 +177,8 @@ class TestExclusion(unittest.TestCase):
             "Slurry", "slurry storage", "sewage sludge is out of scope",
             "keep planning permission pages", "drop homonym 'slurry pump' catalogue",
             "Title", "x" * 9000, "pass 1 said relevant", body_limit=100)
-        self.assertIn("sewage sludge is out of scope", p)
+        self.assertIn("Inclusion criteria:\nslurry storage", p)   # both halves labelled
+        self.assertIn("Exclusion criteria:\nsewage sludge is out of scope", p)
         self.assertIn("pass 1 said relevant", p)
         self.assertIn("Default to KEEP", p)
         self.assertIn("x" * 100, p)
