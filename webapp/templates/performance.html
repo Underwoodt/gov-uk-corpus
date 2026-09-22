@@ -45,7 +45,8 @@
         <tr data-metric="misstokens"><td>&nbsp;&nbsp;of which cache miss</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="outtokens"><td>Total Output Tokens</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="totalcost"><td>Total Evaluation Cost</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
-        <tr data-metric="totaltime"><td>Total Evaluation Time</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="totaltime"><td>Total Evaluation Time <span class="secondary" style="font-weight:400;">(sum of calls)</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="elapsed"><td>Elapsed (wall-clock) <span class="secondary" style="font-weight:400;">start → finish</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="cmp-keep"><td>Decisions Keep (Sum, shared pages)</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="cmp-drop"><td>Decisions Drop (Sum, shared pages)</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="cmp-disagree"><td>Decisions disagree with Run 1 (Sum)</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
@@ -71,7 +72,7 @@
       const runId = document.getElementById(`pick-${col}`).value;
       const r = byId[runId];
       const set = (metric, v) => { cell(metric, col).textContent = v; };
-      if (!r) { ["name","datetime","phase","model","trial","total","avgcost","avgtime","intokens","hittokens","misstokens","outtokens","totalcost","totaltime"].forEach(m => set(m, "—")); return; }
+      if (!r) { ["name","datetime","phase","model","trial","total","avgcost","avgtime","intokens","hittokens","misstokens","outtokens","totalcost","totaltime","elapsed"].forEach(m => set(m, "—")); return; }
       const pages = r.pages || 0;
       const secsTotal = (r.total_ms || 0) / 1000;
       set("name", r.name || "—");
@@ -90,6 +91,10 @@
       set("outtokens", (r.out_tokens || 0).toLocaleString());
       set("totalcost", "$" + (r.cost || 0).toFixed(2));
       set("totaltime", fmtMS(secsTotal));
+      const elapsedSecs = (r.started_at && r.finished_at)
+        ? (new Date(r.finished_at) - new Date(r.started_at)) / 1000 : null;
+      set("elapsed", elapsedSecs != null && isFinite(elapsedSecs) && elapsedSecs >= 0
+        ? fmtMS(elapsedSecs) : (r.finished_at ? "—" : "running"));
     }
     const fmtInt = n => Number(n || 0).toLocaleString();
 
