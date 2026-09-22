@@ -163,7 +163,8 @@ CREATE TABLE IF NOT EXISTS evaluation_runs (
     run_status   TEXT,                 -- 'running' | 'stopped' | 'complete' (NULL = legacy/unknown)
     pid          INTEGER,              -- OS pid of the driver process while running
     host         TEXT,                 -- hostname of that process
-    heartbeat_at TEXT                  -- last time the driver made progress
+    heartbeat_at TEXT,                 -- last time the driver made progress
+    prompt_spec  TEXT                  -- JSON snapshot of the prompt inputs the run used (reproducible)
 );
 CREATE INDEX IF NOT EXISTS idx_eval_runs_cat ON evaluation_runs(category_id);
 

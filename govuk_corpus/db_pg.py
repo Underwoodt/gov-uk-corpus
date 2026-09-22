@@ -57,6 +57,8 @@ def init_db(conn) -> None:
     conn.execute("ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS pid integer")
     conn.execute("ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS host text")
     conn.execute("ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS heartbeat_at text")
+    # A JSON snapshot of the prompt inputs a run used, so its prompts are exactly reproducible.
+    conn.execute("ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS prompt_spec text")
     conn.commit()
 
 

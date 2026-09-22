@@ -1809,6 +1809,37 @@ def _active_run(conn, cid: int) -> str:
     return settings.get_setting(conn, f"active_run_{cid}", "") or ""
 
 
+def _prompt_spec_json(conn, cid: int, phase: str) -> str:
+    """A JSON snapshot of the prompt inputs a run will use — stamped on the run so its prompts
+    stay exactly reproducible even if the active template or the shortlist definition changes."""
+    c = cat.get_category(conn, cid) or {}
+    pname = "exclusion" if phase == evaluate.PHASE_EXCLUSION else "inclusion"
+    return json.dumps({
+        "template": prompts.active_text(conn, pname),
+        "template_version": prompts.active_version(conn, pname),
+        "inclusion_context": c.get("inclusion_context") or "",
+        "exclusion_context": c.get("exclusion_context") or "",
+        "name": (c.get("description") or "").strip() or cat.prettify(c.get("slug")) or "the topic",
+        "keep_hints": c.get("adjudication_hints_keep") or "",
+        "drop_hints": c.get("adjudication_hints_drop") or "",
+        "body_limit": evaluate.BODY_CHAR_LIMIT,
+    }, ensure_ascii=False)
+
+
+def _run_prompt_inputs(conn, category, run_id: str, phase: str):
+    """(template, inclusion, exclusion, name, keep_hints, drop_hints) for building a run's prompts:
+    the run's stamped spec when present (exact reproduction), else resolved live (legacy runs)."""
+    spec = evaluate.run_prompt_spec(conn, run_id)
+    if spec:
+        return (spec.get("template"), spec.get("inclusion_context", ""), spec.get("exclusion_context", ""),
+                spec.get("name") or "the topic", spec.get("keep_hints", ""), spec.get("drop_hints", ""))
+    is_excl = phase == evaluate.PHASE_EXCLUSION
+    return (prompts.active_text(conn, "exclusion" if is_excl else "inclusion"),
+            category.get("inclusion_context") or "", category.get("exclusion_context") or "",
+            (category.get("description") or "").strip() or cat.prettify(category.get("slug")) or "the topic",
+            category.get("adjudication_hints_keep") or "", category.get("adjudication_hints_drop") or "")
+
+
 def _ensure_run(conn, cid: int) -> str:
     """Return the active run for the category, creating one (current provider/model) if none."""
     run_id = _active_run(conn, cid)
@@ -1816,7 +1847,8 @@ def _ensure_run(conn, cid: int) -> str:
         return run_id
     cfg = _ai_config_for_phase(conn, evaluate.PHASE_INCLUSION)
     run_id = evaluate.create_run(conn, cid, cfg["model"], cfg["provider"],
-                                 phase=evaluate.PHASE_INCLUSION)
+                                 phase=evaluate.PHASE_INCLUSION,
+                                 prompt_spec=_prompt_spec_json(conn, cid, evaluate.PHASE_INCLUSION))
     settings.set_setting(conn, f"active_run_{cid}", run_id)
     return run_id
 
@@ -1845,12 +1877,10 @@ def _run_evaluation(cid: int, limit: int) -> dict:
 
         limit = min(limit, _max_docs(conn))
         filters = _effective_filters(conn, category)
-        inclusion = category.get("inclusion_context") or ""
-        exclusion = category.get("exclusion_context") or ""
-        name = (category.get("description") or "").strip() or cat.prettify(category.get("slug")) or "the topic"
-
         is_exclusion = phase == evaluate.PHASE_EXCLUSION
-        prompt_tmpl = prompts.active_text(conn, "exclusion" if is_exclusion else "inclusion")
+        # Use the run's stamped prompt spec (exact + fixed for the run); legacy runs resolve live.
+        prompt_tmpl, inclusion, exclusion, name, keep_hints, drop_hints = _run_prompt_inputs(
+            conn, category, run_id, phase)
         if is_exclusion:
             rows = evaluate.exclusion_candidates(conn, run_id, run.get("source_run_id"), limit)
         else:
@@ -1867,9 +1897,7 @@ def _run_evaluation(cid: int, limit: int) -> dict:
             t0 = time.time()
             if is_exclusion:
                 prompt = evaluate.build_exclusion_prompt(
-                    name, inclusion, exclusion,
-                    category.get("adjudication_hints_keep") or "",
-                    category.get("adjudication_hints_drop") or "",
+                    name, inclusion, exclusion, keep_hints, drop_hints,
                     r["title"], r["body"], r.get("pass1_reason") or "", template=prompt_tmpl)
             else:
                 prompt = evaluate.build_prompt(inclusion, exclusion, r["title"], r["description"],
@@ -1935,7 +1963,8 @@ def _run_evaluation(cid: int, limit: int) -> dict:
                 if keeps > 0:
                     excfg = _ai_config_for_phase(conn, evaluate.PHASE_EXCLUSION)
                     new_id = evaluate.create_run(conn, cid, excfg["model"], excfg["provider"],
-                                                 phase=evaluate.PHASE_EXCLUSION, source_run_id=run_id)
+                                                 phase=evaluate.PHASE_EXCLUSION, source_run_id=run_id,
+                                                 prompt_spec=_prompt_spec_json(conn, cid, evaluate.PHASE_EXCLUSION))
                     settings.set_setting(conn, f"active_run_{cid}", new_id)
                     advanced = {"run_id": new_id, "phase": evaluate.PHASE_EXCLUSION, "remaining": keeps}
                     remaining = keeps
@@ -1960,7 +1989,8 @@ async def api_new_run(request: Request, cid: int):
         return JSONResponse({"error": "not found"}, status_code=404)
     cfg = _ai_config_for_phase(conn, evaluate.PHASE_INCLUSION)   # new manual run = a fresh inclusion run
     run_id = evaluate.create_run(conn, cid, cfg["model"], cfg["provider"],
-                                 phase=evaluate.PHASE_INCLUSION)
+                                 phase=evaluate.PHASE_INCLUSION,
+                                 prompt_spec=_prompt_spec_json(conn, cid, evaluate.PHASE_INCLUSION))
     settings.set_setting(conn, f"active_run_{cid}", run_id)
     run = evaluate.get_run(conn, run_id)
     conn.close()
@@ -2191,7 +2221,9 @@ def _retry_unparsable(cid: int, cap: int = 300) -> dict:
             if not cfg["key"]:
                 out["phases"].append({"phase": run.get("phase"), "error": f"no API key for {cfg['label']}"})
                 continue
-            prompt_tmpl = prompts.active_text(conn, "exclusion" if is_excl else "inclusion")
+            # Reproduce THIS run's prompt exactly: its stamped spec (else live for legacy runs).
+            prompt_tmpl, inclusion, exclusion, name, keep_hints, drop_hints = _run_prompt_inputs(
+                conn, category, run_id, evaluate.PHASE_EXCLUSION if is_excl else evaluate.PHASE_INCLUSION)
             urls = [dict(r)["url"] for r in conn.execute(
                 f"SELECT url FROM evaluation_results WHERE run_id = {P} AND keep IS NULL LIMIT {int(left)}",
                 (run_id,)).fetchall()]
@@ -2204,8 +2236,7 @@ def _retry_unparsable(cid: int, cap: int = 300) -> dict:
                     pr = conn.execute(
                         f"SELECT reason FROM evaluation_results WHERE run_id = {P} AND url = {P}", (inc, url)).fetchone()
                     prompt = evaluate.build_exclusion_prompt(
-                        name, inclusion, exclusion,
-                        category.get("adjudication_hints_keep") or "", category.get("adjudication_hints_drop") or "",
+                        name, inclusion, exclusion, keep_hints, drop_hints,
                         c.get("title"), c.get("body"), (dict(pr)["reason"] if pr else "") or "", template=prompt_tmpl)
                 else:
                     prompt = evaluate.build_prompt(inclusion, exclusion, c.get("title"), c.get("description"),
@@ -2918,22 +2949,20 @@ def run_detail_page(request: Request, cid: int, run_id: str):
 
 
 def _example_phase_prompts(conn, category, run_id: str = "") -> dict:
-    """A reconstructed example of each phase's prompt for this shortlist: the CURRENTLY active
-    templates (Settings > AI Prompts) with this shortlist's Include/Exclude context and — when a
-    run is given — a page THIS run actually evaluated (a kept one first) filled in, plus that
-    page's real first-pass note. Not the exact bytes sent during the run (the prompt version or
-    the shortlist context may have changed since), but representative and page-real."""
+    """Each phase's prompt for this run, rebuilt for one sample page. When a phase's run is
+    stamped (evaluation_runs.prompt_spec) the rebuild is EXACT — its own template, version and
+    Include/Exclude context — so only the page body reflects the current corpus. Legacy phases,
+    or a phase not yet run, fall back to the current active template (clearly flagged)."""
     cid = category["id"]
     P = shortlist._P
-    incl_ctx = category.get("inclusion_context") or ""
-    excl_ctx = category.get("exclusion_context") or ""
-    name = cat.display_name(category)
-    keep_hints = category.get("adjudication_hints_keep") or ""
-    drop_hints = category.get("adjudication_hints_drop") or ""
+    chain = evaluate.run_chain(conn, run_id) if run_id else []
+    incl_run = next((r for r in chain if "inclusion" in (r.get("phase") or "").lower()), None)
+    excl_run = next((r for r in chain if "exclusion" in (r.get("phase") or "").lower()), None)
 
+    # Sample page: one THIS run evaluated (a kept page first), else the shortlist's first page.
     url = title = description = body = ""
     sample_from_run = False
-    if run_id:                                    # a page this run evaluated (kept pages first)
+    if run_id:
         row = conn.execute(
             f"SELECT c.url AS url, c.title AS title, c.description AS description, "
             f"c.search_text AS body FROM evaluation_results er JOIN content c ON c.url = er.url "
@@ -2945,7 +2974,7 @@ def _example_phase_prompts(conn, category, run_id: str = "") -> dict:
             url, title = d.get("url") or "", d.get("title") or ""
             description, body = d.get("description") or "", d.get("body") or ""
             sample_from_run = bool(url)
-    if not url:                                   # fall back to the current shortlist's first page
+    if not url:
         f = _effective_filters(conn, category)
         sql, params = shortlist.build_query(
             select_expr="c.url AS url, c.title AS title, c.description AS description, c.search_text AS body",
@@ -2956,34 +2985,55 @@ def _example_phase_prompts(conn, category, run_id: str = "") -> dict:
             d = dict(row)
             url, title = d.get("url") or "", d.get("title") or ""
             description, body = d.get("description") or "", d.get("body") or ""
-    if not url:                                   # empty shortlist: show the templates with placeholders
+    if not url:
         title = "(example page title)"
         description, body = "(example page description)", "(the page's body text goes here)"
 
-    # The exclusion prompt's PASS1_REASON = the inclusion pass's own note for that page, taken from
-    # the inclusion run in THIS run's lineage (else the shortlist's latest inclusion run).
+    # PASS1_REASON for the exclusion prompt: the inclusion run's stored note for that page.
     pass1 = "(the first pass's 1-2 sentence note for this page)"
     if url:
-        chain = evaluate.run_chain(conn, run_id) if run_id else []
-        incl_run = next((r["run_id"] for r in chain if "inclusion" in (r.get("phase") or "").lower()), None)
-        incl_run = incl_run or evaluate.latest_inclusion_run(conn, cid)
-        if incl_run:
-            r = conn.execute(
-                f"SELECT reason FROM evaluation_results WHERE run_id = {P} AND url = {P}",
-                (incl_run, url)).fetchone()
+        ir = incl_run["run_id"] if incl_run else evaluate.latest_inclusion_run(conn, cid)
+        if ir:
+            r = conn.execute(f"SELECT reason FROM evaluation_results WHERE run_id = {P} AND url = {P}",
+                             (ir, url)).fetchone()
             if r and (dict(r).get("reason") or "").strip():
                 pass1 = dict(r)["reason"]
+
+    incl_spec = evaluate.run_prompt_spec(conn, incl_run["run_id"]) if incl_run else None
+    if incl_spec:
+        inclusion_prompt = evaluate.build_prompt(
+            incl_spec.get("inclusion_context", ""), incl_spec.get("exclusion_context", ""),
+            title, description, body, body_limit=incl_spec.get("body_limit", evaluate.BODY_CHAR_LIMIT),
+            template=incl_spec.get("template"))
+    else:
+        inclusion_prompt = evaluate.build_prompt(
+            category.get("inclusion_context") or "", category.get("exclusion_context") or "",
+            title, description, body, template=prompts.active_text(conn, "inclusion"))
+
+    excl_spec = evaluate.run_prompt_spec(conn, excl_run["run_id"]) if excl_run else None
+    if excl_spec:
+        exclusion_prompt = evaluate.build_exclusion_prompt(
+            excl_spec.get("name") or "the topic", excl_spec.get("inclusion_context", ""),
+            excl_spec.get("exclusion_context", ""), excl_spec.get("keep_hints", ""),
+            excl_spec.get("drop_hints", ""), title, body, pass1,
+            body_limit=excl_spec.get("body_limit", evaluate.BODY_CHAR_LIMIT), template=excl_spec.get("template"))
+    else:
+        exclusion_prompt = evaluate.build_exclusion_prompt(
+            (category.get("description") or "").strip() or cat.prettify(category.get("slug")) or "the topic",
+            category.get("inclusion_context") or "", category.get("exclusion_context") or "",
+            category.get("adjudication_hints_keep") or "", category.get("adjudication_hints_drop") or "",
+            title, body, pass1, template=prompts.active_text(conn, "exclusion"))
 
     return {
         "sample_url": url,
         "sample_title": title or url,
         "sample_from_run": sample_from_run,
-        "inclusion": evaluate.build_prompt(
-            incl_ctx, excl_ctx, title, description, body,
-            template=prompts.active_text(conn, "inclusion")),
-        "exclusion": evaluate.build_exclusion_prompt(
-            name, incl_ctx, excl_ctx, keep_hints, drop_hints, title, body, pass1,
-            template=prompts.active_text(conn, "exclusion")),
+        "inclusion": inclusion_prompt,
+        "inclusion_exact": bool(incl_spec),
+        "inclusion_version": (incl_spec or {}).get("template_version"),
+        "exclusion": exclusion_prompt,
+        "exclusion_exact": bool(excl_spec),
+        "exclusion_version": (excl_spec or {}).get("template_version"),
     }
 
 
@@ -3064,7 +3114,8 @@ async def api_continue_run(request: Request, cid: int, run_id: str):
         if incl and incl.get("finished_at") and (incl.get("kept") or 0) > 0 and not have_excl:
             excfg = _ai_config_for_phase(conn, evaluate.PHASE_EXCLUSION)
             new_id = evaluate.create_run(conn, cid, excfg["model"], excfg["provider"],
-                                         phase=evaluate.PHASE_EXCLUSION, source_run_id=incl["run_id"])
+                                         phase=evaluate.PHASE_EXCLUSION, source_run_id=incl["run_id"],
+                                         prompt_spec=_prompt_spec_json(conn, cid, evaluate.PHASE_EXCLUSION))
             settings.set_setting(conn, f"active_run_{cid}", new_id)
             return JSONResponse({"active": new_id, "action": "start_exclusion"})
 

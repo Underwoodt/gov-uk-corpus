@@ -297,18 +297,36 @@ def exclusion_candidates(conn, run_id: str, source_run_id: str, limit: int) -> L
 # ---- runs ----------------------------------------------------------------
 def create_run(conn, category_id: int, model: str, provider: str,
                phase: str = PHASE_INCLUSION, name: Optional[str] = None,
-               source_run_id: Optional[str] = None) -> str:
+               source_run_id: Optional[str] = None, prompt_spec: Optional[str] = None) -> str:
+    """`prompt_spec` is a JSON snapshot of the prompt inputs this run will use (template +
+    version + Include/Exclude context + hints), stamped so the run's prompts are exactly
+    reproducible later even if the active template or the shortlist definition changes."""
     run_id = f"run_{int(time.time() * 1000):x}_{uuid.uuid4().hex[:6]}"
     if not name:
         n = conn.execute(f"SELECT COUNT(*) AS c FROM evaluation_runs WHERE category_id = {_P}",
                          (category_id,)).fetchone()["c"]
         name = f"Test-{n + 1}"
     conn.execute(
-        f"INSERT INTO evaluation_runs (run_id, category_id, name, source_run_id, phase, model, provider, started_at) "
-        f"VALUES ({_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P})",
-        (run_id, category_id, name, source_run_id, phase, model, provider, db.now_iso()))
+        f"INSERT INTO evaluation_runs (run_id, category_id, name, source_run_id, phase, model, provider, started_at, prompt_spec) "
+        f"VALUES ({_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P})",
+        (run_id, category_id, name, source_run_id, phase, model, provider, db.now_iso(), prompt_spec))
     conn.commit()
     return run_id
+
+
+def run_prompt_spec(conn, run_id: str) -> Optional[Dict]:
+    """The stamped prompt spec for a run (the template + context it used), or None for a
+    legacy run that predates stamping."""
+    row = conn.execute(f"SELECT prompt_spec FROM evaluation_runs WHERE run_id = {_P}",
+                       (run_id,)).fetchone()
+    raw = dict(row).get("prompt_spec") if row else None
+    if not raw:
+        return None
+    try:
+        d = json.loads(raw)
+        return d if isinstance(d, dict) else None
+    except (ValueError, TypeError):
+        return None
 
 
 def rename_run(conn, run_id: str, name: str) -> None:

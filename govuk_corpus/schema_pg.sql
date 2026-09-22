@@ -150,9 +150,10 @@ CREATE TABLE IF NOT EXISTS evaluation_runs (
     run_status   text,               -- 'running' | 'stopped' | 'complete' (NULL = legacy/unknown)
     pid          integer,            -- OS pid of the driver process while running (NULL otherwise)
     host         text,               -- hostname of that process (pid only trusted on this host)
-    heartbeat_at text                -- last time the driver made progress (staleness check)
-);
-CREATE INDEX IF NOT EXISTS idx_eval_runs_cat ON evaluation_runs(category_id);
+    heartbeat_at text,               -- last time the driver made progress (staleness check)
+    prompt_spec  text                -- JSON snapshot of the prompt inputs this run used (template
+);                                   -- + version + Include/Exclude context + hints), so its prompts
+CREATE INDEX IF NOT EXISTS idx_eval_runs_cat ON evaluation_runs(category_id);  -- are exactly reproducible
 
 CREATE TABLE IF NOT EXISTS evaluation_results (
     run_id       text NOT NULL,

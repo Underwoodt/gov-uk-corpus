@@ -148,19 +148,19 @@
 
   {# Advanced-only: the actual completed prompt sent to the model for each phase. #}
   <details id="ex-prompts" data-level="advanced" style="margin-top:34px;max-width:960px;">
-    <summary style="cursor:pointer;font-weight:700;font-size:16px;color:var(--link,#1d70b8);">Example completed prompts (per phase, reconstructed)</summary>
+    <summary style="cursor:pointer;font-weight:700;font-size:16px;color:var(--link,#1d70b8);">Example completed prompts (per phase)</summary>
     <div style="margin-top:12px;">
-      <p class="hint" style="margin:0 0 12px;max-width:840px;"><strong>Reconstructed</strong> from the currently active
-        prompt version (Settings &rsaquo; AI Prompts) and a page this run evaluated. This is representative, not the
-        exact text sent during the run — the prompt or this shortlist's Include / Exclude context may have changed
-        since. (The prompt itself isn't stored per run.)</p>
+      <p class="hint" style="margin:0 0 12px;max-width:860px;">Each phase's prompt rebuilt for one sample page. A run is
+        <strong>stamped</strong> with the prompt version and Include / Exclude context it used, so for a stamped phase
+        this is the <strong>exact</strong> text that was sent (only the page body reflects the current corpus). Older
+        runs, or a phase not yet run, fall back to the current active template — flagged below.</p>
       <p id="ex-prompt-status" class="secondary"><span class="spinner"></span> Loading…</p>
       <div id="ex-prompt-body" hidden>
         <p id="ex-prompt-sample" class="secondary" style="margin:0 0 12px;"></p>
-        <h3 style="margin:14px 0 6px;">Phase 1 — Inclusion</h3>
+        <h3 style="margin:14px 0 6px;">Phase 1 — Inclusion <span id="ex-incl-tag" class="secondary" style="font-size:13px;font-weight:400;"></span></h3>
         <pre class="mono" id="ex-prompt-inclusion" style="white-space:pre-wrap;word-break:break-word;font-size:13px;
           background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin:0;"></pre>
-        <h3 style="margin:20px 0 6px;">Phase 2 — Exclusion</h3>
+        <h3 style="margin:20px 0 6px;">Phase 2 — Exclusion <span id="ex-excl-tag" class="secondary" style="font-size:13px;font-weight:400;"></span></h3>
         <pre class="mono" id="ex-prompt-exclusion" style="white-space:pre-wrap;word-break:break-word;font-size:13px;
           background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin:0;"></pre>
       </div>
@@ -270,6 +270,11 @@
           if (j.error) { statusEl.textContent = "Error: " + j.error; loaded = false; return; }
           document.getElementById("ex-prompt-inclusion").textContent = j.inclusion || "(none)";
           document.getElementById("ex-prompt-exclusion").textContent = j.exclusion || "(none)";
+          const tag = (exact, ver) => exact
+            ? ("· exact — stamped from this run" + (ver != null ? ` (prompt v${ver})` : ""))
+            : "· reconstructed from the current template (this run wasn't stamped)";
+          document.getElementById("ex-incl-tag").textContent = tag(j.inclusion_exact, j.inclusion_version);
+          document.getElementById("ex-excl-tag").textContent = tag(j.exclusion_exact, j.exclusion_version);
           document.getElementById("ex-prompt-sample").textContent = j.sample_url
             ? ((j.sample_from_run ? "Sample page (evaluated in this run): " : "Sample page (from the current shortlist): ")
                + (j.sample_title || j.sample_url))

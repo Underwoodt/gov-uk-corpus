@@ -34,7 +34,7 @@ def init_db(conn: sqlite3.Connection) -> None:
     # Live run state (driver liveness): see db_pg.init_db for the rationale.
     have_runs = {r[1] for r in conn.execute("PRAGMA table_info(evaluation_runs)")}
     for col, typ in (("run_status", "TEXT"), ("pid", "INTEGER"),
-                     ("host", "TEXT"), ("heartbeat_at", "TEXT")):
+                     ("host", "TEXT"), ("heartbeat_at", "TEXT"), ("prompt_spec", "TEXT")):
         if col not in have_runs:
             conn.execute(f"ALTER TABLE evaluation_runs ADD COLUMN {col} {typ}")
     conn.commit()
