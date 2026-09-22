@@ -3507,6 +3507,7 @@ _VIRTUAL_FIELDS = {
     "exclusion_raw_reply": "Exclusion raw reply",
     "stage": "Stage",
     "decision": "Stage decision",
+    "funnel_stage": "Furthest stage reached",
 }
 
 _DOWNLOAD_SECTIONS = [
@@ -3536,6 +3537,9 @@ _DOWNLOAD_SECTIONS = [
          "the funnel stage / phase these rows are shown at (tags each row for the download)"),
         ("decision", "Stage decision", False, False,
          "the AI verdict for the page — Keep / Drop / Unscored (from the run relevant to the stage)"),
+        ("funnel_stage", "Furthest stage reached", True, False,
+         "how far each page got in the funnel — Keyword only / Reached inclusion / Reached exclusion / "
+         "Final shortlist — independent of which stage is selected above"),
         ("confidence", "Confidence", False, False,
          "how central the topic is to the page, from the inclusion score (Wrong sense / Mentioned in "
          "passing / Discussed a moderate amount / Major focus)"),
@@ -3670,6 +3674,24 @@ def _enrich_audit_rows(conn, cid: int, rows: list, keys: list, stage: str = None
             s = sc.get(r.get("url"))
             lab = evaluate.confidence_label(s)
             r["confidence"] = f"{lab} ({float(s):.1f})" if lab and s is not None else ""
+    if "funnel_stage" in need:
+        # The furthest funnel stage each page actually reached — independent of the selected
+        # view — read from the inclusion/exclusion keep decisions. Cumulative ladder:
+        # Final shortlist ⊃ Reached exclusion ⊃ Reached inclusion ⊃ Keyword only.
+        inc = evaluate.latest_inclusion_run(conn, cid)
+        exc = evaluate.latest_exclusion_run(conn, inc) if inc else None
+        inc_keep = _map(f"SELECT url, keep AS val FROM evaluation_results WHERE run_id = {P}", inc) if inc else {}
+        exc_keep = _map(f"SELECT url, keep AS val FROM evaluation_results WHERE run_id = {P}", exc) if exc else {}
+        for r in rows:
+            u = r.get("url")
+            if exc_keep.get(u) == 1:
+                r["funnel_stage"] = "Final shortlist"          # kept by exclusion (Phase 2)
+            elif inc_keep.get(u) == 1:
+                r["funnel_stage"] = "Reached exclusion"        # inclusion kept it → entered Phase 2
+            elif u in inc_keep:
+                r["funnel_stage"] = "Reached inclusion"        # scored by Phase 1, not kept
+            else:
+                r["funnel_stage"] = "Keyword only"             # in keyword set, no Phase 1 decision
 
 
 # ---- results table (browse the shortlist with configurable columns) -----
@@ -3772,6 +3794,8 @@ _AUDIT_STAGES = [
     ("dept", "Department"),
     ("doctype", "Document type"),
     ("keyword", "Keyword (Input Shortlist)"),
+    ("reached_inclusion", "Reached LLM inclusion (all pages scored)"),
+    ("reached_exclusion", "Reached exclusion phase (inclusion keeps)"),
     ("include", "Included (LLM inclusion keeps)"),
     ("final", "Final (after exclusion / adjudication)"),
     ("excl_include", "Excluded by inclusion (Phase 1 drops)"),
@@ -3799,6 +3823,19 @@ def _stage_query(conn, category, stage):
     exc = evaluate.latest_exclusion_run(conn, inc)
     # Pick which run and which decision (kept vs dropped) the stage shows. The two excl_*
     # stages surface the pages a phase EXCLUDED (keep = 0) — the phase the page was dropped at.
+    # Superset stages: everything that REACHED a phase, not just what it kept. "reached_inclusion"
+    # is every page the inclusion run scored (keep 1/0/NULL); "reached_exclusion" is every page fed
+    # into exclusion = the inclusion keeps (whether or not exclusion has decided them yet).
+    if stage == "reached_inclusion":
+        return dict(organisations=(), document_types=(), keywords=(), match="any",
+                    extra_where=f"c.url IN (SELECT url FROM evaluation_results "
+                                f"WHERE run_id = {shortlist._P})",
+                    extra_params=[inc])
+    if stage == "reached_exclusion":
+        return dict(organisations=(), document_types=(), keywords=(), match="any",
+                    extra_where=f"c.url IN (SELECT url FROM evaluation_results "
+                                f"WHERE run_id = {shortlist._P} AND keep = 1)",
+                    extra_params=[inc])
     if stage == "final":
         run_id, keep = (exc or inc), 1                # final shortlist = exclusion keeps
     elif stage == "excl_include":
