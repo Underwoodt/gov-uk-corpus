@@ -15,10 +15,12 @@
     {%- else -%}{{ chip(None) }}{%- endif -%}
   {% endmacro %}
 
-  {% macro reason(cell) %}
+  {% macro reason(cell, phase, has_excl) %}
     {%- if cell and cell.reason -%}<div class="rsn">{{ cell.reason }}</div>
     {%- elif cell -%}<span class="muted-sm">(no reason recorded)</span>
-    {%- else -%}<span class="muted-sm">n/a — not reached</span>{%- endif -%}
+    {%- elif phase == 'inclusion' -%}<span class="muted-sm">not scored in this run</span>
+    {%- elif not has_excl -%}<span class="muted-sm">no Phase 2 in this run</span>
+    {%- else -%}<span class="muted-sm">not reached — dropped at inclusion</span>{%- endif -%}
   {% endmacro %}
 
   {% macro card(c) %}
@@ -39,16 +41,16 @@
             <tr>
               <th class="rowlab">Run 1<br><span class="muted-sm">baseline</span></th>
               <td class="{{ 'hot' if c.phase == 'inclusion' }}">{{ dec(c.b_incl) }}</td>
-              <td class="rsn-col {{ 'hot' if c.phase == 'inclusion' }}">{{ reason(c.b_incl) }}</td>
+              <td class="rsn-col {{ 'hot' if c.phase == 'inclusion' }}">{{ reason(c.b_incl, 'inclusion', base_has_excl) }}</td>
               <td class="{{ 'hot' if c.phase == 'exclusion' }}">{{ dec(c.b_excl) }}</td>
-              <td class="rsn-col {{ 'hot' if c.phase == 'exclusion' }}">{{ reason(c.b_excl) }}</td>
+              <td class="rsn-col {{ 'hot' if c.phase == 'exclusion' }}">{{ reason(c.b_excl, 'exclusion', base_has_excl) }}</td>
             </tr>
             <tr>
               <th class="rowlab">Run 2</th>
               <td class="{{ 'hot' if c.phase == 'inclusion' }}">{{ dec(c.o_incl) }}</td>
-              <td class="rsn-col {{ 'hot' if c.phase == 'inclusion' }}">{{ reason(c.o_incl) }}</td>
+              <td class="rsn-col {{ 'hot' if c.phase == 'inclusion' }}">{{ reason(c.o_incl, 'inclusion', other_has_excl) }}</td>
               <td class="{{ 'hot' if c.phase == 'exclusion' }}">{{ dec(c.o_excl) }}</td>
-              <td class="rsn-col {{ 'hot' if c.phase == 'exclusion' }}">{{ reason(c.o_excl) }}</td>
+              <td class="rsn-col {{ 'hot' if c.phase == 'exclusion' }}">{{ reason(c.o_excl, 'exclusion', other_has_excl) }}</td>
             </tr>
           </tbody>
         </table>

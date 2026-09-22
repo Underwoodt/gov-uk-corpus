@@ -2611,6 +2611,7 @@ def performance_diff_page(request: Request, cid: int, base: str = "", other: str
     judge = _diff_judge_config(conn, o_excl or o_incl)
     ctxd = ctx(conn, request, category=category, base_head=base, other_head=other,
                base_incl=b_incl, base_excl=b_excl, other_incl=o_incl, other_excl=o_excl,
+               base_has_excl=bool(b_excl), other_has_excl=bool(o_excl),
                p1_cards=p1_cards, p2_cards=p2_cards, trials=trials,
                judge_label=f"{judge.get('provider','')} / {judge.get('model','')}")
     resp = templates.TemplateResponse("performance_diff.html", ctxd)
