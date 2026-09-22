@@ -23,7 +23,7 @@
     {%- else -%}<span class="muted-sm">not reached — dropped at inclusion</span>{%- endif -%}
   {% endmacro %}
 
-  {% macro card(c) %}
+  {% macro card(c, base_has_excl, other_has_excl) %}
     <div class="diff-card card" data-url="{{ c.url }}" data-phase="{{ c.phase }}">
       <div class="dc-head">
         <a class="dc-url" href="{{ c.url }}" target="_blank" rel="noopener">{{ c.url }}</a>
@@ -96,7 +96,7 @@
       <h2>Phase 1 — Inclusion disagreements <span class="count">{{ p1_cards|length }}</span></h2>
       {% if p1_cards %}<button class="btn secondary-btn explain-all" type="button" data-phase="inclusion">Explain all</button>{% endif %}
     </div>
-    {% if p1_cards %}{% for c in p1_cards %}{{ card(c) }}{% endfor %}
+    {% if p1_cards %}{% for c in p1_cards %}{{ card(c, base_has_excl, other_has_excl) }}{% endfor %}
     {% else %}<p class="muted-sm">No inclusion-phase disagreements — the two runs kept/dropped the same pages at Phase 1.</p>{% endif %}
   </section>
 
@@ -105,7 +105,7 @@
       <h2>Phase 2 — Exclusion disagreements <span class="count">{{ p2_cards|length }}</span></h2>
       {% if p2_cards %}<button class="btn secondary-btn explain-all" type="button" data-phase="exclusion">Explain all</button>{% endif %}
     </div>
-    {% if p2_cards %}{% for c in p2_cards %}{{ card(c) }}{% endfor %}
+    {% if p2_cards %}{% for c in p2_cards %}{{ card(c, base_has_excl, other_has_excl) }}{% endfor %}
     {% else %}<p class="muted-sm">No exclusion-phase disagreements — where both runs ran Phase 2 they agreed.</p>{% endif %}
   </section>
   {% endif %}
