@@ -3538,8 +3538,8 @@ _DOWNLOAD_SECTIONS = [
         ("decision", "Stage decision", False, False,
          "the AI verdict for the page — Keep / Drop / Unscored (from the run relevant to the stage)"),
         ("funnel_stage", "Furthest stage reached", True, False,
-         "how far each page got in the funnel — Keyword only / Reached inclusion / Reached exclusion / "
-         "Final shortlist — independent of which stage is selected above"),
+         "how far each page got in the funnel — Keyword search / Reached LLM inclusion / Reached "
+         "exclusion / Final shortlist — independent of which stage is selected above"),
         ("confidence", "Confidence", False, False,
          "how central the topic is to the page, from the inclusion score (Wrong sense / Mentioned in "
          "passing / Discussed a moderate amount / Major focus)"),
@@ -3689,9 +3689,9 @@ def _enrich_audit_rows(conn, cid: int, rows: list, keys: list, stage: str = None
             elif inc_keep.get(u) == 1:
                 r["funnel_stage"] = "Reached exclusion"        # inclusion kept it → entered Phase 2
             elif u in inc_keep:
-                r["funnel_stage"] = "Reached inclusion"        # scored by Phase 1, not kept
+                r["funnel_stage"] = "Reached LLM inclusion"    # scored by Phase 1, not kept
             else:
-                r["funnel_stage"] = "Keyword only"             # in keyword set, no Phase 1 decision
+                r["funnel_stage"] = "Keyword search"           # got no further than keyword search
 
 
 # ---- results table (browse the shortlist with configurable columns) -----
@@ -3790,18 +3790,24 @@ def api_results_table(request: Request, cid: int, limit: int = 50, offset: int =
 # ---- audit shortlist (browse/extract the pages at any funnel stage) -----
 # Stage key -> label. Deterministic stages progressively narrow the corpus; the two
 # LLM stages restrict to the pages a run kept.
+# The four funnel tiers offered in the Shortlist Stage dropdown, each the SUPERSET of pages
+# that reached that tier. Underlying keys reuse the _stage_query filters:
+#   doctype          → org + document-type set (the pages keyword search runs on)
+#   keyword          → keyword shortlist        (the pages fed to LLM inclusion)
+#   reached_exclusion→ inclusion keeps          (the pages fed to exclusion)
+#   final            → exclusion keeps          (the final shortlist)
+# Other keys (dept/include/excl_include/excl_final/reached_inclusion) remain handled by
+# _stage_query for backward-compatible ?stage= links but are no longer listed here.
 _AUDIT_STAGES = [
-    ("dept", "Department"),
-    ("doctype", "Document type"),
-    ("keyword", "Keyword (Input Shortlist)"),
-    ("reached_inclusion", "Reached LLM inclusion (all pages scored)"),
-    ("reached_exclusion", "Reached exclusion phase (inclusion keeps)"),
-    ("include", "Included (LLM inclusion keeps)"),
-    ("final", "Final (after exclusion / adjudication)"),
-    ("excl_include", "Excluded by inclusion (Phase 1 drops)"),
-    ("excl_final", "Excluded by exclusion (Phase 2 drops)"),
+    ("doctype", "Made it to Keyword Search (org + doc type)"),
+    ("keyword", "Made it to LLM Inclusion (keyword shortlist)"),
+    ("reached_exclusion", "Made it to Exclusion (inclusion keeps)"),
+    ("final", "Made it to final shortlist (exclusion keeps)"),
 ]
-_AUDIT_STAGE_KEYS = [k for k, _ in _AUDIT_STAGES]
+# Every key _stage_query understands stays valid for direct ?stage= URLs, even the ones the
+# dropdown no longer shows.
+_AUDIT_STAGE_KEYS = [k for k, _ in _AUDIT_STAGES] + [
+    "dept", "include", "reached_inclusion", "excl_include", "excl_final"]
 _AUDIT_DEFAULT_FIELDS = [k for _, fs in _DOWNLOAD_SECTIONS for (k, l, d, dis, w) in fs if d]
 
 
