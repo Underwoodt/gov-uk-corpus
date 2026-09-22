@@ -63,21 +63,6 @@
             <td class="num cost secondary" title="Deterministic filters use no AI, so they cost nothing.">N/A</td>
           </tr>
           {% endfor %}
-          {# By-source breakdown of the pages available to evaluate (category pool from GOV.UK
-             coverage). Indented under the funnel stages they relate to; filled by
-             loadSourceSubrows(), hidden until the hybrid search has run. #}
-          <tr class="src-sub" data-src-sub hidden title="In your corpus keyword shortlist AND returned by GOV.UK Search">
-            <td style="padding-left:26px;color:#505a5f;">· Both</td>
-            <td class="num" data-src="both"></td>
-            <td class="num secondary">—</td><td class="num secondary">—</td>
-            <td class="num cost secondary">N/A</td>
-          </tr>
-          <tr class="src-sub" data-src-sub hidden title="In your corpus keyword shortlist; GOV.UK Search did not return it">
-            <td style="padding-left:26px;color:#505a5f;">· Shortlister only</td>
-            <td class="num" data-src="shortlister"></td>
-            <td class="num secondary">—</td><td class="num secondary">—</td>
-            <td class="num cost secondary">N/A</td>
-          </tr>
           <tr id="funnel-govuk" data-stage="govuk" hidden title="GOV.UK-Search-only pages the keyword filter missed, added to the AI's input on top of the keyword shortlist = what the AI evaluated minus the keyword shortlist.">
             <td><a href="{{ url_for('govuk_additions_page', cid=category.id) }}" title="Review the GOV.UK-Search additions — URL, document type, organisations, and which GOV.UK keyword caught each">+ GOV.UK Search</a></td>
             <td class="num" id="govuk-val" style="color:var(--green,#00703c);font-weight:700;"></td>
@@ -85,18 +70,36 @@
             <td class="num secondary">—</td>
             <td class="num cost secondary" title="GOV.UK Search adds coverage, not a filter — no AI cost at this step.">N/A</td>
           </tr>
-          <tr class="src-sub" data-src-sub hidden title="Returned by GOV.UK Search only — the keyword filter missed it. This is the full pool; only those in the corpus and above the relevance floor are added above.">
-            <td style="padding-left:26px;color:#505a5f;">· GOV.UK only (pool)</td>
-            <td class="num" data-src="search"></td>
-            <td class="num secondary">—</td><td class="num secondary">—</td>
-            <td class="num cost secondary">N/A</td>
-          </tr>
           <tr data-stage="incl" hidden><td>Included by AI</td><td class="num val"></td><td class="num rejected"></td><td class="num timing"></td>
             <td class="num cost" title="Total AI spend on the inclusion pass for this shortlist (all runs).">${{ '%.2f'|format(ai_cost.incl) }}</td></tr>
           <tr data-stage="excl" hidden><td>Shortlist</td><td class="num val"></td><td class="num rejected"></td><td class="num timing"></td>
             <td class="num cost" title="Total AI spend on the exclusion pass for this shortlist (all runs).">${{ '%.2f'|format(ai_cost.excl) }}</td></tr>
         </tbody>
       </table>
+    </div>
+
+    {# Model-1 view of what a fresh run forwards to the AI: A + B + C, computed to reconcile.
+       A = Both and B = Shortlister only are corpus keyword matches (the floor is NOT applied
+       to them); C = GOV.UK-only pages in the corpus that clear the relevance floor. Filled by
+       loadAiInput(); hidden until the GOV.UK coverage has been computed. #}
+    <div id="ai-input" hidden style="margin:22px 0 26px;max-width:520px;">
+      <h3 style="margin:0 0 4px;font-size:16px;">Pages forwarded to the AI</h3>
+      <p class="hint" style="margin:0 0 8px;">What a fresh run evaluates: your corpus keyword shortlist
+        (<strong>A</strong> Both + <strong>B</strong> Shortlister only) plus the GOV.UK-only pages that clear
+        the relevance floor (<strong>C</strong>). Total = A + B + C.</p>
+      <table style="font-size:14px;width:100%;">
+        <tbody>
+          <tr title="In your corpus keyword shortlist AND returned by GOV.UK Search — forwarded because it matched your keywords (floor not applied)">
+            <td>A · Both <span class="secondary">(keyword + GOV.UK)</span></td><td class="num" id="ai-a">—</td></tr>
+          <tr title="In your corpus keyword shortlist; GOV.UK Search did not return it">
+            <td>B · Shortlister only</td><td class="num" id="ai-b">—</td></tr>
+          <tr title="GOV.UK Search only — in the corpus and at/above the relevance floor">
+            <td>C · GOV.UK only <span class="secondary">(≥ floor, in corpus)</span></td><td class="num" id="ai-c">—</td></tr>
+          <tr style="font-weight:700;border-top:2px solid var(--black);" title="A + B + C — the pages a fresh run forwards to the AI">
+            <td>Total forwarded to AI</td><td class="num" id="ai-total">—</td></tr>
+        </tbody>
+      </table>
+      <p class="hint" id="ai-input-note" style="margin:8px 0 0;"></p>
     </div>
 
     {# The AI Pipeline (Active Run / Run History) — rendered in a visible .subpanel so the
@@ -271,22 +274,26 @@
     }
     window.addEventListener("resize", drawSankey);
 
-    // By-source sub-rows (category pool from the stored GOV.UK coverage): Both / Shortlister only
-    // / GOV.UK only. Independent of the run, so fetched once and shown when the pool is non-empty.
-    async function loadSourceSubrows() {
+    // "Pages forwarded to the AI" (Model 1): A = Both, B = Shortlister only (both corpus keyword
+    // matches, floor not applied), C = GOV.UK-only in corpus at/above the floor. A + B + C = total.
+    async function loadAiInput() {
       try {
-        const j = await (await fetch(`/api/categories/${CID}/augmented-pages?limit=1`, { headers: { "Accept": "application/json" } })).json();
-        const c = ((j && j.summary) || {}).counts || {};
-        const map = { both: Number(c.both) || 0, shortlister: Number(c.shortlister) || 0, search: Number(c.search) || 0 };
-        if (!(map.both + map.shortlister + map.search)) return;   // hybrid search not run — leave sub-rows hidden
-        document.querySelectorAll("#funnel [data-src]").forEach(td => { td.textContent = fmtInt(map[td.dataset.src] || 0); });
-        document.querySelectorAll("#funnel tr[data-src-sub]").forEach(tr => { tr.hidden = false; });
+        const j = await (await fetch(`/api/categories/${CID}/ai-input-breakdown`, { headers: { "Accept": "application/json" } })).json();
+        if (!j || j.error || !Number(j.total)) return;   // no GOV.UK coverage yet — leave hidden
+        document.getElementById("ai-a").textContent = fmtInt(j.both);
+        document.getElementById("ai-b").textContent = fmtInt(j.shortlister);
+        document.getElementById("ai-c").textContent = fmtInt(j.govuk_only);
+        document.getElementById("ai-total").textContent = fmtInt(j.total);
+        const note = document.getElementById("ai-input-note");
+        if (note) note.innerHTML = `GOV.UK relevance floor = <span class="mono">${j.floor}</span> `
+          + `(<span class="mono">GOVUK_MIN_ES_SCORE</span>). From the latest GOV.UK coverage — re-save the shortlist to refresh it.`;
+        document.getElementById("ai-input").hidden = false;
       } catch (e) {}
     }
 
     if (window.AIPipeline) window.AIPipeline.init(CID, { onRuns: aiOnRuns });
     runFunnel();
-    loadSourceSubrows();
+    loadAiInput();
 
     // Refresh: clear the cached counts server-side, reset the rows, and re-run.
     document.getElementById("refresh-funnel").addEventListener("click", async e => {
@@ -300,7 +307,7 @@
         document.querySelectorAll("#funnel .timing").forEach(t => t.textContent = "");
         Object.keys(sankeyCounts).forEach(k => delete sankeyCounts[k]);
         await runFunnel();
-        loadSourceSubrows();
+        loadAiInput();
       } finally { btn.disabled = false; }
     });
   </script>

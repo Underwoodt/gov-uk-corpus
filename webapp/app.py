@@ -1698,6 +1698,40 @@ def api_augmented_pages(request: Request, cid: int, source: str = "", limit: int
         conn.close()
 
 
+@app.get("/api/categories/{cid}/ai-input-breakdown")
+def api_ai_input_breakdown(request: Request, cid: int):
+    """Model-1 breakdown of what a fresh run forwards to the AI (guc-0004c):
+      A = Both              — corpus keyword match that GOV.UK Search also returned
+      B = Shortlister only  — corpus keyword match GOV.UK did not return
+      C = GOV.UK only       — in the corpus and at/above the relevance floor
+    A and B are corpus keyword matches (always in corpus, floor NOT applied); C is the
+    GOV.UK-only top-up gated by the floor. total = A + B + C = the pages a fresh run evaluates."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    floor = _GOVUK_MIN_ES_SCORE
+    conn = connect()
+    try:
+        P = shortlist._P
+        J = "category_search_pages sp LEFT JOIN content c ON c.url = sp.url"
+        incorp = "c.is_redirect = 0 AND c.content_hash IS NOT NULL"
+
+        def cnt(where, args):
+            return dict(conn.execute(
+                f"SELECT COUNT(*) AS n FROM {J} WHERE {where}", tuple(args)).fetchone())["n"]
+
+        both = cnt(f"sp.category_id = {P} AND sp.source = {P} AND {incorp}", (cid, "both"))
+        shortlister = cnt(f"sp.category_id = {P} AND sp.source = {P} AND {incorp}", (cid, "shortlister"))
+        if floor and floor > 0:
+            govuk = cnt(f"sp.category_id = {P} AND sp.source = {P} AND {incorp} "
+                        f"AND (sp.es_score IS NULL OR sp.es_score >= {P})", (cid, "search", floor))
+        else:
+            govuk = cnt(f"sp.category_id = {P} AND sp.source = {P} AND {incorp}", (cid, "search"))
+        return JSONResponse({"both": both, "shortlister": shortlister, "govuk_only": govuk,
+                             "total": both + shortlister + govuk, "floor": floor})
+    finally:
+        conn.close()
+
+
 _GOVUK_FETCH_CAP = 300   # bound one fetch batch; re-run to continue if more remain
 
 
