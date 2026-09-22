@@ -55,7 +55,12 @@ DEFAULT_INCLUSION_TEMPLATE = (
     "Page content (may be truncated):\n{{BODY}}\n\n"
     "Decide whether to KEEP this page for the topic. A page is relevant if it "
     "concerns the topic in the sense described, even if only part of the page does. "
-    "Drop it if it is out of scope or matches an exclusion.\n\n"
+    "Mark it FALSE only when every mention is the wrong sense; otherwise keep it.\n\n"
+    "Scoring guidance (amount, not the boolean):\n"
+    "- 0.1–0.3: mentioned once or in passing — still TRUE if the sense is right\n"
+    "- 0.4–0.6: discussed to a moderate extent\n"
+    "- 0.7–1.0: a major focus of the page\n"
+    "- 0.0: every hit is the wrong sense — the only case for FALSE\n\n"
     "Return ONLY a JSON object, no prose:\n"
     '{"keep": true|false, "score": 0.0-1.0, "reason": "1-2 sentence explanation"}')
 
