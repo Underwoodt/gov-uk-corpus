@@ -55,6 +55,14 @@
           </tbody>
         </table>
       </div>
+      <div class="adjud" data-choice="{{ c.choice or '' }}">
+        <span class="adjud-q">Which is right?</span>
+        <div class="adjud-opts">
+          <button type="button" class="adjud-btn" data-choice="run1">Run 1</button>
+          <button type="button" class="adjud-btn" data-choice="run2">Run 2</button>
+          <button type="button" class="adjud-btn" data-choice="neither">Neither</button>
+        </div>
+      </div>
       <div class="verdict" data-has="{{ '1' if c.verdict else '0' }}">
         {% if c.verdict %}<div class="v-body">{{ c.verdict }}</div>
         {% else %}<button class="btn secondary-btn v-btn" type="button">Why did they differ?</button>
@@ -108,6 +116,19 @@
     {% if p2_cards %}{% for c in p2_cards %}{{ card(c, base_has_excl, other_has_excl) }}{% endfor %}
     {% else %}<p class="muted-sm">No exclusion-phase disagreements — where both runs ran Phase 2 they agreed.</p>{% endif %}
   </section>
+
+  <section class="suggest-block card">
+    <h2 style="margin-top:0;">Improve the prompt from your judgements</h2>
+    <p class="muted-sm" style="margin-top:2px;">Mark <strong>which run is right</strong> on the divergences above, then
+      generate suggested edits to this shortlist's <strong>include / exclude criteria</strong> that would reduce the
+      disagreement. Suggestions are copyable — nothing is applied automatically. Re-run and compare to see if divergence drops.</p>
+    <div class="suggest-actions">
+      <button class="btn suggest-btn" type="button">Suggest criteria improvements</button>
+      <span class="judged-note"><strong id="judged-n">{{ judged_count }}</strong> judged</span>
+      <span class="v-note">from {{ judge_label }}</span>
+    </div>
+    <div class="suggest-out" hidden></div>
+  </section>
   {% endif %}
 
   <style>
@@ -150,6 +171,24 @@
     .v-body { background:var(--surface-2); border-left:4px solid var(--blue); border-radius:0 var(--radius-sm) var(--radius-sm) 0;
       padding:10px 14px; font-size:14px; line-height:1.5; }
     .v-body.err { border-left-color:var(--red); }
+    .adjud { display:flex; align-items:center; gap:10px; margin-top:12px; flex-wrap:wrap; }
+    .adjud-q { font-size:13px; font-weight:700; color:var(--muted); }
+    .adjud-opts { display:inline-flex; gap:0; border:1px solid var(--border-mid); border-radius:999px; overflow:hidden; }
+    .adjud-btn { background:var(--surface); border:none; border-right:1px solid var(--border); padding:5px 14px;
+      font-size:13px; font-weight:600; color:var(--ink); cursor:pointer; }
+    .adjud-btn:last-child { border-right:none; }
+    .adjud-btn:hover { background:var(--surface-3); }
+    .adjud-btn.on { background:var(--blue); color:var(--white); }
+    .adjud-btn.on.neither { background:var(--muted); }
+    .suggest-block { padding:16px 18px; margin-top:22px; }
+    .suggest-actions { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:12px; }
+    .judged-note { font-size:14px; color:var(--ink); }
+    .suggest-out { margin-top:16px; }
+    .suggest-out pre { white-space:pre-wrap; word-wrap:break-word; background:var(--surface-2); border:1px solid var(--border);
+      border-left:4px solid var(--blue); border-radius:0 var(--radius-sm) var(--radius-sm) 0; padding:14px 16px;
+      font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; line-height:1.55; margin:0; }
+    .suggest-out.err pre { border-left-color:var(--red); }
+    .suggest-copy { margin-top:10px; }
   </style>
 
   <script>
@@ -183,6 +222,62 @@
     function bind() {
       document.querySelectorAll(".v-btn").forEach(b => { b.onclick = () => explain(b.closest(".diff-card")); });
     }
+
+    // ---- adjudication: mark which run is right ----
+    function paintAdjud(wrap) {
+      const choice = wrap.dataset.choice || "";
+      wrap.querySelectorAll(".adjud-btn").forEach(b => {
+        b.classList.toggle("on", b.dataset.choice === choice);
+        b.classList.toggle("neither", b.dataset.choice === "neither");
+      });
+    }
+    async function adjudicate(card, choice) {
+      const wrap = card.querySelector(".adjud");
+      const next = (wrap.dataset.choice === choice) ? "" : choice;   // click again to clear
+      const prev = wrap.dataset.choice;
+      wrap.dataset.choice = next; paintAdjud(wrap);                  // optimistic
+      try {
+        const r = await fetch(`/api/categories/${CID}/performance/diff/adjudicate`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ base: BASE, other: OTHER, url: card.dataset.url, phase: card.dataset.phase, choice: next })
+        });
+        const j = await r.json();
+        if (!r.ok || j.error) throw new Error(j.error || ("HTTP " + r.status));
+        const n = document.getElementById("judged-n"); if (n && j.judged != null) n.textContent = j.judged;
+      } catch (e) { wrap.dataset.choice = prev; paintAdjud(wrap); alert("Couldn't save: " + (e.message || e)); }
+    }
+    document.querySelectorAll(".adjud").forEach(paintAdjud);
+    document.querySelectorAll(".adjud-btn").forEach(b => {
+      b.onclick = () => adjudicate(b.closest(".diff-card"), b.dataset.choice);
+    });
+
+    // ---- suggest criteria improvements from the judged cases ----
+    const suggestBtn = document.querySelector(".suggest-btn");
+    if (suggestBtn) suggestBtn.onclick = async () => {
+      const out = document.querySelector(".suggest-out");
+      const judged = parseInt(document.getElementById("judged-n").textContent || "0", 10);
+      if (!judged) { alert("Mark which run is right on at least one divergence first."); return; }
+      suggestBtn.disabled = true; const label = suggestBtn.textContent; suggestBtn.textContent = "Thinking…";
+      out.hidden = false; out.className = "suggest-out"; out.innerHTML = `<p class="muted-sm">Generating from ${judged} judged case${judged > 1 ? "s" : ""}…</p>`;
+      try {
+        const r = await fetch(`/api/categories/${CID}/performance/diff/suggest`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ base: BASE, other: OTHER })
+        });
+        const j = await r.json();
+        if (!r.ok || j.error) throw new Error(j.error || ("HTTP " + r.status));
+        out.innerHTML = `<pre></pre><button class="btn secondary-btn suggest-copy" type="button">Copy suggestion</button>`
+          + `<span class="v-note">${escapeHtml(String(j.model || ""))} · ${j.judged} case${j.judged > 1 ? "s" : ""}</span>`;
+        out.querySelector("pre").textContent = j.suggestion || "";
+        out.querySelector(".suggest-copy").onclick = () => {
+          navigator.clipboard.writeText(j.suggestion || "");
+          out.querySelector(".suggest-copy").textContent = "Copied ✓";
+        };
+      } catch (e) {
+        out.className = "suggest-out err";
+        out.innerHTML = `<pre>Couldn't generate suggestions: ${escapeHtml(String(e.message || e))}</pre>`;
+      } finally { suggestBtn.disabled = false; suggestBtn.textContent = label; }
+    };
 
     document.querySelectorAll(".explain-all").forEach(btn => {
       btn.onclick = async () => {

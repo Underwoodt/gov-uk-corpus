@@ -2592,12 +2592,13 @@ def performance_diff_page(request: Request, cid: int, base: str = "", other: str
         "o_excl": _reasons_map(conn, o_excl and o_excl["run_id"]),
     }
     notes = _diff_notes_map(conn, base, other)
+    adj = _diff_adjud_map(conn, base, other)
 
     def card(url, phase):
         return {"url": url, "phase": phase,
                 "b_incl": maps["b_incl"].get(url), "b_excl": maps["b_excl"].get(url),
                 "o_incl": maps["o_incl"].get(url), "o_excl": maps["o_excl"].get(url),
-                "verdict": notes.get((url, phase))}
+                "verdict": notes.get((url, phase)), "choice": adj.get((url, phase))}
 
     p1 = (evaluate.run_disagreements(conn, b_incl["run_id"], o_incl["run_id"])
           if (b_incl and o_incl) else [])
@@ -2612,7 +2613,7 @@ def performance_diff_page(request: Request, cid: int, base: str = "", other: str
     ctxd = ctx(conn, request, category=category, base_head=base, other_head=other,
                base_incl=b_incl, base_excl=b_excl, other_incl=o_incl, other_excl=o_excl,
                base_has_excl=bool(b_excl), other_has_excl=bool(o_excl),
-               p1_cards=p1_cards, p2_cards=p2_cards, trials=trials,
+               p1_cards=p1_cards, p2_cards=p2_cards, trials=trials, judged_count=len(adj),
                judge_label=f"{judge.get('provider','')} / {judge.get('model','')}")
     resp = templates.TemplateResponse("performance_diff.html", ctxd)
     conn.close()
@@ -2708,6 +2709,140 @@ async def api_performance_diff_explain(request: Request, cid: int):
         conn.commit()
         return JSONResponse({"verdict": verdict, "model": res.get("actual_model"),
                              "cost": res.get("cost_usd")})
+    finally:
+        conn.close()
+
+
+# ---- Adjudication + prompt-improvement suggestions (guc-0019) ------------
+# The user marks which run got a disagreement right; those judgements feed an LLM that
+# proposes edits to THIS category's include/exclude criteria to reduce future divergence.
+def _ensure_diff_adjud(conn) -> None:
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS run_diff_adjud ("
+        "base_run text, other_run text, url text, phase text, "
+        "choice text, created_at text, "
+        "PRIMARY KEY (base_run, other_run, url, phase))")
+    conn.commit()
+
+
+def _diff_adjud_map(conn, base: str, other: str) -> dict:
+    """{(url, phase): choice} — choice in {run1, run2, neither}."""
+    _ensure_diff_adjud(conn)
+    P = shortlist._P
+    rows = conn.execute(
+        f"SELECT url, phase, choice FROM run_diff_adjud WHERE base_run = {P} AND other_run = {P}",
+        (base, other)).fetchall()
+    return {(r["url"], r["phase"]): r["choice"] for r in rows}
+
+
+@app.post("/api/categories/{cid}/performance/diff/adjudicate")
+async def api_performance_diff_adjudicate(request: Request, cid: int):
+    """Record (or clear) which run the user judges correct for one disagreement."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    body = await request.json()
+    base = str(body.get("base") or ""); other = str(body.get("other") or "")
+    url = str(body.get("url") or ""); phase = str(body.get("phase") or "")
+    choice = str(body.get("choice") or "")
+    if phase not in ("inclusion", "exclusion") or not (base and other and url):
+        return JSONResponse({"error": "bad request"}, status_code=400)
+    if choice and choice not in ("run1", "run2", "neither"):
+        return JSONResponse({"error": "bad choice"}, status_code=400)
+    conn = connect()
+    try:
+        _ensure_diff_adjud(conn)
+        P = shortlist._P
+        if not choice:   # empty choice clears the judgement
+            conn.execute(
+                f"DELETE FROM run_diff_adjud WHERE base_run = {P} AND other_run = {P} "
+                f"AND url = {P} AND phase = {P}", (base, other, url, phase))
+        else:
+            conn.execute(
+                f"INSERT INTO run_diff_adjud (base_run, other_run, url, phase, choice, created_at) "
+                f"VALUES ({P}, {P}, {P}, {P}, {P}, {P}) "
+                f"ON CONFLICT (base_run, other_run, url, phase) DO UPDATE SET "
+                f"choice = EXCLUDED.choice, created_at = EXCLUDED.created_at",
+                (base, other, url, phase, choice, db.now_iso()))
+        conn.commit()
+        judged = conn.execute(
+            f"SELECT COUNT(*) AS n FROM run_diff_adjud WHERE base_run = {P} AND other_run = {P}",
+            (base, other)).fetchone()["n"]
+        return JSONResponse({"ok": True, "judged": judged})
+    finally:
+        conn.close()
+
+
+@app.post("/api/categories/{cid}/performance/diff/suggest")
+async def api_performance_diff_suggest(request: Request, cid: int):
+    """From the adjudicated disagreements, ask the model for concrete edits to this category's
+    include/exclude criteria that would reduce divergence. Suggest-only — nothing is applied."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    body = await request.json()
+    base = str(body.get("base") or ""); other = str(body.get("other") or "")
+    if not (base and other):
+        return JSONResponse({"error": "bad request"}, status_code=400)
+    conn = connect()
+    try:
+        category = cat.get_category(conn, cid) or {}
+        adj = _diff_adjud_map(conn, base, other)
+        if not adj:
+            return JSONResponse({"error": "Judge at least one disagreement first "
+                                 "(mark which run got it right)."}, status_code=400)
+        b_incl, b_excl = _chain_of(conn, base)
+        o_incl, o_excl = _chain_of(conn, other)
+        run_of = {"inclusion": (b_incl, o_incl), "exclusion": (b_excl, o_excl)}
+        maps = {}
+        for ph, (br, orr) in run_of.items():
+            maps[("b", ph)] = _reasons_map(conn, br and br["run_id"])
+            maps[("o", ph)] = _reasons_map(conn, orr and orr["run_id"])
+
+        kd = lambda k: "KEEP" if k == 1 else ("DROP" if k == 0 else "—")
+        cases = []
+        for (url, ph), choice in sorted(adj.items()):
+            b = maps[("b", ph)].get(url) or {}
+            o = maps[("o", ph)].get(url) or {}
+            correct = {"run1": "Run 1", "run2": "Run 2", "neither": "NEITHER (both wrong)"}.get(choice, choice)
+            cases.append(
+                f"- PAGE: {url}\n"
+                f"  PHASE: {ph}\n"
+                f"  Run 1: {kd(b.get('keep'))} (score {b.get('score')}) — {b.get('reason') or '(none)'}\n"
+                f"  Run 2: {kd(o.get('keep'))} (score {o.get('score')}) — {o.get('reason') or '(none)'}\n"
+                f"  HUMAN SAYS CORRECT: {correct}")
+        cases_block = "\n".join(cases)
+
+        system = (
+            "You are a prompt engineer improving the INCLUDE and EXCLUDE criteria a team uses to shortlist "
+            "GOV.UK pages with an LLM. You are given the current criteria and a set of pages where two runs "
+            "DISAGREED, each labelled by a human with the correct decision. Propose concrete, minimal edits "
+            "to the INCLUDE and/or EXCLUDE criteria that would make future runs match the human labels and "
+            "reduce divergence — generalise, do not overfit to single pages or hard-code URLs. Prefer "
+            "clarifying ambiguous wording and adding explicit rules for the patterns you see. Only if a "
+            "problem clearly comes from the shared BASE TEMPLATE (not these criteria) may you note it "
+            "separately as advisory — do not rewrite the base template. "
+            "Reply in this structure, plain text (no code fences):\n"
+            "DIAGNOSIS: 1–3 sentences on the pattern behind the disagreements.\n"
+            "INCLUDE CRITERIA — suggested: the full revised include criteria, ready to paste (or 'no change').\n"
+            "EXCLUDE CRITERIA — suggested: the full revised exclude criteria, ready to paste (or 'no change').\n"
+            "WHY: bullet points tying each edit to the judged cases.\n"
+            "BASE TEMPLATE NOTE (optional): advisory only.")
+        prompt = (
+            f"TOPIC: {category.get('display_name') or ''}\n\n"
+            f"CURRENT INCLUDE CRITERIA:\n{category.get('inclusion_context') or '(none)'}\n\n"
+            f"CURRENT EXCLUDE CRITERIA:\n{category.get('exclusion_context') or '(none)'}\n\n"
+            f"JUDGED DISAGREEMENTS ({len(cases)}):\n{cases_block}\n\n"
+            "Propose the criteria edits.")
+
+        cfg = _ai_config_for_phase(conn, "exclusion")
+        res = await run_in_threadpool(_ai_chat, cfg, system,
+                                      [{"role": "user", "content": prompt}], 1500)
+        if res.get("error") or res.get("fatal"):
+            return JSONResponse({"error": res.get("error") or "AI error"}, status_code=502)
+        return JSONResponse({"suggestion": (res.get("reply") or "").strip(),
+                             "judged": len(cases), "model": res.get("actual_model"),
+                             "cost": res.get("cost_usd"),
+                             "current_include": category.get("inclusion_context") or "",
+                             "current_exclude": category.get("exclusion_context") or ""})
     finally:
         conn.close()
 
