@@ -52,6 +52,12 @@
         <tr data-metric="cmp-keep"><td>Decisions Keep (Sum, shared pages)</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="cmp-drop"><td>Decisions Drop (Sum, shared pages)</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="cmp-disagree"><td>Decisions disagree with Run 1 (Sum)</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr><td colspan="4" style="font-weight:700;padding-top:18px;border-top:2px solid var(--border-mid);">Run configuration</td></tr>
+        <tr data-metric="cfg-variant"><td>Prompt variant</td><td></td><td></td><td></td></tr>
+        <tr data-metric="cfg-concurrency"><td>Concurrency</td><td></td><td></td><td></td></tr>
+        <tr data-metric="cfg-caching"><td>Caching</td><td></td><td></td><td></td></tr>
+        <tr data-metric="cfg-version"><td>Prompt version</td><td></td><td></td><td></td></tr>
+        <tr data-metric="cfg-bodylimit"><td>Body limit (chars)</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
       </tbody>
     </table>
   </div>
@@ -74,7 +80,7 @@
       const runId = document.getElementById(`pick-${col}`).value;
       const r = byId[runId];
       const set = (metric, v) => { cell(metric, col).textContent = v; };
-      if (!r) { ["name","datetime","phase","model","trial","total","avgcost","avgtime","intokens","hittokens","misstokens","outtokens","totalcost","totaltime","elapsed","elapsed-p1","elapsed-p2"].forEach(m => set(m, "—")); return; }
+      if (!r) { ["name","datetime","phase","model","trial","total","avgcost","avgtime","intokens","hittokens","misstokens","outtokens","totalcost","totaltime","elapsed","elapsed-p1","elapsed-p2","cfg-variant","cfg-concurrency","cfg-caching","cfg-version","cfg-bodylimit"].forEach(m => set(m, "—")); return; }
       const pages = r.pages || 0;
       const secsTotal = (r.total_ms || 0) / 1000;
       set("name", r.name || "—");
@@ -104,6 +110,12 @@
       const parts = [wc(incl), wc(excl)].filter(v => v != null && isFinite(v) && v >= 0);
       set("elapsed", parts.length ? fmtMS(parts.reduce((a, b) => a + b, 0))
                                   : (r.finished_at ? "—" : "running"));
+      const tr = r.trial || {};
+      set("cfg-variant", tr.variant || "current");
+      set("cfg-concurrency", (tr.concurrency || 1) + "×");
+      set("cfg-caching", tr.caching ? "on" : "off");
+      set("cfg-version", (tr.template_version != null) ? tr.template_version : "—");
+      set("cfg-bodylimit", tr.body_limit ? Number(tr.body_limit).toLocaleString() : "—");
     }
     const fmtInt = n => Number(n || 0).toLocaleString();
 

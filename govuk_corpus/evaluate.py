@@ -593,7 +593,9 @@ def list_runs(conn, category_id: int) -> List[dict]:
                 s = json.loads(spec)
                 d["trial"] = {"variant": s.get("prompt_variant") or "current",
                               "concurrency": int(s.get("concurrency") or 1),
-                              "caching": bool(s.get("caching"))}
+                              "caching": bool(s.get("caching")),
+                              "template_version": s.get("template_version"),
+                              "body_limit": s.get("body_limit")}
             except (ValueError, TypeError):
                 pass
     return rows
