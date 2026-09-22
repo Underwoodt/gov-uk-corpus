@@ -157,10 +157,16 @@
       <p id="ex-prompt-status" class="secondary"><span class="spinner"></span> Loading…</p>
       <div id="ex-prompt-body" hidden>
         <p id="ex-prompt-sample" class="secondary" style="margin:0 0 12px;"></p>
-        <h3 style="margin:14px 0 6px;">Phase 1 — Inclusion <span id="ex-incl-tag" class="secondary" style="font-size:13px;font-weight:400;"></span></h3>
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:14px 0 6px;">
+          <h3 style="margin:0;">Phase 1 — Inclusion <span id="ex-incl-tag" class="secondary" style="font-size:13px;font-weight:400;"></span></h3>
+          <button type="button" class="btn secondary-btn ex-copy" data-target="ex-prompt-inclusion" style="padding:4px 12px;font-size:13px;">Copy</button>
+        </div>
         <pre class="mono" id="ex-prompt-inclusion" style="white-space:pre-wrap;word-break:break-word;font-size:13px;
           background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin:0;"></pre>
-        <h3 style="margin:20px 0 6px;">Phase 2 — Exclusion <span id="ex-excl-tag" class="secondary" style="font-size:13px;font-weight:400;"></span></h3>
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:20px 0 6px;">
+          <h3 style="margin:0;">Phase 2 — Exclusion <span id="ex-excl-tag" class="secondary" style="font-size:13px;font-weight:400;"></span></h3>
+          <button type="button" class="btn secondary-btn ex-copy" data-target="ex-prompt-exclusion" style="padding:4px 12px;font-size:13px;">Copy</button>
+        </div>
         <pre class="mono" id="ex-prompt-exclusion" style="white-space:pre-wrap;word-break:break-word;font-size:13px;
           background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin:0;"></pre>
       </div>
@@ -282,6 +288,28 @@
           statusEl.hidden = true;
           document.getElementById("ex-prompt-body").hidden = false;
         } catch (e) { statusEl.textContent = "Could not load the example prompts."; loaded = false; }
+      });
+
+      // Copy a prompt block to the clipboard (with a select+execCommand fallback).
+      document.querySelectorAll(".ex-copy").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const pre = document.getElementById(btn.dataset.target);
+          const text = pre ? pre.textContent : "";
+          if (!text) return;
+          const label = btn.dataset.label || (btn.dataset.label = btn.textContent);
+          let ok = false;
+          try { await navigator.clipboard.writeText(text); ok = true; }
+          catch (e) {
+            try {
+              const r = document.createRange(); r.selectNodeContents(pre);
+              const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+              ok = document.execCommand("copy"); sel.removeAllRanges();
+            } catch (e2) { ok = false; }
+          }
+          btn.textContent = ok ? "Copied ✓" : "Copy failed";
+          btn.disabled = true;
+          setTimeout(() => { btn.textContent = label; btn.disabled = false; }, 1200);
+        });
       });
     })();
   </script>
