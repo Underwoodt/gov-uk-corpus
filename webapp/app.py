@@ -2034,6 +2034,7 @@ def _run_evaluation(cid: int, limit: int) -> dict:
                     excfg = _ai_config_for_phase(conn, evaluate.PHASE_EXCLUSION)
                     new_id = evaluate.create_run(conn, cid, excfg["model"], excfg["provider"],
                                                  phase=evaluate.PHASE_EXCLUSION, source_run_id=run_id,
+                                                 name=run.get("name"),   # a run's name spans both phases
                                                  prompt_spec=_prompt_spec_json(conn, cid, evaluate.PHASE_EXCLUSION,
                                                                                _run_trial(conn, run_id)))
                     settings.set_setting(conn, f"active_run_{cid}", new_id)
@@ -3211,6 +3212,7 @@ async def api_continue_run(request: Request, cid: int, run_id: str):
             excfg = _ai_config_for_phase(conn, evaluate.PHASE_EXCLUSION)
             new_id = evaluate.create_run(conn, cid, excfg["model"], excfg["provider"],
                                          phase=evaluate.PHASE_EXCLUSION, source_run_id=incl["run_id"],
+                                         name=incl.get("name"),   # a run's name spans both phases
                                          prompt_spec=_prompt_spec_json(conn, cid, evaluate.PHASE_EXCLUSION,
                                                                        _run_trial(conn, incl["run_id"])))
             settings.set_setting(conn, f"active_run_{cid}", new_id)

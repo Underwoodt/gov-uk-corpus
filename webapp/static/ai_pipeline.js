@@ -132,30 +132,49 @@
     }
     const table = $("runs-table"), tbody = table.querySelector("tbody");
     tbody.innerHTML = "";
-    for (const r of j.runs) {
+    // A run is the whole pipeline: fold each Phase-2 (exclusion) into its Phase-1 (inclusion),
+    // so the list shows ONE row per run — its name, and the pipeline outcome across both phases.
+    const chains = j.runs.filter(r => !r.source_run_id).map(incl => {
+      const excl = j.runs.find(x => x.source_run_id === incl.run_id) || null;
+      return { incl, excl, phases: excl ? [incl, excl] : [incl] };
+    });
+    const sumF = (ph, f) => ph.reduce((a, x) => a + (Number(x[f]) || 0), 0);
+    const chainWall = (ph) => {
+      const fins = ph.map(x => x.finished_at).filter(Boolean);
+      if (fins.length !== ph.length) return "—";                  // a phase hasn't finished
+      const starts = ph.map(x => x.started_at).filter(Boolean).sort();
+      return fmtElapsed(starts[0], fins.sort().slice(-1)[0]);
+    };
+    for (const c of chains) {
+      const { incl, excl, phases } = c;
+      const tail = excl || incl;                                  // the phase "Execute" continues
+      const isActive = phases.some(p => p.run_id === activeRun);
+      const chip = phases.some(p => p.alive) ? ' <span class="run-chip running" title="A process is evaluating this run">● running</span>'
+                 : phases.some(p => p.stalled) ? ' <span class="run-chip stalled" title="Marked running but no process is working it">⚠ stalled</span>' : '';
+      const phaseNote = excl ? ` <span class="pg-sub">(incl ${fmtInt(incl.pages)} → excl ${fmtInt(excl.pages)})</span>` : '';
       const tr = document.createElement("tr");
-      if (r.run_id === activeRun) tr.style.fontWeight = "700";
+      if (isActive) tr.style.fontWeight = "700";
       tr.innerHTML =
-        `<td><input type="radio" name="active-run" class="active-run" data-run="${r.run_id}" ` +
-        `${r.run_id === activeRun ? "checked" : ""} title="Make this the active run" ` +
+        `<td><input type="radio" name="active-run" class="active-run" data-run="${tail.run_id}" ` +
+        `${isActive ? "checked" : ""} title="Make this run active" ` +
         `style="width:18px;height:18px;accent-color:var(--black);"></td>` +
-        `<td><a class="name-link" href="/categories/${CID}/runs/${r.run_id}" title="Open run details">${esc(r.name || r.run_id)}</a>${runChip(r)}</td>` +
-        `<td>${fmtDate(r.started_at)}</td>` +
-        `<td class="num timing">${fmtElapsed(r.started_at, r.finished_at)}</td>` +
-        `<td class="num">${pagesCell(r)}</td>` +
-        `<td class="num">${fmtInt(r.kept)}</td>` +
-        `<td class="num">${fmtInt(r.dropped)}</td>` +
-        `<td class="num">${fmtInt(r.in_tokens)}</td>` +
-        `<td class="num">${fmtInt(r.out_tokens)}</td>` +
-        `<td class="num">$${(r.cost || 0).toFixed(2)}</td>` +
-        `<td><a href="#" class="del-run" data-run="${r.run_id}" data-pages="${r.pages || 0}" style="color:#d4351c;">Delete</a></td>`;
+        `<td><a class="name-link" href="/categories/${CID}/runs/${incl.run_id}" title="Open run details">${esc(incl.name || incl.run_id)}</a>${chip}</td>` +
+        `<td>${fmtDate(incl.started_at)}</td>` +
+        `<td class="num timing">${chainWall(phases)}</td>` +
+        `<td class="num">${fmtInt(incl.pages)}${phaseNote}</td>` +
+        `<td class="num">${fmtInt((excl || incl).kept)}</td>` +
+        `<td class="num">${fmtInt(sumF(phases, "dropped"))}</td>` +
+        `<td class="num">${fmtInt(sumF(phases, "in_tokens"))}</td>` +
+        `<td class="num">${fmtInt(sumF(phases, "out_tokens"))}</td>` +
+        `<td class="num">$${sumF(phases, "cost").toFixed(2)}</td>` +
+        `<td><a href="#" class="del-run" data-runs="${phases.map(p => p.run_id).join(",")}" data-pages="${sumF(phases, "pages")}" style="color:#d4351c;">Delete</a></td>`;
       tbody.appendChild(tr);
     }
-    table.hidden = j.runs.length === 0;
-    $("runs-empty").hidden = j.runs.length !== 0;
+    table.hidden = chains.length === 0;
+    $("runs-empty").hidden = chains.length !== 0;
 
     table.querySelectorAll("a.del-run").forEach(a =>
-      a.addEventListener("click", e => { e.preventDefault(); deleteRun(a.dataset.run, a.dataset.pages); }));
+      a.addEventListener("click", e => { e.preventDefault(); deleteRun(a.dataset.runs, a.dataset.pages); }));
     const lockRadios = !!($("stop-bg") && !$("stop-bg").hidden);
     table.querySelectorAll("input.active-run").forEach(radio => {
       radio.disabled = lockRadios;
@@ -185,12 +204,16 @@
       $("new-run-status").textContent = "New run created" + note + " — switch to Active Run to execute it.";
     } finally { btn.disabled = false; }
   }
-  async function deleteRun(runId, pages) {
-    if (!confirm(`Delete this run and its ${Number(pages).toLocaleString()} page decision(s)?\n\n`
+  async function deleteRun(runIds, pages) {
+    const ids = String(runIds || "").split(",").filter(Boolean);
+    if (!ids.length) return;
+    if (!confirm(`Delete this run (all phases) and its ${Number(pages).toLocaleString()} page decision(s)?\n\n`
       + `This permanently removes the run's keep/drop scores and its totals. It cannot be undone, `
       + `and re-creating them means re-running the AI (which costs money).\n\nYour daily spend/budget ledger is NOT affected.`)) return;
-    const res = await fetch(`/api/categories/${CID}/runs/${runId}/delete`, { method: "POST" });
-    if (!res.ok) { alert("Delete failed."); return; }
+    for (const id of ids) {
+      const res = await fetch(`/api/categories/${CID}/runs/${id}/delete`, { method: "POST" });
+      if (!res.ok) { alert("Delete failed."); break; }
+    }
     await loadRuns();
   }
 
