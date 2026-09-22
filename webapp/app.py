@@ -2505,6 +2505,210 @@ def performance_page(request: Request, cid: int):
     return resp
 
 
+# ---- Run-vs-baseline disagreement drilldown (guc-0019) -------------------
+# "Why did the runs differ?" — the per-page detail behind the performance page's
+# "Decisions disagree with Run 1" count, per phase, with an on-demand LLM verdict.
+_DIFF_NOTES_READY = False
+
+
+def _ensure_diff_notes(conn) -> None:
+    """Create the cache table for LLM difference verdicts (idempotent, PG + sqlite)."""
+    global _DIFF_NOTES_READY
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS run_diff_notes ("
+        "base_run text, other_run text, url text, phase text, "
+        "verdict text, model text, created_at text, "
+        "PRIMARY KEY (base_run, other_run, url, phase))")
+    conn.commit()
+    _DIFF_NOTES_READY = True
+
+
+def _chain_of(conn, head_run_id: str):
+    """(inclusion_row, exclusion_row) for a chain identified by its Phase-1 run_id."""
+    P = shortlist._P
+    if not head_run_id:
+        return None, None
+    r = conn.execute(f"SELECT * FROM evaluation_runs WHERE run_id = {P}", (head_run_id,)).fetchone()
+    incl = dict(r) if r else None
+    r = conn.execute(
+        f"SELECT * FROM evaluation_runs WHERE source_run_id = {P} AND phase = 'exclusion' "
+        f"ORDER BY started_at DESC LIMIT 1", (head_run_id,)).fetchone()
+    excl = dict(r) if r else None
+    return incl, excl
+
+
+def _reasons_map(conn, run_id) -> dict:
+    """{url: {keep, score, reason, raw_reply}} for one phase-run."""
+    if not run_id:
+        return {}
+    P = shortlist._P
+    rows = conn.execute(
+        f"SELECT url, keep, score, reason, raw_reply FROM evaluation_results WHERE run_id = {P}",
+        (run_id,)).fetchall()
+    return {r["url"]: dict(r) for r in rows}
+
+
+def _diff_notes_map(conn, base: str, other: str) -> dict:
+    """{(url, phase): verdict} for cached difference verdicts of this run pair."""
+    _ensure_diff_notes(conn)
+    P = shortlist._P
+    rows = conn.execute(
+        f"SELECT url, phase, verdict FROM run_diff_notes WHERE base_run = {P} AND other_run = {P}",
+        (base, other)).fetchall()
+    return {(r["url"], r["phase"]): r["verdict"] for r in rows}
+
+
+def _diff_judge_config(conn, run_row) -> dict:
+    """Config for the LLM that adjudicates why runs differ — the SAME model the given run used
+    (its Phase-2/exclusion model), falling back to the configured exclusion-phase model."""
+    if run_row and run_row.get("model"):
+        m = ai_models.find(conn, run_row.get("provider"), run_row.get("model"))
+        if m:
+            return _config_from_model(conn, m)
+    return _ai_config_for_phase(conn, "exclusion")
+
+
+@app.get("/categories/{cid}/performance/diff", response_class=HTMLResponse)
+def performance_diff_page(request: Request, cid: int, base: str = "", other: str = ""):
+    """Drilldown: pages where a run disagrees with the baseline (Run 1), per phase, with both
+    runs' inclusion & exclusion reasons side by side and an on-demand LLM difference verdict."""
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    category = cat.get_category(conn, cid)
+    if not category:
+        conn.close()
+        return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
+    category["display_name"] = cat.display_name(category)
+
+    b_incl, b_excl = _chain_of(conn, base)
+    o_incl, o_excl = _chain_of(conn, other)
+    maps = {
+        "b_incl": _reasons_map(conn, b_incl and b_incl["run_id"]),
+        "b_excl": _reasons_map(conn, b_excl and b_excl["run_id"]),
+        "o_incl": _reasons_map(conn, o_incl and o_incl["run_id"]),
+        "o_excl": _reasons_map(conn, o_excl and o_excl["run_id"]),
+    }
+    notes = _diff_notes_map(conn, base, other)
+
+    def card(url, phase):
+        return {"url": url, "phase": phase,
+                "b_incl": maps["b_incl"].get(url), "b_excl": maps["b_excl"].get(url),
+                "o_incl": maps["o_incl"].get(url), "o_excl": maps["o_excl"].get(url),
+                "verdict": notes.get((url, phase))}
+
+    p1 = (evaluate.run_disagreements(conn, b_incl["run_id"], o_incl["run_id"])
+          if (b_incl and o_incl) else [])
+    p2 = (evaluate.run_disagreements(conn, b_excl["run_id"], o_excl["run_id"])
+          if (b_excl and o_excl) else [])
+    p1_cards = [card(r["url"], "inclusion") for r in p1]
+    p2_cards = [card(r["url"], "exclusion") for r in p2]
+
+    trials = {"base": _run_trial(conn, b_incl["run_id"]) if b_incl else {},
+              "other": _run_trial(conn, o_incl["run_id"]) if o_incl else {}}
+    judge = _diff_judge_config(conn, o_excl or o_incl)
+    ctxd = ctx(conn, request, category=category, base_head=base, other_head=other,
+               base_incl=b_incl, base_excl=b_excl, other_incl=o_incl, other_excl=o_excl,
+               p1_cards=p1_cards, p2_cards=p2_cards, trials=trials,
+               judge_label=f"{judge.get('provider','')} / {judge.get('model','')}")
+    resp = templates.TemplateResponse("performance_diff.html", ctxd)
+    conn.close()
+    return resp
+
+
+@app.post("/api/categories/{cid}/performance/diff/explain")
+async def api_performance_diff_explain(request: Request, cid: int):
+    """Generate (and cache) an LLM verdict on why the baseline and other run disagreed on one
+    page in one phase. Uses the same model the other run used, so it 'speaks the run's language'."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    body = await request.json()
+    base = str(body.get("base") or ""); other = str(body.get("other") or "")
+    url = str(body.get("url") or ""); phase = str(body.get("phase") or "")
+    if phase not in ("inclusion", "exclusion") or not (base and other and url):
+        return JSONResponse({"error": "bad request"}, status_code=400)
+    conn = connect()
+    try:
+        _ensure_diff_notes(conn)
+        P = shortlist._P
+        row = conn.execute(
+            f"SELECT verdict FROM run_diff_notes WHERE base_run = {P} AND other_run = {P} "
+            f"AND url = {P} AND phase = {P}", (base, other, url, phase)).fetchone()
+        if row and row["verdict"]:
+            return JSONResponse({"verdict": row["verdict"], "cached": True})
+
+        category = cat.get_category(conn, cid) or {}
+        b_incl, b_excl = _chain_of(conn, base)
+        o_incl, o_excl = _chain_of(conn, other)
+        b_run = b_incl if phase == "inclusion" else b_excl
+        o_run = o_incl if phase == "inclusion" else o_excl
+        if not (b_run and o_run):
+            return JSONResponse({"error": "that phase is not present in both runs"}, status_code=400)
+
+        br = _reasons_map(conn, b_run["run_id"]).get(url) or {}
+        orr = _reasons_map(conn, o_run["run_id"]).get(url) or {}
+        # cross-phase context (the other phase's reason, when the page reached it)
+        b_incl_r = (_reasons_map(conn, b_incl["run_id"]).get(url) if b_incl else None) or {}
+        o_incl_r = (_reasons_map(conn, o_incl["run_id"]).get(url) if o_incl else None) or {}
+        b_excl_r = (_reasons_map(conn, b_excl["run_id"]).get(url) if b_excl else None) or {}
+        o_excl_r = (_reasons_map(conn, o_excl["run_id"]).get(url) if o_excl else None) or {}
+
+        kd = lambda k: "KEEP" if k == 1 else ("DROP" if k == 0 else "—")
+        t_base = _run_trial(conn, b_incl["run_id"]) if b_incl else {}
+        t_other = _run_trial(conn, o_incl["run_id"]) if o_incl else {}
+
+        def cfg_line(t):
+            return (f"variant={t.get('variant', 'current')}, concurrency={t.get('concurrency', 1)}, "
+                    f"caching={'on' if t.get('caching') else 'off'}, "
+                    f"prompt_version={t.get('template_version', '?')}, "
+                    f"body_limit={t.get('body_limit', '?')}")
+
+        phase_word = "INCLUSION (Phase 1)" if phase == "inclusion" else "EXCLUSION (Phase 2)"
+        system = (
+            "You are an evaluation analyst comparing two automated runs that each decided whether a "
+            "GOV.UK page belongs in a shortlist. Explain, concisely and specifically, WHY the two runs "
+            "reached different decisions on this page for the phase in question. Attribute the "
+            "difference to a concrete cause: a genuinely borderline page, a difference in how each run "
+            "read the criteria, or a run-configuration difference (prompt variant/version, body limit). "
+            "Do NOT re-judge the page or say which run is 'correct'. 2–4 sentences, plain English.")
+        prompt = (
+            f"TOPIC: {category.get('display_name') or ''}\n"
+            f"INCLUDE CRITERIA: {category.get('inclusion_context') or '(none)'}\n"
+            f"EXCLUDE CRITERIA: {category.get('exclusion_context') or '(none)'}\n\n"
+            f"PAGE: {url}\n\n"
+            f"PHASE IN QUESTION: {phase_word}\n\n"
+            f"RUN 1 (baseline) — config: {cfg_line(t_base)}\n"
+            f"  {phase_word} decision: {kd(br.get('keep'))}\n"
+            f"  {phase_word} reason: {br.get('reason') or '(none recorded)'}\n"
+            f"  Inclusion reason: {b_incl_r.get('reason') or '(n/a)'}\n"
+            f"  Exclusion reason: {b_excl_r.get('reason') or '(n/a — not reached)'}\n\n"
+            f"RUN 2 — config: {cfg_line(t_other)}\n"
+            f"  {phase_word} decision: {kd(orr.get('keep'))}\n"
+            f"  {phase_word} reason: {orr.get('reason') or '(none recorded)'}\n"
+            f"  Inclusion reason: {o_incl_r.get('reason') or '(n/a)'}\n"
+            f"  Exclusion reason: {o_excl_r.get('reason') or '(n/a — not reached)'}\n\n"
+            "Why did Run 1 and Run 2 differ on this page in this phase?")
+
+        judge = _diff_judge_config(conn, o_excl or o_incl)
+        res = await run_in_threadpool(_ai_chat, judge, system,
+                                      [{"role": "user", "content": prompt}], 700)
+        if res.get("error") or res.get("fatal"):
+            return JSONResponse({"error": res.get("error") or "AI error"}, status_code=502)
+        verdict = (res.get("reply") or "").strip()
+        conn.execute(
+            f"INSERT INTO run_diff_notes (base_run, other_run, url, phase, verdict, model, created_at) "
+            f"VALUES ({P}, {P}, {P}, {P}, {P}, {P}, {P}) "
+            f"ON CONFLICT (base_run, other_run, url, phase) DO UPDATE SET "
+            f"verdict = EXCLUDED.verdict, model = EXCLUDED.model, created_at = EXCLUDED.created_at",
+            (base, other, url, phase, verdict, res.get("actual_model") or judge.get("model"),
+             db.now_iso()))
+        conn.commit()
+        return JSONResponse({"verdict": verdict, "model": res.get("actual_model"),
+                             "cost": res.get("cost_usd")})
+    finally:
+        conn.close()
+
+
 @app.get("/categories/{cid}/url-check", response_class=HTMLResponse)
 def url_check_page(request: Request, cid: int):
     """Check a set of pasted URLs against this category: in the corpus, active, and in the

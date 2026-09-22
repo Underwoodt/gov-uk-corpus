@@ -237,9 +237,17 @@
         if (!base || !other) { setAll("—"); continue; }
         const d1 = await disagreeCount(base.incl && base.incl.run_id, other.incl && other.incl.run_id);
         const d2 = await disagreeCount(base.excl && base.excl.run_id, other.excl && other.excl.run_id);
-        cell("dis-p1", col).textContent = d1 == null ? "—" : fmtInt(d1);
-        cell("dis-p2", col).textContent = d2 == null ? "—" : fmtInt(d2);
-        cell("dis", col).textContent = (d1 == null && d2 == null) ? "—" : fmtInt((d1 || 0) + (d2 || 0));
+        // Link a non-zero figure to the drilldown that shows WHICH pages differ and why.
+        const bh = base.incl && base.incl.run_id, oh = other.incl && other.incl.run_id;
+        const link = v => {
+          if (v == null) return "—";
+          if (!v || !bh || !oh) return fmtInt(v);
+          const href = `/categories/${CID}/performance/diff?base=${encodeURIComponent(bh)}&other=${encodeURIComponent(oh)}`;
+          return `<a href="${href}" title="See which pages differ from Run 1, and why">${fmtInt(v)}</a>`;
+        };
+        cell("dis-p1", col).innerHTML = link(d1);
+        cell("dis-p2", col).innerHTML = link(d2);
+        cell("dis", col).innerHTML = (d1 == null && d2 == null) ? "—" : link((d1 || 0) + (d2 || 0));
       }
     }
     function renderAll() { [0, 1, 2].forEach(renderColumn); renderComparisons(); }

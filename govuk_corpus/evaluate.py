@@ -861,6 +861,23 @@ def compare(conn, base_run: str, other_run: str) -> Dict[str, int]:
             "dropped": row["dropped"] or 0, "disagree": row["disagree"] or 0}
 
 
+def run_disagreements(conn, base_run: str, other_run: str) -> List[dict]:
+    """Over pages evaluated in BOTH runs, the rows where the keep/drop decision differs —
+    the per-page detail behind compare()'s `disagree` count. Returns each URL with both runs'
+    keep, reason and raw_reply so the difference can be shown (and explained) side by side."""
+    sql = (
+        "SELECT b.url AS url, b.keep AS base_keep, b.score AS base_score, "
+        "b.reason AS base_reason, b.raw_reply AS base_raw, "
+        "o.keep AS other_keep, o.score AS other_score, "
+        "o.reason AS other_reason, o.raw_reply AS other_raw "
+        "FROM evaluation_results b JOIN evaluation_results o ON o.url = b.url "
+        f"WHERE b.run_id = {_P} AND o.run_id = {_P} AND "
+        "(CASE WHEN b.keep = o.keep THEN 0 "
+        "      WHEN b.keep IS NULL AND o.keep IS NULL THEN 0 ELSE 1 END) = 1 "
+        "ORDER BY b.url")
+    return [dict(r) for r in conn.execute(sql, (base_run, other_run)).fetchall()]
+
+
 def run_results_query(run_id: str, keep: Optional[int] = None, limit: Optional[int] = None,
                       source_run_id: Optional[str] = None):
     """(sql, params) for a run's per-page results — so the page can show the SQL it ran. When
