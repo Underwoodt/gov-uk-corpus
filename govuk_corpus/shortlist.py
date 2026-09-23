@@ -57,6 +57,7 @@ def build_query(
     match: str = "all",                 # all | any  (how to combine keywords)
     include_redirects: bool = False,
     include_unfetched: bool = False,    # include rows we have no body for (content_hash NULL)
+    include_withdrawn: bool = False,    # include pages GOV.UK has withdrawn (content.withdrawn = 1)
     count_only: bool = False,
     membership: bool = False,           # (content_id, MIN(url)) per distinct page (shortlist table)
     keyword_hits: bool = False,         # with membership: also emit kw_i (1/0) per keyword matched
@@ -103,6 +104,10 @@ def build_query(
         # migrated data (old crawler stored NULL status for many fully-fetched pages),
         # so gate on content presence, matching the dashboard's "fetched" definition.
         where.append("c.content_hash IS NOT NULL")
+    if not include_withdrawn:
+        # Withdrawn pages keep their title/body/keywords so they'd otherwise match the filter,
+        # but they aren't live guidance — exclude them from every shortlist by default.
+        where.append("COALESCE(c.withdrawn, 0) = 0")
 
     where_sql = (" WHERE " + " AND ".join(where)) if where else ""
     # content_id is GOV.UK's real unique id, and many urls (aliases/redirects) map to one.

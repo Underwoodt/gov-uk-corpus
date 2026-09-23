@@ -21,6 +21,10 @@ class TestBuildQuery(unittest.TestCase):
         self.assertNotIn("JOIN page_organisations", sql)
         self.assertEqual(params, [])
 
+    def test_defaults_exclude_withdrawn(self):
+        self.assertIn("COALESCE(c.withdrawn, 0) = 0", build_query()[0])
+        self.assertNotIn("withdrawn", build_query(include_withdrawn=True)[0])
+
     def test_org_exists_and_params(self):
         sql, params = build_query(organisations=["environment-agency"])
         self.assertIn("EXISTS (SELECT 1 FROM page_organisations", sql)
