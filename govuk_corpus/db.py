@@ -39,7 +39,8 @@ def init_db(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE evaluation_runs ADD COLUMN {col} {typ}")
     # GOV.UK Search view_count + the date it was collected (per-page popularity).
     have_content = {r[1] for r in conn.execute("PRAGMA table_info(content)")}
-    for col, typ in (("view_count", "INTEGER"), ("view_count_updated", "TEXT")):
+    for col, typ in (("view_count", "INTEGER"), ("view_count_updated", "TEXT"),
+                     ("view_count_source", "TEXT")):
         if col not in have_content:
             conn.execute(f"ALTER TABLE content ADD COLUMN {col} {typ}")
     conn.commit()

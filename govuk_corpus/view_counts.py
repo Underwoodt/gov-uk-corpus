@@ -92,7 +92,8 @@ def collect_for_urls(conn, urls: Iterable[str], *, when: Optional[str] = None,
             link_to_url.setdefault(link, u)
 
     direct = fetch_view_counts(link_to_url.keys())          # pass 1: the page's own count
-    resolved: Dict[str, int] = {u: direct[l] for l, u in link_to_url.items() if l in direct}
+    # url -> (view_count, source): 'page' = the page's own count, 'parent' = inherited.
+    resolved: Dict[str, tuple] = {u: (direct[l], "page") for l, u in link_to_url.items() if l in direct}
 
     inherited = 0
     if parent_fallback:
@@ -109,13 +110,14 @@ def collect_for_urls(conn, urls: Iterable[str], *, when: Optional[str] = None,
             for p, kids in parents.items():
                 if p in pcounts:
                     for u in kids:
-                        resolved[u] = pcounts[p]
+                        resolved[u] = (pcounts[p], "parent")
                         inherited += 1
 
-    for u, vc in resolved.items():
+    for u, (vc, source) in resolved.items():
         conn.execute(
-            f"UPDATE content SET view_count = {_P}, view_count_updated = {_P} WHERE url = {_P}",
-            (vc, when, u))
+            f"UPDATE content SET view_count = {_P}, view_count_updated = {_P}, "
+            f"view_count_source = {_P} WHERE url = {_P}",
+            (vc, when, source, u))
     conn.commit()
     return {"requested": len(link_to_url), "direct": len(direct), "inherited": inherited,
             "updated": len(resolved), "date": when}

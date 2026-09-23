@@ -62,6 +62,7 @@ def init_db(conn) -> None:
     # GOV.UK Search view_count (~14-day pageviews) + the date it was collected.
     conn.execute("ALTER TABLE content ADD COLUMN IF NOT EXISTS view_count integer")
     conn.execute("ALTER TABLE content ADD COLUMN IF NOT EXISTS view_count_updated text")
+    conn.execute("ALTER TABLE content ADD COLUMN IF NOT EXISTS view_count_source text")
     conn.commit()
 
 

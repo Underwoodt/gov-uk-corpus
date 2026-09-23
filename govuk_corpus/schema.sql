@@ -61,7 +61,8 @@ CREATE TABLE IF NOT EXISTS content (
     last_changed_at    TEXT,
     content_id         TEXT,                 -- GOV.UK's real unique id (many urls -> one content_id)
     view_count         INTEGER,              -- GOV.UK Search view_count (~14-day pageviews); collected after a shortlist rebuild
-    view_count_updated TEXT                  -- date (YYYY-MM-DD) the view_count above was collected
+    view_count_updated TEXT,                 -- date (YYYY-MM-DD) the view_count above was collected
+    view_count_source  TEXT                  -- 'page' (page's own count) | 'parent' (inherited from parent publication)
 );
 CREATE INDEX IF NOT EXISTS idx_content_document_type ON content(document_type);
 CREATE INDEX IF NOT EXISTS idx_content_content_id ON content(content_id);
