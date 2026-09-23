@@ -59,6 +59,9 @@ def init_db(conn) -> None:
     conn.execute("ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS heartbeat_at text")
     # A JSON snapshot of the prompt inputs a run used, so its prompts are exactly reproducible.
     conn.execute("ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS prompt_spec text")
+    # GOV.UK Search view_count (~14-day pageviews) + the date it was collected.
+    conn.execute("ALTER TABLE content ADD COLUMN IF NOT EXISTS view_count integer")
+    conn.execute("ALTER TABLE content ADD COLUMN IF NOT EXISTS view_count_updated text")
     conn.commit()
 
 

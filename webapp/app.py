@@ -42,7 +42,8 @@ from govuk_corpus import categories as cat
 from govuk_corpus import category_counts, category_transfer, feedback, guardrails, sessions
 from govuk_corpus import (audit_stats, category_interview, evaluate, extract, keyword_explain,
                           orgs, peak_schedule, pricing, prompts, readability, reporting, roles,
-                          search_augment, settings, shortlist, stage_align, sustainability)
+                          search_augment, settings, shortlist, stage_align, sustainability,
+                          view_counts)
 from govuk_corpus import orgs as orgs_mod   # stable module handle (some routes take an `orgs` param)
 from govuk_corpus.backend import db
 
@@ -1215,8 +1216,14 @@ def api_refresh_shortlist(request: Request, cid: int):
         return JSONResponse({"error": "not found"}, status_code=404)
     category_counts.refresh_one(conn, cid)
     n = reporting.membership_count(conn, cid)
+    # Shortlist is now finished — collect GOV.UK Search view_count for its pages and stamp the
+    # collection date onto `content`. Best-effort: a GOV.UK hiccup must not fail the rebuild.
+    try:
+        vc = view_counts.collect_for_category(conn, cid)
+    except Exception as e:
+        vc = {"error": f"{type(e).__name__}: {e}"}
     conn.close()
-    return JSONResponse({"ok": True, "membership_count": n})
+    return JSONResponse({"ok": True, "membership_count": n, "view_counts": vc})
 
 
 @app.post("/api/categories/{cid}/reconcile-eval")
