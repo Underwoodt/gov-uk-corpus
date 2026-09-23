@@ -38,6 +38,18 @@ def _link_of(url: str) -> str:
     return urlparse(url).path if url.startswith("http") else url
 
 
+def _parent_link(link: str) -> Optional[str]:
+    """Parent publication/guide link for an attachment or guide-part sub-page, or None.
+    `/government/publications/PARENT/attachment` -> `/government/publications/PARENT`;
+    `/guidance/GUIDE/part` -> `/guidance/GUIDE`. Requires at least 3 path segments so we never
+    strip a top-level page down to a finder root (`/guidance`, `/government/publications`); those
+    aren't indexed anyway, so an over-eager strip just returns no match (self-correcting)."""
+    segs = [s for s in (link or "").split("/") if s]
+    if len(segs) < 3:
+        return None
+    return "/" + "/".join(segs[:-1])
+
+
 def fetch_view_counts(links: Iterable[str], *, batch: int = _BATCH,
                       timeout: float = _TIMEOUT) -> Dict[str, int]:
     """{link: view_count} for the links GOV.UK Search returns. Best-effort: a failed batch is
@@ -64,27 +76,49 @@ def fetch_view_counts(links: Iterable[str], *, batch: int = _BATCH,
     return out
 
 
-def collect_for_urls(conn, urls: Iterable[str], *, when: Optional[str] = None) -> Dict[str, object]:
+def collect_for_urls(conn, urls: Iterable[str], *, when: Optional[str] = None,
+                     parent_fallback: bool = True) -> Dict[str, object]:
     """Look up view_count for `urls` and upsert content.view_count + view_count_updated (the
-    date collected). Matched back from GOV.UK's `link` to the url we were given."""
+    date collected). Matched back from GOV.UK's `link` to the url we were given.
+
+    Attachment / guide-part sub-pages aren't separate documents in GOV.UK Search, so with
+    `parent_fallback` (default) a page GOV.UK doesn't index directly inherits its parent
+    publication's view_count (the closest available popularity signal)."""
     when = when or date.today().isoformat()
     link_to_url: Dict[str, str] = {}
     for u in urls:
         link = _link_of(u)
         if link:
             link_to_url.setdefault(link, u)
-    counts = fetch_view_counts(link_to_url.keys())
-    updated = 0
-    for link, vc in counts.items():
-        u = link_to_url.get(link)
-        if not u:
-            continue
+
+    direct = fetch_view_counts(link_to_url.keys())          # pass 1: the page's own count
+    resolved: Dict[str, int] = {u: direct[l] for l, u in link_to_url.items() if l in direct}
+
+    inherited = 0
+    if parent_fallback:
+        # pass 2: for pages GOV.UK didn't index, look up the parent publication's count.
+        parents: Dict[str, list] = {}
+        for link, u in link_to_url.items():
+            if u in resolved:
+                continue
+            p = _parent_link(link)
+            if p:
+                parents.setdefault(p, []).append(u)
+        if parents:
+            pcounts = fetch_view_counts(parents.keys())
+            for p, kids in parents.items():
+                if p in pcounts:
+                    for u in kids:
+                        resolved[u] = pcounts[p]
+                        inherited += 1
+
+    for u, vc in resolved.items():
         conn.execute(
             f"UPDATE content SET view_count = {_P}, view_count_updated = {_P} WHERE url = {_P}",
             (vc, when, u))
-        updated += 1
     conn.commit()
-    return {"requested": len(link_to_url), "matched": len(counts), "updated": updated, "date": when}
+    return {"requested": len(link_to_url), "direct": len(direct), "inherited": inherited,
+            "updated": len(resolved), "date": when}
 
 
 def collect_for_category(conn, cid: int, *, skip_if_collected_today: bool = True) -> Dict[str, object]:
