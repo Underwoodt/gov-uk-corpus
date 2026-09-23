@@ -1539,10 +1539,15 @@ def api_funnel(request: Request, cid: int, stage: str = "all"):
     if not category:
         return JSONResponse({"error": "not found"}, status_code=404)
     label, applies = _FUNNEL_STAGES[stage]
-    # Serve from the persistent cache unless the definition or corpus has changed.
+    # Serve from the persistent cache unless the definition or corpus has changed. The
+    # keyword stage is the exception: it is cheap (~40ms) and is the count people reconcile
+    # against (Both + Shortlister only), so it is ALWAYS recomputed live and never read from
+    # or written to the persistent cache — that cache only invalidates on a full crawl, so an
+    # incremental corpus change (e.g. a GOV.UK fetch) could otherwise leave it stale.
+    live_only = (stage == "keyword")
     def_v, corpus_v = _def_version(category), _corpus_version(conn)
     cached = _funnel_cache_read(conn, cid, def_v, corpus_v)
-    if stage in cached:
+    if not live_only and stage in cached:
         conn.close()
         return JSONResponse({"stage": stage, "label": label, "count": cached[stage], "cached": True})
     if stage == "all":
@@ -1555,8 +1560,11 @@ def api_funnel(request: Request, cid: int, stage: str = "all"):
         kw = {k: filters[k] for k in applies}
         if "keywords" in kw:
             kw["match"] = "any"
-        n = cached_count(conn, **kw)
-    _funnel_cache_write(conn, cid, def_v, corpus_v, stage, n)
+        # keyword: hit the DB directly (~40ms) so it bypasses the 5-min in-memory TTL cache
+        # too and is always exactly current; other stages use the short-TTL count cache.
+        n = shortlist.count(conn, **kw) if live_only else cached_count(conn, **kw)
+    if not live_only:
+        _funnel_cache_write(conn, cid, def_v, corpus_v, stage, n)
     conn.close()
     return JSONResponse({"stage": stage, "label": label, "count": n, "cached": False})
 
