@@ -3882,6 +3882,15 @@ _DOWNLOAD_SECTIONS = [
     ("Provenance", [
         ("source", "Source / provenance", False, False, None),
     ]),
+    ("Popularity", [
+        ("view_count", "View count", True, False,
+         "GOV.UK Search pageviews (~last 14 days); for attachment / guide-part sub-pages this is "
+         "the parent publication's count"),
+        ("view_count_source", "View count source", False, False,
+         "page = the page's own count · parent = inherited from the parent publication"),
+        ("view_count_updated", "View count collected", False, False,
+         "the date the view count was collected"),
+    ]),
 ]
 
 

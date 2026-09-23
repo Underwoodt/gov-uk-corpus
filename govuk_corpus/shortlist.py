@@ -302,6 +302,9 @@ EXPORT_FIELDS = {
     "first_published_at": ("c.first_published_at", "First published at"),
     "public_updated_at": ("c.public_updated_at", "Public updated at"),
     "last_update_band": (_LAST_UPDATE_BAND_EXPR, "Last update band"),
+    "view_count": ("c.view_count", "View count"),
+    "view_count_source": ("c.view_count_source", "View count source"),
+    "view_count_updated": ("c.view_count_updated", "View count collected"),
 }
 
 
