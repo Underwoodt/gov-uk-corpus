@@ -26,7 +26,8 @@ _P = "%s" if db.__name__.endswith("db_pg") else "?"
 
 SEARCH_URL = "https://www.gov.uk/api/search.json"
 _UA = {"User-Agent": "gov-uk-corpus-shortlist-builder", "Accept": "application/json"}
-_BATCH = 100          # GOV.UK caps `count` at 100 per request; `filter_link` is repeatable
+_BATCH = 25           # GOV.UK silently honours only ~30 repeated `filter_link` values per
+                      # request (a longer query drops most matches), so keep batches small
 _TIMEOUT = 20.0
 
 
