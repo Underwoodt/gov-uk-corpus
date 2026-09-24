@@ -55,7 +55,7 @@ def persist_result(conn, run_id: str, cid: int, r: dict, res: dict, ms: int, *,
     decision = (evaluate.parse_exclusion(res.get("reply", "")) if is_exclusion
                 else evaluate.parse_decision(res.get("reply", "")))
     evaluate.save_page(conn, run_id, cid, r["url"], decision, ms, raw_reply=res.get("reply"),
-                       content_hash=r.get("content_hash"))
+                       content_hash=r.get("content_hash"), stop_reason=res.get("stop_reason"))
     evaluate.set_actual_model(conn, run_id, res.get("actual_model"))
     cost = res.get("cost_usd") or 0.0
     evaluate.add_run_cost(conn, run_id, cost, res.get("input_tokens"), res.get("output_tokens"),

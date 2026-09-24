@@ -183,6 +183,7 @@ CREATE TABLE IF NOT EXISTS evaluation_results (
     where_hit    TEXT,          -- inclusion pass: JSON list of the fields the topic appeared in (title | description | body)
     evidence     TEXT,          -- inclusion pass: JSON list of verbatim quotes grounding the decision
     content_hash TEXT,          -- content.content_hash of the body actually evaluated (drift detection vs gold labels)
+    stop_reason  TEXT,          -- the API's stop_reason (end_turn | max_tokens | ...) — max_tokens = truncated reply
     ms           INTEGER,
     created_at   TEXT,
     PRIMARY KEY (run_id, url)

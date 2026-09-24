@@ -58,6 +58,7 @@ def init_db(conn) -> None:
     conn.execute("ALTER TABLE evaluation_results ADD COLUMN IF NOT EXISTS evidence text")
     # The content.content_hash of the body actually evaluated — drift detection vs gold labels.
     conn.execute("ALTER TABLE evaluation_results ADD COLUMN IF NOT EXISTS content_hash text")
+    conn.execute("ALTER TABLE evaluation_results ADD COLUMN IF NOT EXISTS stop_reason text")
     # Live run state: is a driver actively working this run, on which process, and when did it
     # last make progress — so a stalled run (marked running but its process is gone) is detectable.
     conn.execute("ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS run_status text")

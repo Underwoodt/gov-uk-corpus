@@ -504,7 +504,8 @@ def exclusion_candidates(conn, run_id: str, source_run_id: str, limit: int) -> L
     yet re-evaluated. Carries the inclusion pass's reason as pass1_reason."""
     sql = (
         "SELECT c.url AS url, c.title AS title, c.description AS description, "
-        "c.search_text AS body, r.reason AS pass1_reason, r.primary_topic AS pass1_topic "
+        "c.search_text AS body, c.content_hash AS content_hash, "
+        "r.reason AS pass1_reason, r.primary_topic AS pass1_topic "
         "FROM evaluation_results r JOIN content c ON c.url = r.url "
         f"WHERE r.run_id = {_P} AND r.keep = 1 "
         f"AND r.url NOT IN (SELECT url FROM evaluation_results WHERE run_id = {_P}) "
@@ -714,7 +715,7 @@ def scoped_candidates(conn, run_id: str, urls: Sequence[str], limit: int) -> Lis
 
 def save_page(conn, run_id: str, category_id: int, url: str,
               decision: Optional[Dict], ms: int, raw_reply: Optional[str] = None,
-              content_hash: Optional[str] = None) -> None:
+              content_hash: Optional[str] = None, stop_reason: Optional[str] = None) -> None:
     """`content_hash` is the content.content_hash of the body that was evaluated, so a verdict
     can be checked against the page version a gold label was made on."""
     keep = decision.get("keep") if decision else None
@@ -730,10 +731,10 @@ def save_page(conn, run_id: str, category_id: int, url: str,
     evidence = decision.get("evidence") if decision else None
     conn.execute(
         f"INSERT INTO evaluation_results (run_id, category_id, url, keep, score, reason, raw_reply, ms, created_at, "
-        f"primary_topic, where_hit, evidence, content_hash) "
-        f"VALUES ({_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P})",
+        f"primary_topic, where_hit, evidence, content_hash, stop_reason) "
+        f"VALUES ({_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P})",
         (run_id, category_id, url, keep, score, reason, raw, ms, db.now_iso(), topic, where_hit, evidence,
-         content_hash))
+         content_hash, stop_reason))
     # update run totals
     kept = 1 if keep == 1 else 0
     dropped = 1 if keep == 0 else 0

@@ -164,6 +164,7 @@ CREATE TABLE IF NOT EXISTS evaluation_results (
     reason       text,
     raw_reply    text,          -- the model's raw reply, kept verbatim for debugging (esp. unparseable ones)
     content_hash text,          -- content.content_hash of the body actually evaluated (drift detection vs gold labels)
+    stop_reason  text,          -- the API's stop_reason (end_turn | max_tokens | ...) — max_tokens = truncated reply
     ms           integer,
     created_at   text,
     PRIMARY KEY (run_id, url)
