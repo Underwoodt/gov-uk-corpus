@@ -133,6 +133,8 @@
         <tr data-metric="cfg-fp-p1"><td>Prompt fingerprint – Phase 1 <span class="metric-i" tabindex="0" title="Hash of the Phase 1 (inclusion) prompt template text the run was stamped with. The same fingerprint means the same prompt. Shown in red when the compared runs used different prompt text." style="cursor:help;color:var(--link,#1d70b8);font-weight:700;font-size:13px;">&#9432;</span></td><td class="mono"></td><td class="mono"></td><td class="mono"></td></tr>
         <tr data-metric="cfg-fp-p2"><td>Prompt fingerprint – Phase 2 <span class="metric-i" tabindex="0" title="Hash of the Phase 2 (exclusion) prompt template text the run was stamped with. The same fingerprint means the same prompt. Shown in red when the compared runs used different prompt text." style="cursor:help;color:var(--link,#1d70b8);font-weight:700;font-size:13px;">&#9432;</span></td><td class="mono"></td><td class="mono"></td><td class="mono"></td></tr>
         <tr data-metric="cfg-version"><td>Code version (git) <span class="metric-i" tabindex="0" title="Git commit of the code that created the run. It changes on ANY commit, so a different value does not by itself mean the prompt changed — compare the prompt fingerprints for that." style="cursor:help;color:var(--link,#1d70b8);font-weight:700;font-size:13px;">&#9432;</span></td><td class="mono"></td><td class="mono"></td><td class="mono"></td></tr>
+        <tr data-metric="cfg-sampling"><td>Sampling <span class="metric-i" tabindex="0" title="Request controls stamped on the run: temperature (blank = provider default) and whether extended thinking was requested. Pinned to T=0 / thinking off by the benchmark; product runs send neither." style="cursor:help;color:var(--link,#1d70b8);font-weight:700;font-size:13px;">&#9432;</span></td><td></td><td></td><td></td></tr>
+        <tr data-metric="cfg-scope"><td>Scope <span class="metric-i" tabindex="0" title="What the run evaluated: the category shortlist, or a fixed url list (a benchmark's gold set: 'gold · N pages')." style="cursor:help;color:var(--link,#1d70b8);font-weight:700;font-size:13px;">&#9432;</span></td><td></td><td></td><td></td></tr>
         <tr data-metric="cfg-bodylimit"><td>Body limit (chars) <span class="metric-i" tabindex="0" title="Max characters of page body sent to the model; longer bodies are trimmed head+tail." style="cursor:help;color:var(--link,#1d70b8);font-weight:700;font-size:13px;">&#9432;</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
       </tbody>
     </table>
@@ -189,7 +191,8 @@
         "misstokens","misstokens-p1","misstokens-p2","outtokens","outtokens-p1","outtokens-p2",
         "totaltime","totaltime-p1","totaltime-p2","elapsed","elapsed-p1","elapsed-p2",
         "keep","keep-p1","keep-p2","drop","drop-p1","drop-p2",
-        "cfg-variant","cfg-concurrency","cfg-caching","cfg-fp-p1","cfg-fp-p2","cfg-version","cfg-bodylimit"];
+        "cfg-variant","cfg-concurrency","cfg-caching","cfg-fp-p1","cfg-fp-p2","cfg-version","cfg-bodylimit",
+        "cfg-sampling","cfg-scope"];
       const ch = chainFor(col);
       if (!ch) { ALL.forEach(m => set(m, "—")); return; }
       const { r, incl, excl } = ch;
@@ -211,6 +214,12 @@
       set("cfg-fp-p2", fpOf(excl));
       flagPromptDiff();
       set("cfg-bodylimit", tr.body_limit ? Number(tr.body_limit).toLocaleString() : "—");
+      // Request controls + scope (stamped by the benchmark; product runs use provider defaults).
+      const samp = (tr.temperature != null ? "T=" + tr.temperature : "provider default")
+        + (tr.thinking ? " · thinking" : (tr.temperature != null ? " · no thinking" : ""));
+      set("cfg-sampling", samp);
+      set("cfg-scope", tr.scope_kind ? (tr.scope_kind + " · " + (tr.scope_n || 0) + " pages" + (tr.bench ? " · bench" : ""))
+                                     : "shortlist");
 
       const modelOf = x => x ? `${x.provider || ""} / ${x.actual_model || x.model || ""}` : "—";
       set("model-p1", modelOf(incl));
