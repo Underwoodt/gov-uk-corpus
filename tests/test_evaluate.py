@@ -2,6 +2,7 @@
 Run: python3 -m unittest -v tests.test_evaluate"""
 from __future__ import annotations
 
+import json
 import os
 import sys
 import unittest
@@ -444,6 +445,139 @@ class TestRunEvaluationMocked(unittest.TestCase):
         result = app._run_evaluation(cid, 4)
         self.assertTrue(result.get("fatal"))
         self.assertEqual(result["evaluated_this_run"], 0)   # nothing recorded
+
+
+    def _scoped_run(self, app, cid, urls, bench=None, temperature=0.0):
+        conn = app.connect()
+        from govuk_corpus import settings as st
+        spec = evaluate.prompt_spec_json(conn, cid, evaluate.PHASE_INCLUSION,
+                                         {"sampling": {"temperature": temperature}},
+                                         scope={"kind": "gold", "urls": urls, "sha": "abc"}, bench=bench)
+        run_id = evaluate.create_run(conn, cid, "m", "anthropic", prompt_spec=spec, name="bench/x/r1")
+        st.set_setting(conn, f"active_run_{cid}", run_id)
+        conn.close()
+        return run_id
+
+    def test_scoped_run_evaluates_exactly_the_scope_and_inherits_model_for_phase2(self):
+        app, cid = self._app(n=5)
+        seen = []
+        app._ai_reply = lambda cfg, system, prompt, **kw: (seen.append(kw) or {
+            "reply": '{"keep": true, "score": 0.8, "reason": "relevant"}',
+            "actual_model": "m-actual", "input_tokens": 100, "output_tokens": 20, "cost_usd": 0.0002})
+        scope = ["https://www.gov.uk/p0", "https://www.gov.uk/p3"]
+        run_id = self._scoped_run(app, cid, scope)
+        result = app._run_evaluation(cid, 10)
+        self.assertEqual(result["run_id"], run_id)
+        self.assertEqual(result["evaluated_this_run"], 2)          # not the 5-page shortlist
+        self.assertEqual(result["remaining"], 0)
+        # The pinned sampling reached the model hook.
+        self.assertTrue(all(kw.get("sampling", {}).get("temperature") == 0.0 for kw in seen))
+        conn = app.connect()
+        urls = sorted(r["url"] for r in evaluate.run_results(conn, run_id))
+        self.assertEqual(urls, scope)
+        row = conn.execute("SELECT content_hash FROM evaluation_results WHERE run_id=? AND url=?",
+                           (run_id, scope[0])).fetchone()
+        self.assertEqual(row["content_hash"], "h")                # the evaluated body is stamped
+        self.assertTrue(evaluate.get_run(conn, run_id)["finished_at"])
+        # Auto-advanced Phase 2 inherits the scoped run's model (not the app's phase model)…
+        adv = result["advanced"]
+        self.assertIsNotNone(adv)
+        excl = evaluate.get_run(conn, adv["run_id"])
+        self.assertEqual((excl["model"], excl["provider"]), ("m", "anthropic"))
+        # …and carries the scope + sampling forward.
+        spec = evaluate.run_prompt_spec(conn, adv["run_id"])
+        self.assertEqual(spec["scope"]["urls"], scope)
+        self.assertEqual(spec["temperature"], 0.0)
+        conn.close()
+
+    def test_bench_run_is_never_auto_advanced(self):
+        app, cid = self._app(n=3)
+        app._ai_reply = lambda cfg, system, prompt, **kw: {
+            "reply": '{"keep": true, "score": 0.8, "reason": "relevant"}',
+            "actual_model": "m-actual", "input_tokens": 100, "output_tokens": 20, "cost_usd": 0.0002}
+        run_id = self._scoped_run(app, cid, ["https://www.gov.uk/p1"], bench={"arm": "p1-haiku", "repeat": 1})
+        result = app._run_evaluation(cid, 10)
+        self.assertEqual(result["evaluated_this_run"], 1)
+        self.assertIsNone(result["advanced"])
+        conn = app.connect()
+        self.assertTrue(evaluate.get_run(conn, run_id)["finished_at"])
+        self.assertEqual(len(evaluate.list_runs(conn, cid)), 1)
+        self.assertEqual(evaluate.list_runs(conn, cid)[0]["trial"]["scope_n"], 1)
+        self.assertTrue(evaluate.list_runs(conn, cid)[0]["trial"]["bench"])
+        conn.close()
+
+
+class TestScopedAndReconcile(unittest.TestCase):
+    def setUp(self):
+        self.conn = db.connect(":memory:")
+        db.init_db(self.conn)
+        rows = [  # slug, doc type, redirect, hash, withdrawn, content_id
+            ("p0", "guidance", 0, "h0", 0, "c0"), ("p1", "guidance", 0, "h1", 0, "c1"),
+            ("other", "speech", 0, "h2", 0, "c2"),          # outside the category's filters
+            ("redir", "guidance", 1, "h3", 0, "c3"), ("unfetched", "guidance", 0, None, 0, "c4"),
+            ("gone", "guidance", 0, "h5", 1, "c5"), ("govuk-only", "guidance", 0, "h6", 0, "c6"),
+        ]
+        for slug, dt, redir, h, wd, cidv in rows:
+            self.conn.execute("INSERT INTO content (url, document_type, is_redirect, content_hash, withdrawn, "
+                              "search_text, title, content_id) VALUES (?,?,?,?,?,?,?,?)",
+                              (f"https://www.gov.uk/{slug}", dt, redir, h, wd, "slurry", slug, cidv))
+        self.conn.commit()
+
+    def tearDown(self):
+        self.conn.close()
+
+    def test_scoped_candidates_only_scope_urls_minus_unusable_and_evaluated(self):
+        u = lambda s: f"https://www.gov.uk/{s}"
+        run = evaluate.create_run(self.conn, 1, "m", "anthropic")
+        scope = [u("p1"), u("other"), u("redir"), u("unfetched"), u("gone"), u("p0"), "https://www.gov.uk/missing"]
+        got = evaluate.scoped_candidates(self.conn, run, scope, 10)
+        self.assertEqual([r["url"] for r in got], [u("other"), u("p0"), u("p1")])   # sorted, filters ignored
+        self.assertEqual(got[1]["content_hash"], "h0")
+        evaluate.save_page(self.conn, run, 1, u("p0"), {"keep": 1, "score": 0.9, "reason": "x"}, 5,
+                           content_hash="h0")
+        self.assertEqual([r["url"] for r in evaluate.scoped_candidates(self.conn, run, scope, 10)],
+                         [u("other"), u("p1")])
+        self.assertEqual([r["url"] for r in evaluate.scoped_candidates(self.conn, run, scope, 1)], [u("other")])
+        self.assertEqual(evaluate.scoped_candidates(self.conn, run, [], 10), [])
+        row = self.conn.execute("SELECT content_hash FROM evaluation_results WHERE run_id=?", (run,)).fetchone()
+        self.assertEqual(row["content_hash"], "h0")
+
+    def test_reconcile_keeps_govuk_only_and_scoped_results(self):
+        u = lambda s: f"https://www.gov.uk/{s}"
+        cid = 7
+        # Shortlist membership: p0 only. govuk-only is forwarded via category_search_pages (source='search').
+        self.conn.execute("INSERT INTO category_shortlist_pages (category_id, content_id, url) VALUES (?,?,?)",
+                          (cid, "c0", u("p0")))
+        self.conn.execute("INSERT INTO category_search_pages (category_id, url, source, es_score) VALUES (?,?,?,?)",
+                          (cid, u("govuk-only"), "search", 0.5))
+        normal = evaluate.create_run(self.conn, cid, "m", "anthropic")
+        for slug in ("p0", "p1", "govuk-only"):
+            evaluate.save_page(self.conn, normal, cid, u(slug), {"keep": 1, "score": 0.9, "reason": "x"}, 5)
+        scoped = evaluate.create_run(self.conn, cid, "m", "anthropic", prompt_spec=evaluate.prompt_spec_json(
+            self.conn, cid, evaluate.PHASE_INCLUSION, None, scope={"kind": "gold", "urls": [u("p1")], "sha": "s"}))
+        evaluate.save_page(self.conn, scoped, cid, u("p1"), {"keep": 0, "score": 0.0, "reason": "y"}, 5)
+        evaluate.reconcile_to_shortlist(self.conn, cid)
+        left = sorted((r["run_id"], r["url"]) for r in self.conn.execute(
+            "SELECT run_id, url FROM evaluation_results").fetchall())
+        self.assertEqual(left, sorted([(normal, u("p0")), (normal, u("govuk-only")), (scoped, u("p1"))]))
+        self.assertEqual(evaluate.get_run(self.conn, normal)["pages"], 2)     # p1 dropped (not forwarded)
+        self.assertEqual(evaluate.get_run(self.conn, scoped)["pages"], 1)     # scoped run untouched
+
+    def test_prompt_spec_stamps_request_controls_and_scope(self):
+        spec = json.loads(evaluate.prompt_spec_json(self.conn, 1, evaluate.PHASE_INCLUSION,
+                                                    {"sampling": {"temperature": 0, "thinking": None}},
+                                                    scope={"kind": "gold", "urls": ["a"], "sha": "z"},
+                                                    bench={"arm": "p1-haiku"}))
+        self.assertEqual(spec["temperature"], 0.0)
+        self.assertIsNone(spec["thinking"])
+        self.assertEqual(spec["max_tokens"], 4096)
+        self.assertEqual(spec["template_hash"], evaluate.template_fingerprint(spec["template"]))
+        self.assertEqual(spec["scope"]["sha"], "z")
+        self.assertEqual(spec["bench"]["arm"], "p1-haiku")
+        plain = json.loads(evaluate.prompt_spec_json(self.conn, 1, evaluate.PHASE_INCLUSION))
+        self.assertIsNone(plain["temperature"])          # product runs: provider defaults, truthfully
+        self.assertNotIn("scope", plain)
+        self.assertEqual(evaluate.norm_trial(plain)["sampling"]["temperature"], None)
 
 
 class TestRunCommentary(unittest.TestCase):

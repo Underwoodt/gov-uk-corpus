@@ -536,6 +536,93 @@ def create_run(conn, category_id: int, model: str, provider: str,
     return run_id
 
 
+def norm_sampling(sampling) -> Dict:
+    """Validated sampling controls: temperature (float in [0, 1] or None = provider default),
+    thinking (a `thinking` request dict or None = not sent), effort (str or None)."""
+    s = sampling or {}
+    t = s.get("temperature")
+    if t is not None:
+        t = max(0.0, min(float(t), 1.0))
+    th = s.get("thinking")
+    th = dict(th) if isinstance(th, dict) else None
+    e = s.get("effort")
+    return {"temperature": t, "thinking": th, "effort": str(e) if e else None}
+
+
+def norm_trial(trial) -> dict:
+    """Clamp/validate the A/B trial knobs; the defaults reproduce today's behaviour (no sampling
+    controls sent — the provider's defaults apply)."""
+    t = trial or {}
+    return {
+        "prompt_variant": "cached" if str(t.get("prompt_variant") or "current").lower() == "cached" else "current",
+        "concurrency": max(1, min(int(t.get("concurrency") or 1), 10)),
+        "caching": bool(t.get("caching")),
+        "sampling": norm_sampling(t.get("sampling")),
+    }
+
+
+def prompt_spec_json(conn, cid: int, phase: str, trial=None, *, scope: Optional[Dict] = None,
+                     bench: Optional[Dict] = None) -> str:
+    """A JSON snapshot of everything a run's prompts and requests depend on — stamped on the run
+    so they stay exactly reproducible. `trial` carries the A/B knobs (prompt_variant /
+    concurrency / caching / sampling); the 'cached' variant stamps the reordered template so the
+    run uses it end-to-end. `scope` = {"kind": "gold", "urls": [...], "sha": ...} fixes the page
+    list for a scoped run; `bench` tags a benchmark run (the app never auto-advances it)."""
+    from . import categories as cat   # local: categories has no dependency on this module
+    from . import llm, prompts
+    c = cat.get_category(conn, cid) or {}
+    pname = "exclusion" if phase == PHASE_EXCLUSION else "inclusion"
+    tr = norm_trial(trial)
+    if tr["prompt_variant"] == "cached":
+        template, template_version = cached_template(pname), "cached"
+    else:
+        template, template_version = prompts.default_text(pname), prompts.template_version()
+    spec = {
+        "template": template,
+        "template_version": template_version,
+        # Content fingerprint of the template text: same hash <=> same prompt. The git SHA above
+        # changes on ANY commit, so only this tells you whether the prompt itself changed.
+        "template_hash": template_fingerprint(template),
+        "inclusion_context": c.get("inclusion_context") or "",
+        "exclusion_context": c.get("exclusion_context") or "",
+        "name": (c.get("description") or "").strip() or cat.prettify(c.get("slug")) or "the topic",
+        "keep_hints": c.get("adjudication_hints_keep") or "",
+        "drop_hints": c.get("adjudication_hints_drop") or "",
+        "body_limit": BODY_CHAR_LIMIT,
+        "prompt_variant": tr["prompt_variant"],
+        "concurrency": tr["concurrency"],
+        "caching": tr["caching"],
+        # Request controls. null = not sent (provider defaults), which is the product behaviour.
+        "temperature": tr["sampling"]["temperature"],
+        "thinking": tr["sampling"]["thinking"],
+        "effort": tr["sampling"]["effort"],
+        "max_tokens": llm.eval_max_tokens(),
+        "sdk_version": llm.sdk_version(),
+    }
+    if scope:
+        spec["scope"] = scope
+    if bench:
+        spec["bench"] = bench
+    return json.dumps(spec, ensure_ascii=False)
+
+
+def run_trial(conn, run_id: str) -> dict:
+    """The A/B trial knobs stamped on a run (prompt_variant / concurrency / caching / sampling),
+    defaulted for legacy runs."""
+    spec = run_prompt_spec(conn, run_id) or {}
+    return norm_trial({"prompt_variant": spec.get("prompt_variant"),
+                       "concurrency": spec.get("concurrency"), "caching": spec.get("caching"),
+                       "sampling": {"temperature": spec.get("temperature"),
+                                    "thinking": spec.get("thinking"), "effort": spec.get("effort")}})
+
+
+def run_scope(conn, run_id: str) -> Optional[Dict]:
+    """The fixed url list a scoped (benchmark) run evaluates, or None for a normal run."""
+    spec = run_prompt_spec(conn, run_id) or {}
+    sc = spec.get("scope")
+    return sc if isinstance(sc, dict) and sc.get("urls") else None
+
+
 def run_prompt_spec(conn, run_id: str) -> Optional[Dict]:
     """The stamped prompt spec for a run (the template + context it used), or None for a
     legacy run that predates stamping."""
@@ -600,8 +687,36 @@ def run_candidates(conn, run_id: str, category_id: int, limit: int, *,
     return rows[:limit]
 
 
+def scoped_candidates(conn, run_id: str, urls: Sequence[str], limit: int) -> List[dict]:
+    """Next `limit` pages from a FIXED url list (a benchmark's gold set) not yet evaluated in
+    this run. Deliberately ignores the category's org / doc-type / keyword filters — the list
+    *is* the sample — but still skips redirects, unfetched and withdrawn pages. Ordered by url
+    so every repeat sees the same sequence."""
+    urls = sorted(set(urls))
+    if not urls or limit <= 0:
+        return []
+    out: List[dict] = []
+    for i in range(0, len(urls), 500):
+        chunk = urls[i:i + 500]
+        marks = ",".join([_P] * len(chunk))
+        rows = conn.execute(
+            f"SELECT c.url AS url, c.title AS title, c.description AS description, "
+            f"c.search_text AS body, c.content_hash AS content_hash "
+            f"FROM content c WHERE c.url IN ({marks}) "
+            f"AND c.is_redirect = 0 AND c.content_hash IS NOT NULL AND COALESCE(c.withdrawn, 0) = 0 "
+            f"AND c.url NOT IN (SELECT url FROM evaluation_results WHERE run_id = {_P}) "
+            f"ORDER BY c.url", tuple(chunk) + (run_id,)).fetchall()
+        out.extend(dict(r) for r in rows)
+        if len(out) >= limit:
+            break
+    return out[:limit]
+
+
 def save_page(conn, run_id: str, category_id: int, url: str,
-              decision: Optional[Dict], ms: int, raw_reply: Optional[str] = None) -> None:
+              decision: Optional[Dict], ms: int, raw_reply: Optional[str] = None,
+              content_hash: Optional[str] = None) -> None:
+    """`content_hash` is the content.content_hash of the body that was evaluated, so a verdict
+    can be checked against the page version a gold label was made on."""
     keep = decision.get("keep") if decision else None
     score = decision.get("score") if decision else None
     reason = decision.get("reason") if decision else "unparseable model reply"
@@ -615,9 +730,10 @@ def save_page(conn, run_id: str, category_id: int, url: str,
     evidence = decision.get("evidence") if decision else None
     conn.execute(
         f"INSERT INTO evaluation_results (run_id, category_id, url, keep, score, reason, raw_reply, ms, created_at, "
-        f"primary_topic, where_hit, evidence) "
-        f"VALUES ({_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P})",
-        (run_id, category_id, url, keep, score, reason, raw, ms, db.now_iso(), topic, where_hit, evidence))
+        f"primary_topic, where_hit, evidence, content_hash) "
+        f"VALUES ({_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P})",
+        (run_id, category_id, url, keep, score, reason, raw, ms, db.now_iso(), topic, where_hit, evidence,
+         content_hash))
     # update run totals
     kept = 1 if keep == 1 else 0
     dropped = 1 if keep == 0 else 0
@@ -752,10 +868,22 @@ def list_runs(conn, category_id: int) -> List[dict]:
                               # Prompt identity: the stamped fingerprint, or one computed from the
                               # stored template for runs stamped before the field existed.
                               "template_hash": s.get("template_hash") or template_fingerprint(s.get("template")),
-                              "body_limit": s.get("body_limit")}
+                              "body_limit": s.get("body_limit"),
+                              # Request controls (null = provider default) + benchmark scope.
+                              "temperature": s.get("temperature"),
+                              "thinking": s.get("thinking"),
+                              "effort": s.get("effort"),
+                              "max_tokens": s.get("max_tokens"),
+                              "scope_kind": (s.get("scope") or {}).get("kind") if isinstance(s.get("scope"), dict) else None,
+                              "scope_n": len((s.get("scope") or {}).get("urls") or []) if isinstance(s.get("scope"), dict) else None,
+                              "bench": bool(s.get("bench"))}
             except (ValueError, TypeError):
                 pass
     return rows
+
+
+# How a scoped run's prompt_spec JSON reads (json.dumps default separators), for SQL LIKE.
+SCOPE_MARKER = '%"scope": {%'
 
 
 def reconcile_to_shortlist(conn, category_id: int) -> dict:
@@ -770,14 +898,22 @@ def reconcile_to_shortlist(conn, category_id: int) -> dict:
     Then recompute each run's pages/kept/dropped so the displayed counts stay honest
     (spend/token counters are left untouched — that cost was really incurred).
     Assumes category_shortlist_pages has already been refreshed. Best-effort."""
+    # Retain results for pages still forwarded to the AI: the keyword shortlist OR the category's
+    # GOV.UK-Search-only pool (source='search' — those pages are never in category_shortlist_pages,
+    # so without this clause every save erased their results). Scoped (benchmark) runs evaluate a
+    # fixed url list that the shortlist definition doesn't govern, so they are left alone.
     conn.execute(
         f"DELETE FROM evaluation_results "
-        f"WHERE run_id IN (SELECT run_id FROM evaluation_runs WHERE category_id = {_P}) "
+        f"WHERE run_id IN (SELECT run_id FROM evaluation_runs WHERE category_id = {_P} "
+        f"                 AND COALESCE(prompt_spec, '') NOT LIKE {_P}) "
         f"AND NOT EXISTS ("
         f"  SELECT 1 FROM content c "
         f"  JOIN category_shortlist_pages m ON m.content_id = COALESCE(c.content_id, c.url) "
-        f"  WHERE c.url = evaluation_results.url AND m.category_id = {_P})",
-        (category_id, category_id))
+        f"  WHERE c.url = evaluation_results.url AND m.category_id = {_P}) "
+        f"AND NOT EXISTS ("
+        f"  SELECT 1 FROM category_search_pages sp "
+        f"  WHERE sp.url = evaluation_results.url AND sp.category_id = {_P} AND sp.source = 'search')",
+        (category_id, SCOPE_MARKER, category_id, category_id))
     conn.execute(
         f"UPDATE evaluation_runs SET "
         f"pages = (SELECT COUNT(*) FROM evaluation_results r WHERE r.run_id = evaluation_runs.run_id), "

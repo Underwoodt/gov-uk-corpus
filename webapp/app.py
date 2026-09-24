@@ -40,10 +40,10 @@ from starlette.concurrency import run_in_threadpool
 from govuk_corpus import accounts, ai_models, audit
 from govuk_corpus import categories as cat
 from govuk_corpus import category_counts, category_transfer, feedback, guardrails, sessions
-from govuk_corpus import (audit_stats, category_interview, evaluate, extract, keyword_explain,
-                          orgs, peak_schedule, pricing, prompts, readability, reporting, roles,
-                          search_augment, settings, shortlist, stage_align, sustainability,
-                          view_counts)
+from govuk_corpus import (audit_stats, category_interview, evaluate, evaluate_driver, extract,
+                          keyword_explain, llm, orgs, peak_schedule, pricing, prompts, readability,
+                          reporting, roles, search_augment, settings, shortlist, stage_align,
+                          sustainability, view_counts)
 from govuk_corpus import orgs as orgs_mod   # stable module handle (some routes take an `orgs` param)
 from govuk_corpus.backend import db
 
@@ -268,74 +268,29 @@ def ctx(conn, request: Request, **extra) -> dict:
 # ---- AI Assistant (temporary prototype) ---------------------------------
 # Provider is chosen in the UI (Settings page) and stored in app_settings.
 # API keys still come from env; the toggle just picks which provider to use.
-PROVIDERS = {
-    "anthropic": {"label": "Anthropic (Claude)", "base_url": "",
-                  "model": "claude-haiku-4-5-20251001",
-                  "key_envs": ("ANTHROPIC_API_KEY", "AI_API_KEY"),
-                  "price_in": 1.0, "price_out": 5.0},
-    "deepseek": {"label": "DeepSeek", "base_url": "https://api.deepseek.com/anthropic",
-                 "model": "deepseek-chat",
-                 "key_envs": ("DEEPSEEK_API_KEY", "AI_API_KEY"),
-                 "price_in": 0.27, "price_out": 1.10},
-    # AWS Bedrock serves Claude models through the same Anthropic SDK (AnthropicBedrock
-    # client). It authenticates with AWS credentials rather than a single API key — see
-    # _bedrock_creds — and takes Bedrock model IDs / cross-region inference-profile IDs,
-    # which are entered per model on the Settings page. The default below is only a
-    # placeholder fallback; add the real IDs (e.g. eu.anthropic.claude-...:0) in Settings.
-    "bedrock": {"label": "AWS Bedrock (Claude)", "base_url": "",
-                "model": "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
-                "key_envs": (),
-                "price_in": 1.0, "price_out": 5.0},
-}
-DEFAULT_PROVIDER = "anthropic"
-
-
-def _provider_key(provider: str) -> Optional[str]:
-    for env in PROVIDERS[provider]["key_envs"]:
-        v = os.getenv(env)
-        if v:
-            return v
-    return None
-
-
-def _bedrock_creds() -> Optional[dict]:
-    """Credentials for the Bedrock client, or None if not fully configured. A region is
-    always required (AWS_REGION or BEDROCK_AWS_REGION). Then either method works:
-      * a Bedrock API key (bearer token) in AWS_BEARER_TOKEN_BEDROCK — simplest; or
-      * IAM SigV4 keys: AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY (+ optional session token).
-    The two are mutually exclusive at the SDK, so the bearer token wins when both are set."""
-    region = (os.getenv("BEDROCK_AWS_REGION") or os.getenv("AWS_REGION")
-              or os.getenv("AWS_DEFAULT_REGION"))
-    if not region:
-        return None
-    token = os.getenv("AWS_BEARER_TOKEN_BEDROCK")
-    if token:
-        return {"aws_region": region, "api_key": token}
-    ak = os.getenv("AWS_ACCESS_KEY_ID")
-    sk = os.getenv("AWS_SECRET_ACCESS_KEY")
-    if ak and sk:
-        return {"aws_region": region, "aws_access_key": ak, "aws_secret_key": sk,
-                "aws_session_token": os.getenv("AWS_SESSION_TOKEN") or None}
-    return None
+# Providers, credentials, budget and the model call itself live in govuk_corpus.llm (so the
+# evaluation driver and the benchmark CLI run without FastAPI). The module-level names below
+# are kept because routes reference them and the mocked tests patch them.
+PROVIDERS = llm.PROVIDERS
+DEFAULT_PROVIDER = llm.DEFAULT_PROVIDER
+_provider_key = llm.provider_key
+_bedrock_creds = llm.bedrock_creds
 
 
 def _provider_configured(provider: str) -> bool:
-    """Whether a provider has usable credentials — an API key, or AWS creds for Bedrock."""
+    """Whether a provider has usable credentials — an API key, or AWS creds for Bedrock
+    (routes through the patchable hooks above)."""
     if provider == "bedrock":
         return _bedrock_creds() is not None
     return _provider_key(provider) is not None
 
 
-DEFAULT_DAILY_BUDGET = 20.0     # USD/day
+DEFAULT_DAILY_BUDGET = llm.DEFAULT_DAILY_BUDGET     # USD/day
 DEFAULT_MAX_DOCS = 600          # documents per evaluation run
 MAX_CONSEC_EVAL_ERRORS = 6      # consecutive AI errors before a run bails (provider likely down)
 
 
-def _budget(conn) -> float:
-    try:
-        return float(settings.get_setting(conn, "ai_daily_budget", str(DEFAULT_DAILY_BUDGET)))
-    except (TypeError, ValueError):
-        return DEFAULT_DAILY_BUDGET
+_budget = llm.budget
 
 
 def _max_docs(conn) -> int:
@@ -345,21 +300,8 @@ def _max_docs(conn) -> int:
         return DEFAULT_MAX_DOCS
 
 
-def _daily_spend(conn) -> float:
-    day = db.now_iso()[:10]
-    row = conn.execute(f"SELECT COALESCE(SUM(cost), 0) AS c FROM ai_usage WHERE day = {'%s' if _is_pg() else '?'}",
-                       (day,)).fetchone()
-    return float(row["c"] or 0.0)
-
-
-def _log_ai_usage(conn, cost, in_tok, out_tok, kind: str) -> None:
-    ts = db.now_iso()
-    ph = "%s" if _is_pg() else "?"
-    conn.execute(
-        f"INSERT INTO ai_usage (day, created_at, cost, input_tokens, output_tokens, kind) "
-        f"VALUES ({ph},{ph},{ph},{ph},{ph},{ph})",
-        (ts[:10], ts, cost or 0.0, in_tok or 0, out_tok or 0, kind))
-    conn.commit()
+_daily_spend = llm.daily_spend
+_log_ai_usage = llm.log_usage
 
 
 # Phase → settings key holding the chosen model id for that phase.
@@ -421,104 +363,17 @@ def _ai_config_for_phase(conn, phase: str) -> dict:
     return _config_from_model(conn, m) if m else _ai_config(conn)
 
 
-def _ai_reply(config: dict, system: str, prompt: str) -> dict:
-    """Single-turn convenience wrapper over _ai_chat (used by the page evaluator).
-
-    Uses a generous max_tokens so a reasoning model (e.g. deepseek-v4-pro) has room to reason
-    AND emit the short JSON verdict. At 1024 the reasoning could consume the whole budget on a
-    hard page, returning an empty or truncated reply that then couldn't be parsed. Override with
-    AI_EVAL_MAX_TOKENS if needed."""
+def _ai_reply(config: dict, system: str, prompt: str, *, sampling: Optional[dict] = None) -> dict:
+    """Single-turn convenience wrapper over _ai_chat (used by the page evaluator). `sampling` =
+    {temperature, thinking, effort} or None for the provider defaults. Kept as a def (not an
+    alias) so it routes through the patchable `_ai_chat` hook."""
+    sm = sampling or {}
     return _ai_chat(config, system, [{"role": "user", "content": prompt}],
-                    max_tokens=int(os.getenv("AI_EVAL_MAX_TOKENS", "4096")))
+                    max_tokens=llm.eval_max_tokens(), temperature=sm.get("temperature"),
+                    thinking=sm.get("thinking"), effort=sm.get("effort"))
 
 
-def _ai_chat(config: dict, system: str, messages: list, max_tokens: int = 1024,
-             cache_system: bool = False) -> dict:
-    is_bedrock = config.get("provider") == "bedrock"
-    bedrock_creds = _bedrock_creds() if is_bedrock else None
-    if is_bedrock and not bedrock_creds:
-        return {"fatal": True, "error": "AWS Bedrock credentials not set. Set a region "
-                "(BEDROCK_AWS_REGION or AWS_REGION) plus EITHER a Bedrock API key "
-                "(AWS_BEARER_TOKEN_BEDROCK) OR AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY in "
-                "~/gov-uk-corpus.env, then restart."}
-    if not is_bedrock and not config.get("key"):
-        return {"fatal": True, "error": f"No API key set for {config['label']}. Add its key to "
-                f"~/gov-uk-corpus.env and restart, or pick a provider that has one in Settings."}
-    try:
-        import anthropic
-    except Exception:
-        return {"fatal": True,
-                "error": "The 'anthropic' package is not installed. Run: pip install -r requirements.txt"}
-    try:
-        # Retry transient errors (429 / 5xx / timeouts) at the SDK, honouring Retry-After,
-        # so a single hiccup from a rate-limiting or slow provider self-heals instead of
-        # aborting an evaluation run. Tune with AI_MAX_RETRIES / AI_TIMEOUT.
-        timeout = float(os.getenv("AI_TIMEOUT", "45"))
-        max_retries = int(os.getenv("AI_MAX_RETRIES", "4"))
-        if is_bedrock:
-            # Bedrock uses AWS credentials + a Bedrock model id (or inference-profile id).
-            # Same .messages.create() interface, so everything downstream is unchanged.
-            BedrockClient = getattr(anthropic, "AnthropicBedrock", None)
-            if BedrockClient is None:
-                return {"fatal": True, "error": "This 'anthropic' build has no Bedrock support. "
-                        "Run: pip install -U 'anthropic[bedrock]'"}
-            bkw = dict(aws_region=bedrock_creds["aws_region"],
-                       timeout=timeout, max_retries=max_retries)
-            if bedrock_creds.get("api_key"):     # Bedrock API key -> Authorization: Bearer
-                bkw["api_key"] = bedrock_creds["api_key"]
-            else:                                # IAM SigV4 keys
-                bkw["aws_access_key"] = bedrock_creds["aws_access_key"]
-                bkw["aws_secret_key"] = bedrock_creds["aws_secret_key"]
-                if bedrock_creds.get("aws_session_token"):
-                    bkw["aws_session_token"] = bedrock_creds["aws_session_token"]
-            client = BedrockClient(**bkw)
-        else:
-            client_kwargs = dict(api_key=config["key"], timeout=timeout, max_retries=max_retries)
-            if config["base_url"]:               # empty => anthropic SDK default (Claude API)
-                client_kwargs["base_url"] = config["base_url"]
-            # Org-scoped ("Default") Anthropic keys need the workspace id header.
-            ws = os.getenv("ANTHROPIC_WORKSPACE_ID")
-            if ws and config["provider"] == "anthropic":
-                client_kwargs["default_headers"] = {"anthropic-workspace-id": ws}
-            client = anthropic.Anthropic(**client_kwargs)
-        kwargs = dict(model=config["model"], max_tokens=max_tokens, messages=list(messages))
-        if system.strip():
-            # Cache the stable system prefix on Anthropic (cache_control) so a run's repeated
-            # instructions are cheap cache-reads after the first call. DeepSeek's endpoint ignores
-            # cache_control but auto-caches the same prefix, so a plain string is enough there.
-            if cache_system and config.get("provider") == "anthropic":
-                kwargs["system"] = [{"type": "text", "text": system.strip(),
-                                     "cache_control": {"type": "ephemeral"}}]
-            else:
-                kwargs["system"] = system.strip()
-        msg = client.messages.create(**kwargs)
-        text = "".join(getattr(b, "text", "") for b in msg.content)
-        actual_model = getattr(msg, "model", None)   # what the API actually served
-        usage = getattr(msg, "usage", None)
-        u = pricing.usage_breakdown(usage)   # {in_total, hit, miss, out} across providers
-        # Peak or off-peak for this supplier at the moment the call ran (UTC).
-        peak = pricing.is_peak_now(config.get("peak_bitmap"))
-        in_tok = u["in_total"] if u else None
-        out_tok = u["out"] if u else None
-        cache_hit = u["hit"] if u else 0
-        cache_miss = u["miss"] if u else 0
-        cost = None
-        if u is not None:
-            grid = config.get("grid")
-            if grid:   # tiered price grid × peak schedule: miss tokens at miss rate, hit at hit rate
-                cost = pricing.call_cost(grid, peak, u["miss"], u["out"], u["hit"])
-            if cost is None:   # fall back to the flat standard rate on the total input
-                cost = round((in_tok / 1e6) * config["price_in"]
-                             + (out_tok / 1e6) * config["price_out"], 6)
-        return {"reply": text, "model": config["model"], "actual_model": actual_model,
-                "provider": config["provider"], "peak": peak,
-                "cache_hit_tokens": cache_hit, "cache_miss_tokens": cache_miss,
-                "input_tokens": in_tok, "output_tokens": out_tok, "cost_usd": cost,
-                "price_input_per_m": config["price_in"], "price_output_per_m": config["price_out"]}
-    except Exception as e:  # network / auth / API errors surfaced to the page
-        logging.getLogger("assistant").exception("AI call failed (provider=%s model=%s)",
-                                                 config.get("provider"), config.get("model"))
-        return {"error": f"{type(e).__name__}: {e}"}
+_ai_chat = llm.chat
 
 
 def _secure_cookies() -> bool:
@@ -1969,63 +1824,18 @@ def api_results(request: Request, cid: int, limit: int = 10, offset: int = 0):
 # ---- AI evaluation (inclusion pass over the shortlist), tracked per run --
 def _cfg_for(conn, provider: str, model: str) -> dict:
     """Build an AI config for a run's fixed provider + model; prices from ai_models."""
-    p = PROVIDERS.get(provider) or PROVIDERS[DEFAULT_PROVIDER]
-    row = ai_models.find(conn, provider, model)
-    price_in = row["input_per_m"] if row else p["price_in"]
-    price_out = row["output_per_m"] if row else p["price_out"]
-    return {"provider": provider, "label": p["label"], "base_url": p["base_url"],
-            "model": model or p["model"], "key": _provider_key(provider),
-            "price_in": price_in, "price_out": price_out,
-            "grid": dict(row) if row else None,
-            "peak_bitmap": peak_schedule.get_bitmap(conn, provider)}
+    return llm.cfg_for(conn, provider, model, key=_provider_key(provider))
 
 
 def _active_run(conn, cid: int) -> str:
     return settings.get_setting(conn, f"active_run_{cid}", "") or ""
 
 
-def _norm_trial(trial) -> dict:
-    """Clamp/validate the A/B trial knobs; the defaults reproduce today's behaviour."""
-    t = trial or {}
-    return {
-        "prompt_variant": "cached" if str(t.get("prompt_variant") or "current").lower() == "cached" else "current",
-        "concurrency": max(1, min(int(t.get("concurrency") or 1), 10)),
-        "caching": bool(t.get("caching")),
-    }
-
-
-def _prompt_spec_json(conn, cid: int, phase: str, trial=None) -> str:
-    """A JSON snapshot of the prompt inputs a run will use — stamped on the run so its prompts
-    stay exactly reproducible. `trial` carries the A/B knobs (prompt_variant / concurrency /
-    caching); the 'cached' variant stamps the reordered template so the run uses it end-to-end."""
-    c = cat.get_category(conn, cid) or {}
-    pname = "exclusion" if phase == evaluate.PHASE_EXCLUSION else "inclusion"
-    tr = _norm_trial(trial)
-    if tr["prompt_variant"] == "cached":
-        template, template_version = evaluate.cached_template(pname), "cached"
-    else:
-        template, template_version = prompts.default_text(pname), prompts.template_version()
-    return json.dumps({
-        "template": template,
-        "template_version": template_version,
-        # Content fingerprint of the template text: same hash <=> same prompt. The git SHA above
-        # changes on ANY commit, so only this tells you whether the prompt itself changed.
-        "template_hash": evaluate.template_fingerprint(template),
-        "inclusion_context": c.get("inclusion_context") or "",
-        "exclusion_context": c.get("exclusion_context") or "",
-        "name": (c.get("description") or "").strip() or cat.prettify(c.get("slug")) or "the topic",
-        "keep_hints": c.get("adjudication_hints_keep") or "",
-        "drop_hints": c.get("adjudication_hints_drop") or "",
-        "body_limit": evaluate.BODY_CHAR_LIMIT,
-        "prompt_variant": tr["prompt_variant"],
-        "concurrency": tr["concurrency"],
-        "caching": tr["caching"],
-    }, ensure_ascii=False)
-
-
-def _run_trial(conn, run_id: str) -> dict:
-    """The A/B trial knobs stamped on a run (prompt_variant / concurrency / caching), defaulted."""
-    return _norm_trial(evaluate.run_prompt_spec(conn, run_id) or {})
+# The A/B trial knobs, the stamped prompt spec and its readers live in govuk_corpus.evaluate
+# (shared with the benchmark CLI); aliases keep the call sites below unchanged.
+_norm_trial = evaluate.norm_trial
+_prompt_spec_json = evaluate.prompt_spec_json
+_run_trial = evaluate.run_trial
 
 
 def _run_prompt_inputs(conn, category, run_id: str, phase: str):
@@ -2056,27 +1866,13 @@ def _ensure_run(conn, cid: int) -> str:
 
 
 def _evaluate_one_page(cfg, is_exclusion, variant, caching, tmpl, inclusion, exclusion,
-                       name, keep_hints, drop_hints, r):
-    """Build one page's prompt (current or cached variant) and call the model. Touches NO DB, so
-    it's safe to run concurrently across pages; the caller persists the result. Returns (res, ms,
-    prompt). The 'cached' variant sends the stable half as a (cacheable) system prompt and the page
-    half as the user message."""
-    t0 = time.time()
-    if is_exclusion:
-        prompt = evaluate.build_exclusion_prompt(
-            name, inclusion, exclusion, keep_hints, drop_hints,
-            r["title"], r["body"], r.get("pass1_reason") or "", template=tmpl,
-            pass1_topic=r.get("pass1_topic") or "")
-    else:
-        prompt = evaluate.build_prompt(inclusion, exclusion, r["title"], r.get("description"),
-                                       r["body"], template=tmpl)
-    if variant == "cached":
-        stable, variable = evaluate.split_cached(prompt)
-        res = _ai_chat(cfg, stable, [{"role": "user", "content": variable}],
-                       max_tokens=int(os.getenv("AI_EVAL_MAX_TOKENS", "4096")), cache_system=caching)
-    else:
-        res = _ai_reply(cfg, "", prompt)
-    return res, int((time.time() - t0) * 1000), prompt
+                       name, keep_hints, drop_hints, r, sampling=None):
+    """Build one page's prompt and call the model (govuk_corpus.evaluate_driver). Touches NO DB,
+    so it's safe to run concurrently across pages; the caller persists the result. The model
+    hooks are looked up here at call time so the mocked tests can patch `_ai_reply`/`_ai_chat`."""
+    return evaluate_driver.evaluate_one_page(
+        cfg, is_exclusion, variant, caching, tmpl, inclusion, exclusion, name, keep_hints,
+        drop_hints, r, sampling=sampling, reply_fn=_ai_reply, chat_fn=_ai_chat)
 
 
 def _run_evaluation(cid: int, limit: int) -> dict:
@@ -2107,13 +1903,20 @@ def _run_evaluation(cid: int, limit: int) -> dict:
         # Use the run's stamped prompt spec (exact + fixed for the run); legacy runs resolve live.
         prompt_tmpl, inclusion, exclusion, name, keep_hints, drop_hints = _run_prompt_inputs(
             conn, category, run_id, phase)
+        # A scoped run (the benchmark) evaluates a fixed url list stamped on the run instead of
+        # the category's shortlist; a bench-tagged run is never auto-advanced by the app.
+        scope = evaluate.run_scope(conn, run_id)
+        bench = (evaluate.run_prompt_spec(conn, run_id) or {}).get("bench")
         if is_exclusion:
             rows = evaluate.exclusion_candidates(conn, run_id, run.get("source_run_id"), limit)
+        elif scope:
+            rows = evaluate.scoped_candidates(conn, run_id, scope["urls"], limit)
         else:
             rows = evaluate.run_candidates(conn, run_id, cid, limit,
                                            min_es_score=_GOVUK_MIN_ES_SCORE, **filters)
         trial = _run_trial(conn, run_id)
         concurrency, variant, caching = trial["concurrency"], trial["prompt_variant"], trial["caching"]
+        sampling = trial["sampling"]
         done = 0
         cost = 0.0
         stopped = None
@@ -2132,7 +1935,7 @@ def _run_evaluation(cid: int, limit: int) -> dict:
             idx += len(wave)
             evone = lambda rr: (rr,) + _evaluate_one_page(
                 cfg, is_exclusion, variant, caching, prompt_tmpl,
-                inclusion, exclusion, name, keep_hints, drop_hints, rr)
+                inclusion, exclusion, name, keep_hints, drop_hints, rr, sampling)
             if concurrency > 1 and len(wave) > 1:
                 with concurrent.futures.ThreadPoolExecutor(max_workers=len(wave)) as ex:
                     packed = list(ex.map(evone, wave))
@@ -2170,15 +1973,8 @@ def _run_evaluation(cid: int, limit: int) -> dict:
                     done += 1
                     continue
                 consec_err = 0
-                decision = (evaluate.parse_exclusion(res.get("reply", "")) if is_exclusion
-                            else evaluate.parse_decision(res.get("reply", "")))
-                evaluate.save_page(conn, run_id, cid, r["url"], decision, ms,
-                                   raw_reply=res.get("reply"))
-                evaluate.set_actual_model(conn, run_id, res.get("actual_model"))
-                c = res.get("cost_usd") or 0.0
-                evaluate.add_run_cost(conn, run_id, c, res.get("input_tokens"), res.get("output_tokens"),
-                                      res.get("cache_hit_tokens"), res.get("cache_miss_tokens"))
-                _log_ai_usage(conn, c, res.get("input_tokens"), res.get("output_tokens"), "evaluate")
+                _decision, c = evaluate_driver.persist_result(
+                    conn, run_id, cid, r, res, ms, is_exclusion=is_exclusion, kind="evaluate")
                 done += 1
                 cost += c
                 spent += c
@@ -2189,6 +1985,8 @@ def _run_evaluation(cid: int, limit: int) -> dict:
         run = evaluate.get_run(conn, run_id)
         if is_exclusion:
             total = evaluate.kept_count(conn, run.get("source_run_id")) if run.get("source_run_id") else 0
+        elif scope:
+            total = len(scope["urls"])
         else:
             total = cached_count(conn, **filters)
         remaining = max(0, total - (run["pages"] or 0))
@@ -2198,16 +1996,20 @@ def _run_evaluation(cid: int, limit: int) -> dict:
         if remaining == 0 and stopped is None:
             evaluate.finish_run(conn, run_id)
             # Auto-advance: when an inclusion run completes, start Phase 2 (Exclusion)
-            # over the pages it kept, on the exclusion phase's model.
-            if not is_exclusion:
+            # over the pages it kept, on the exclusion phase's model. A benchmark run drives its
+            # own Phase 2 (both models off the same keeps), so it is never advanced here; any
+            # other scoped run inherits its Phase-1 model so the pair stays comparable.
+            if not is_exclusion and not bench:
                 keeps = evaluate.kept_count(conn, run_id)
                 if keeps > 0:
-                    excfg = _ai_config_for_phase(conn, evaluate.PHASE_EXCLUSION)
+                    excfg = ({"model": run["model"], "provider": run["provider"]} if scope
+                             else _ai_config_for_phase(conn, evaluate.PHASE_EXCLUSION))
                     new_id = evaluate.create_run(conn, cid, excfg["model"], excfg["provider"],
                                                  phase=evaluate.PHASE_EXCLUSION, source_run_id=run_id,
                                                  name=run.get("name"),   # a run's name spans both phases
                                                  prompt_spec=_prompt_spec_json(conn, cid, evaluate.PHASE_EXCLUSION,
-                                                                               _run_trial(conn, run_id)))
+                                                                               _run_trial(conn, run_id),
+                                                                               scope=scope))
                     settings.set_setting(conn, f"active_run_{cid}", new_id)
                     advanced = {"run_id": new_id, "phase": evaluate.PHASE_EXCLUSION, "remaining": keeps}
                     remaining = keeps
@@ -2482,7 +2284,8 @@ def _retry_unparsable(cid: int, cap: int = 300) -> dict:
             retried = parsed = 0
             for url in urls:
                 c = conn.execute(
-                    f"SELECT title, description, search_text AS body FROM content WHERE url = {P}", (url,)).fetchone()
+                    f"SELECT title, description, search_text AS body, content_hash FROM content WHERE url = {P}",
+                    (url,)).fetchone()
                 c = dict(c) if c else {"title": "", "description": "", "body": ""}
                 pass1 = pass1_topic = ""
                 if is_excl:
@@ -2493,20 +2296,16 @@ def _retry_unparsable(cid: int, cap: int = 300) -> dict:
                     pass1 = pr.get("reason") or ""
                     pass1_topic = pr.get("primary_topic") or ""
                 row = {"url": url, "title": c.get("title"), "description": c.get("description"),
-                       "body": c.get("body"), "pass1_reason": pass1, "pass1_topic": pass1_topic}
+                       "body": c.get("body"), "content_hash": c.get("content_hash"),
+                       "pass1_reason": pass1, "pass1_topic": pass1_topic}
                 res, ms, _prompt = _evaluate_one_page(cfg, is_excl, rt["prompt_variant"], rt["caching"],
                                                       prompt_tmpl, inclusion, exclusion, name,
-                                                      keep_hints, drop_hints, row)
+                                                      keep_hints, drop_hints, row, rt["sampling"])
                 if res.get("error"):
                     continue                                   # leave it unparsable; provider hiccup
-                decision = (evaluate.parse_exclusion(res.get("reply", "")) if is_excl
-                            else evaluate.parse_decision(res.get("reply", "")))
                 conn.execute(f"DELETE FROM evaluation_results WHERE run_id = {P} AND url = {P}", (run_id, url))
-                evaluate.save_page(conn, run_id, cid, url, decision, ms, raw_reply=res.get("reply"))
-                cost = res.get("cost_usd") or 0.0
-                evaluate.add_run_cost(conn, run_id, cost, res.get("input_tokens"), res.get("output_tokens"),
-                                      res.get("cache_hit_tokens"), res.get("cache_miss_tokens"))
-                _log_ai_usage(conn, cost, res.get("input_tokens"), res.get("output_tokens"), "retry-unparsable")
+                decision, cost = evaluate_driver.persist_result(
+                    conn, run_id, cid, row, res, ms, is_exclusion=is_excl, kind="retry-unparsable")
                 out["cost_usd"] += cost
                 retried += 1
                 if decision is not None and decision.get("keep") is not None:
@@ -3475,7 +3274,9 @@ def api_list_runs(request: Request, cid: int):
             src = by_id.get(r.get("source_run_id"))
             r["target"] = src.get("kept") if src else None   # exclusion re-checks the inclusion's keeps
         else:
-            r["target"] = shortlist_total()
+            # A scoped (benchmark) run works toward its fixed url list, not the shortlist.
+            scope_n = (r.get("trial") or {}).get("scope_n")
+            r["target"] = scope_n if scope_n else shortlist_total()
             g = govuk_by_run.get(r["run_id"], 0)              # GOV.UK-Search-only pages this run evaluated
             r["src_govuk"] = g
             r["src_corpus"] = max(0, (r.get("pages") or 0) - g)   # the rest = corpus keyword shortlist
@@ -3762,7 +3563,8 @@ async def api_continue_run(request: Request, cid: int, run_id: str):
             if "exclusion" in (r.get("phase") or "").lower():
                 src = by_id.get(r.get("source_run_id"))
                 return src.get("kept") if src else None
-            return shortlist_total
+            sc = evaluate.run_scope(conn, r["run_id"])
+            return len(sc["urls"]) if sc else shortlist_total
 
         # 1) an unfinished phase, or a finished phase that stopped below its input.
         for r in chain:
@@ -3779,12 +3581,18 @@ async def api_continue_run(request: Request, cid: int, run_id: str):
         have_excl = any("exclusion" in (r.get("phase") or "").lower() for r in chain)
         incl = next((r for r in chain if "inclusion" in (r.get("phase") or "").lower()), None)
         if incl and incl.get("finished_at") and (incl.get("kept") or 0) > 0 and not have_excl:
-            excfg = _ai_config_for_phase(conn, evaluate.PHASE_EXCLUSION)
+            spec = evaluate.run_prompt_spec(conn, incl["run_id"]) or {}
+            if spec.get("bench"):
+                return JSONResponse({"done": True, "note": "benchmark run: Phase 2 is driven by bench, not the app"})
+            scope = evaluate.run_scope(conn, incl["run_id"])
+            excfg = ({"model": incl["model"], "provider": incl["provider"]} if scope
+                     else _ai_config_for_phase(conn, evaluate.PHASE_EXCLUSION))
             new_id = evaluate.create_run(conn, cid, excfg["model"], excfg["provider"],
                                          phase=evaluate.PHASE_EXCLUSION, source_run_id=incl["run_id"],
                                          name=incl.get("name"),   # a run's name spans both phases
                                          prompt_spec=_prompt_spec_json(conn, cid, evaluate.PHASE_EXCLUSION,
-                                                                       _run_trial(conn, incl["run_id"])))
+                                                                       _run_trial(conn, incl["run_id"]),
+                                                                       scope=scope))
             settings.set_setting(conn, f"active_run_{cid}", new_id)
             return JSONResponse({"active": new_id, "action": "start_exclusion"})
 
