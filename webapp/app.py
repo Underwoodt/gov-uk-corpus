@@ -1064,7 +1064,7 @@ async def api_category_assistant(request: Request):
         cfg = _ai_config(conn)
         # Re-check the user's latest message against real slugs and hand the model the
         # matches, so a changed organisation/doc-type field gets valid-slug recommendations.
-        system = category_interview.system_prompt(edit_fields, base=prompts.active_text(conn, "builder"))
+        system = category_interview.system_prompt(edit_fields, base=prompts.default_text("builder"))
         ref = _slug_reference(conn, last_user)
         if ref:
             system = system + "\n\n" + ref
@@ -2004,7 +2004,7 @@ def _prompt_spec_json(conn, cid: int, phase: str, trial=None) -> str:
     if tr["prompt_variant"] == "cached":
         template, template_version = evaluate.cached_template(pname), "cached"
     else:
-        template, template_version = prompts.active_text(conn, pname), prompts.active_version(conn, pname)
+        template, template_version = prompts.default_text(pname), prompts.template_version()
     return json.dumps({
         "template": template,
         "template_version": template_version,
@@ -2033,7 +2033,7 @@ def _run_prompt_inputs(conn, category, run_id: str, phase: str):
         return (spec.get("template"), spec.get("inclusion_context", ""), spec.get("exclusion_context", ""),
                 spec.get("name") or "the topic", spec.get("keep_hints", ""), spec.get("drop_hints", ""))
     is_excl = phase == evaluate.PHASE_EXCLUSION
-    return (prompts.active_text(conn, "exclusion" if is_excl else "inclusion"),
+    return (prompts.default_text("exclusion" if is_excl else "inclusion"),
             category.get("inclusion_context") or "", category.get("exclusion_context") or "",
             (category.get("description") or "").strip() or cat.prettify(category.get("slug")) or "the topic",
             category.get("adjudication_hints_keep") or "", category.get("adjudication_hints_drop") or "")
@@ -3623,7 +3623,7 @@ def _example_phase_prompts(conn, category, run_id: str = "") -> dict:
     # The raw template each phase used (from the run's stamp, else the current active version) —
     # shown alongside the completed prompt for comparison.
     incl_spec = evaluate.run_prompt_spec(conn, incl_run["run_id"]) if incl_run else None
-    incl_template = (incl_spec or {}).get("template") or prompts.active_text(conn, "inclusion")
+    incl_template = (incl_spec or {}).get("template") or prompts.default_text("inclusion")
     if incl_spec:
         inclusion_prompt = evaluate.build_prompt(
             incl_spec.get("inclusion_context", ""), incl_spec.get("exclusion_context", ""),
@@ -3635,7 +3635,7 @@ def _example_phase_prompts(conn, category, run_id: str = "") -> dict:
             title, description, body, template=incl_template)
 
     excl_spec = evaluate.run_prompt_spec(conn, excl_run["run_id"]) if excl_run else None
-    excl_template = (excl_spec or {}).get("template") or prompts.active_text(conn, "exclusion")
+    excl_template = (excl_spec or {}).get("template") or prompts.default_text("exclusion")
     if excl_spec:
         exclusion_prompt = evaluate.build_exclusion_prompt(
             excl_spec.get("name") or "the topic", excl_spec.get("inclusion_context", ""),
@@ -4468,7 +4468,7 @@ def assistant_page(request: Request):
     resp = templates.TemplateResponse("assistant.html", ctx(
         conn, request, active_nav="assistant", model=cfg["model"],
         provider_label=cfg["label"], has_key=cfg["has_key"],
-        default_system=prompts.active_text(conn, "assistant"),
+        default_system=prompts.default_text("assistant"),
         base_url=cfg["base_url"] or "api.anthropic.com (Claude default)"))
     conn.close()
     return resp
@@ -4721,24 +4721,19 @@ _PROMPT_NOTES = {
 }
 
 
-def _ai_prompts(conn) -> list:
-    """Editable prompts for Settings → AI Prompts: current (active) text, whether it's the code
-    default or a saved override, and the saved version history for reverting."""
-    out = []
-    for name in prompts.NAMES:
-        av = prompts.active_version(conn, name)
-        out.append({
-            "name": name,
-            "title": prompts.LABELS[name],
-            "note": _PROMPT_NOTES.get(name, ""),
-            "placeholders": prompts.PLACEHOLDERS[name],
-            "text": prompts.active_text(conn, name),
-            "default_text": prompts.default_text(name),
-            "active_version": av,
-            "using_default": av is None,
-            "versions": prompts.versions(conn, name),
-        })
-    return out
+def _ai_prompts() -> list:
+    """Read-only view for Settings → AI Prompts: each prompt's git default and the commit it
+    comes from. Prompts live in git — the single source of truth — so there is no in-app
+    editing and no saved-version history."""
+    v = prompts.template_version()
+    return [{
+        "name": name,
+        "title": prompts.LABELS[name],
+        "note": _PROMPT_NOTES.get(name, ""),
+        "placeholders": prompts.PLACEHOLDERS[name],
+        "text": prompts.default_text(name),
+        "version": v,
+    } for name in prompts.NAMES]
 
 
 def _settings_admin_ok(request: Request) -> bool:
@@ -4746,61 +4741,8 @@ def _settings_admin_ok(request: Request) -> bool:
     return AUTH_MODE != "accounts" or _require_admin(request) is not None
 
 
-@app.post("/settings/prompts/save")
-async def save_prompt(request: Request):
-    """Save an edited AI prompt as a new active version."""
-    if not authed(request):
-        return login_redirect(request)
-    if not _settings_admin_ok(request):
-        return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
-    form = await request.form()
-    name, body = (form.get("name") or ""), (form.get("body") or "")
-    dest = str(request.url_for("settings_page"))
-    if name not in prompts.NAMES or not body.strip():
-        return RedirectResponse(url=dest + "?saved=1", status_code=303)
-    missing = prompts.missing_placeholders(name, body)
-    if missing:                                  # reject: a required token was removed
-        msg = f"{prompts.LABELS.get(name, name)}: keep the required placeholders {', '.join(missing)}."
-        return RedirectResponse(url=dest + "?prompt_error=" + quote(msg), status_code=303)
-    conn = connect()
-    try:
-        u = current_user(request)
-        try:
-            prompts.save_version(conn, name, body, (form.get("note") or "").strip(),
-                                 (u or {}).get("email", ""))
-        except ValueError as e:
-            return RedirectResponse(url=dest + "?prompt_error=" + quote(str(e)), status_code=303)
-    finally:
-        conn.close()
-    return RedirectResponse(url=dest + "?saved=1", status_code=303)
-
-
-@app.post("/settings/prompts/activate")
-async def activate_prompt(request: Request):
-    """Make a saved prompt version active again, or (version='default') fall back to the code default."""
-    if not authed(request):
-        return login_redirect(request)
-    if not _settings_admin_ok(request):
-        return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
-    form = await request.form()
-    name, version = (form.get("name") or ""), (form.get("version") or "")
-    if name in prompts.NAMES and version:
-        conn = connect()
-        try:
-            if version == "default":
-                prompts.reset_to_default(conn, name)
-            else:
-                prompts.activate(conn, name, int(version))
-        except (ValueError, TypeError):
-            pass
-        finally:
-            conn.close()
-    return RedirectResponse(url=str(request.url_for("settings_page")) + "?saved=1", status_code=303)
-
-
 @app.get("/settings", response_class=HTMLResponse)
-def settings_page(request: Request, saved: int = 0, user_ok: int = 0, user_error: str = "",
-                  prompt_error: str = ""):
+def settings_page(request: Request, saved: int = 0, user_ok: int = 0, user_error: str = ""):
     if not authed(request):
         return login_redirect(request)
     conn = connect()
@@ -4829,8 +4771,8 @@ def settings_page(request: Request, saved: int = 0, user_ok: int = 0, user_error
         providers=list(PROVIDERS.keys()), phase_models=phase_models,
         provider_keys={k: _provider_configured(k) for k in PROVIDERS},
         daily_budget=_budget(conn), max_docs=_max_docs(conn),
-        spent_today=round(_daily_spend(conn), 4), saved=saved, prompt_error=prompt_error,
-        prompts=_ai_prompts(conn)))
+        spent_today=round(_daily_spend(conn), 4), saved=saved,
+        prompts=_ai_prompts()))
     conn.close()
     return resp
 

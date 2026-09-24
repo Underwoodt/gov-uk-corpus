@@ -219,7 +219,9 @@ CREATE TABLE IF NOT EXISTS app_settings (
     value TEXT
 );
 
--- Editable, versioned overrides for the AI prompts (inclusion | exclusion | builder | assistant).
+-- RETIRED. The AI prompts live in git (the single source of truth — see govuk_corpus/prompts.py);
+-- nothing reads or writes this table any more. Kept as CREATE IF NOT EXISTS so existing databases
+-- need no DROP migration; it is empty and safe to drop by hand.
 CREATE TABLE IF NOT EXISTS prompt_versions (
     name        TEXT NOT NULL,
     version     INTEGER NOT NULL,

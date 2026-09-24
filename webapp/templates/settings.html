@@ -204,60 +204,25 @@
     {% endif %}
   </section>
 
-  <!-- Tab: AI Prompts (read-only) -->
+  <!-- Tab: AI Prompts (read-only — the prompts live in git, the single source of truth) -->
   <section class="stabpanel" data-tab="prompts" hidden>
     <h2 style="margin-bottom:6px;">AI prompts</h2>
-    {% if prompt_error %}<div class="error-summary"><h2>There is a problem</h2><ul><li>{{ prompt_error }}</li></ul></div>{% endif %}
-    <p class="hint" style="max-width:760px;">The prompts behind each AI feature. Edit and
-      <strong>Save as a new version</strong> to change the wording; the newest saved version is used
-      unless you revert. <span class="mono">{{ '{{' }}TOKEN{{ '}}' }}</span> placeholders are filled in at
-      run time — keep them. Reset to the code default at any time; history is kept.</p>
+    <p class="hint" style="max-width:760px;">The prompts behind each AI feature, shown read-only. They live in
+      <strong>git</strong> (<span class="mono">govuk_corpus/evaluate.py</span>, <span class="mono">prompts.py</span>,
+      <span class="mono">category_interview.py</span>) — the single source of truth — so changing one is a code
+      commit, not an in-app edit. <span class="mono">{{ '{{' }}TOKEN{{ '}}' }}</span> placeholders are filled in at
+      run time. Every run stamps the exact template it used, so past runs stay reproducible whatever
+      changes here.</p>
     {% for p in prompts %}
     <details {{ 'open' if loop.first }} style="margin:0 0 16px;max-width:960px;border:1px solid var(--border-mid,#b1b4b6);border-radius:8px;">
       <summary style="cursor:pointer;font-weight:700;padding:10px 14px;">{{ p.title }}
-        <span class="secondary" style="font-weight:400;font-size:13px;">— {% if p.using_default %}code default{% else %}saved v{{ p.active_version }}{% endif %}</span>
+        <span class="secondary" style="font-weight:400;font-size:13px;">— version: git <span class="mono">{{ p.version }}</span></span>
       </summary>
       <div style="padding:0 14px 14px;">
         <p class="secondary" style="margin:0 0 6px;">{{ p.note }}<br>
           <span style="font-size:12px;">Placeholders: <span class="mono">{{ p.placeholders }}</span></span></p>
-        <form method="post" action="{{ url_for('save_prompt') }}">
-          <input type="hidden" name="csrf" value="{{ csrf_token }}">
-          <input type="hidden" name="name" value="{{ p.name }}">
-          <textarea name="body" rows="16" style="width:100%;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
-            border:2px solid var(--border-mid,#b1b4b6);border-radius:6px;padding:10px;white-space:pre;overflow:auto;">{{ p.text }}</textarea>
-          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px;">
-            <input name="note" type="text" placeholder="What changed? (optional)"
-              style="flex:1 1 260px;padding:7px 9px;border:2px solid var(--border-mid,#b1b4b6);border-radius:5px;font:inherit;">
-            <button class="btn" type="submit">Save as new version</button>
-          </div>
-        </form>
-        <form method="post" action="{{ url_for('activate_prompt') }}" style="margin-top:8px;"
-          onsubmit="return confirm('Reset this prompt to the built-in code default? Saved versions are kept.');">
-          <input type="hidden" name="csrf" value="{{ csrf_token }}">
-          <input type="hidden" name="name" value="{{ p.name }}"><input type="hidden" name="version" value="default">
-          <button class="btn secondary-btn" type="submit" {{ 'disabled' if p.using_default }}>Reset to code default</button>
-        </form>
-        {% if p.versions %}
-        <details style="margin-top:12px;"><summary class="secondary" style="cursor:pointer;">Version history ({{ p.versions|length }})</summary>
-          <table style="font-size:13px;margin-top:8px;"><thead><tr><th>Version</th><th>Saved</th><th>By</th><th>Note</th><th></th></tr></thead>
-            <tbody>
-              {% for v in p.versions %}
-              <tr>
-                <td>v{{ v.version }}{% if v.active %} <strong>(active)</strong>{% endif %}</td>
-                <td>{{ (v.created_at | string)[:19] | replace('T',' ') }}</td>
-                <td>{{ v.created_by }}</td>
-                <td>{{ v.note }}</td>
-                <td>{% if not v.active %}<form method="post" action="{{ url_for('activate_prompt') }}" style="display:inline;">
-                  <input type="hidden" name="csrf" value="{{ csrf_token }}">
-                  <input type="hidden" name="name" value="{{ p.name }}"><input type="hidden" name="version" value="{{ v.version }}">
-                  <button class="linklike" type="submit" style="background:none;border:none;color:var(--blue,#1d70b8);cursor:pointer;padding:0;">Use this version</button>
-                </form>{% endif %}</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </details>
-        {% endif %}
+        <textarea readonly rows="16" aria-label="{{ p.title }} (read-only)" style="width:100%;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
+          border:2px solid var(--border-mid,#b1b4b6);border-radius:6px;padding:10px;white-space:pre;overflow:auto;background:var(--grey-light,#f3f2f1);">{{ p.text }}</textarea>
       </div>
     </details>
     {% endfor %}
@@ -276,7 +241,6 @@
     tabs.forEach(a => a.addEventListener("click", e => { e.preventDefault(); show(a.dataset.tab); }));
     let init = "models";
     try { init = localStorage.getItem("settings-tab") || "models"; } catch (e) {}
-    if ({{ 'true' if prompt_error else 'false' }}) init = "prompts";   // land on the tab that errored
     if (!tabs.some(a => a.dataset.tab === init)) init = "models";
     show(init);
   })();
