@@ -416,6 +416,10 @@ class TestGoldRoutes(unittest.TestCase):
         self.assertEqual((r.json()["label"], r.json()["agreement"]), ("borderline", "split"))
         self.assertEqual([(v["labeller"], v["label"], v["blind"]) for v in r.json()["votes"]],
                          [("ann", "in", False), ("bob", "out", True)])
+        r = c.get(f"/categories/{self.cid}/gold/wizard")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("guc-0031", r.text)
+        self.assertIn('id="wiz-next"', r.text)
         r = c.get(f"/categories/{self.cid}/gold/agreement")
         self.assertEqual(r.status_code, 200)
         self.assertIn("guc-0030", r.text)

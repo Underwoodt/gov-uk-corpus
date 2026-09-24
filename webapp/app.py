@@ -2725,6 +2725,16 @@ def _gold_pages_sampled(conn, category, run_id: str):
 
 @app.get("/categories/{cid}/gold", response_class=HTMLResponse)
 def gold_page(request: Request, cid: int, run: str = ""):
+    return _gold_page(request, cid, run, wizard=False)
+
+
+@app.get("/categories/{cid}/gold/wizard", response_class=HTMLResponse)
+def gold_wizard_page(request: Request, cid: int, run: str = ""):
+    """guc-0031: the same labelling page one card at a time, with Prev / Next that save."""
+    return _gold_page(request, cid, run, wizard=True)
+
+
+def _gold_page(request: Request, cid: int, run: str, wizard: bool):
     if not authed(request):
         return login_redirect(request)
     conn = connect()
@@ -2754,7 +2764,7 @@ def gold_page(request: Request, cid: int, run: str = ""):
                    sample_total=sum(s["target"] for s in selection.values()),
                    labelled_here=sum(1 for p in pages if p["label"]),
                    my_labeller=(cu.get("email") if cu else "") or "",
-                   labellers=gold.labellers(conn, cid))
+                   labellers=gold.labellers(conn, cid), wizard=wizard)
         return templates.TemplateResponse("gold_labels.html", ctxd)
     finally:
         conn.close()

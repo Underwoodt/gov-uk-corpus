@@ -18,7 +18,7 @@ we can pin the report to an exact page.
 
 ## Next free serial
 
-**`guc-0031`** ← assign this to the next new page, then increment this line. (guc-0023 is free; 0024–0026 used by the password-reset pages; 0027 = GOV.UK Search additions; 0028 = Run performance diff; 0029 = Gold labels; 0030 = Gold agreement.)
+**`guc-0032`** ← assign this to the next new page, then increment this line. (guc-0023 is free; 0024–0026 used by the password-reset pages; 0027 = GOV.UK Search additions; 0028 = Run performance diff; 0029 = Gold labels; 0030 = Gold agreement; 0031 = Gold labels wizard.)
 
 ## How it's wired (so the rule is automatic)
 
@@ -72,6 +72,7 @@ we can pin the report to an exact page.
 | guc-0028 | Run performance diff (disagreements, judge, adjudicate, suggest) | `performance_diff.html` | `GET /categories/{id}/performance/diff`, `POST /api/categories/{id}/performance/diff/{explain,adjudicate,suggest}` | Active |
 | guc-0029 | Gold labels (rate a run's outcomes page by page → benchmark ground truth; multi-labeller, blind mode, stage sampling) | `gold_labels.html` | `GET /categories/{id}/gold?run=`, `POST /api/categories/{id}/gold`, `POST /api/categories/{id}/gold/sample`, `GET /categories/{id}/gold/sheet.csv` | Active |
 | guc-0030 | Gold agreement (inter-labeller κ, disagreements, adjudication) | `gold_agreement.html` | `GET /categories/{id}/gold/agreement`, `POST /api/categories/{id}/gold/adjudicate` | Active |
+| guc-0031 | Gold labels wizard (one page at a time, Prev / Next save) | `gold_labels.html` (wizard mode) | `GET /categories/{id}/gold/wizard?run=` | Active |
 
 ## Sub-tab IDs
 

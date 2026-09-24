@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block page_id %}guc-0029{% endblock %}
-{% block title %}{{ category.display_name }} — gold labels{% endblock %}
+{% block page_id %}{% if wizard %}guc-0031{% else %}guc-0029{% endif %}{% endblock %}
+{% block title %}{{ category.display_name }} — gold labels{% if wizard %} (wizard){% endif %}{% endblock %}
 {% block content %}
 
   {% macro chip(k) %}
@@ -10,7 +10,7 @@
   {% endmacro %}
 
   <a class="back" href="{{ url_for('performance_page', cid=category.id) }}">‹ Run performance</a>
-  <h1 style="margin:16px 0 6px;">Gold labels</h1>
+  <h1 style="margin:16px 0 6px;">Gold labels{% if wizard %} <span class="muted-sm" style="font-weight:400;">· one page at a time</span>{% endif %}</h1>
   <p class="hint" style="margin-top:0;">Rate what the pipeline did with each page in <strong>one run</strong>:
     <em>correct</em> / <em>wrong</em> / <em>borderline</em>, with a one-line reason. Each verdict is stored as a
     gold label (correct keep → <b>in</b>, correct drop → <b>out</b>, wrong keep → <b>out</b>, wrong drop → <b>in</b>)
@@ -26,7 +26,11 @@
       {% else %}<input type="text" id="who" placeholder="your name or email" maxlength="80" aria-label="Your name">{% endif %}
       <label class="gl-chk" title="Hide the pipeline's verdicts and reasons while you label, and give the label directly. Other people's votes stay hidden until you have voted."><input type="checkbox" id="blind"> label blind (hide the model's verdicts)</label>
       <span class="muted-sm">{% if labellers %}labellers so far: {{ labellers|join(', ') }}{% else %}no votes yet{% endif %}</span>
-      <a class="btn secondary-btn" style="margin-left:auto;padding:5px 12px;font-size:13px;" href="{{ url_for('gold_agreement_page', cid=category.id) }}">Agreement &amp; adjudication ›</a>
+      <span style="margin-left:auto;display:inline-flex;gap:8px;">
+        {% if wizard %}<a class="btn secondary-btn" style="padding:5px 12px;font-size:13px;" href="{{ url_for('gold_page', cid=category.id) }}{% if run %}?run={{ run.run_id }}{% endif %}">List view ›</a>
+        {% else %}<a class="btn secondary-btn" style="padding:5px 12px;font-size:13px;" href="{{ url_for('gold_wizard_page', cid=category.id) }}{% if run %}?run={{ run.run_id }}{% endif %}">Wizard view ›</a>{% endif %}
+        <a class="btn secondary-btn" style="padding:5px 12px;font-size:13px;" href="{{ url_for('gold_agreement_page', cid=category.id) }}">Agreement &amp; adjudication ›</a>
+      </span>
     </div>
     <p class="muted-sm" style="margin:6px 0 0;">Each person's vote is kept separately. The gold label is the consensus: unanimous or majority wins,
       a two-way split becomes <em>borderline</em> until it is adjudicated. Other people's votes on a page are shown only after you have saved yours.</p>
@@ -93,6 +97,18 @@
     <span class="muted-sm" id="gl-shown"></span>
   </div>
 
+  {% if wizard %}
+  <div class="card wiz-nav" id="wiz-nav">
+    <button type="button" class="btn secondary-btn" id="wiz-prev">‹ Prev</button>
+    <div class="wiz-mid">
+      <div class="wiz-text"><b id="wiz-pos">–</b> of <b id="wiz-total">–</b> in the current filter · <span id="wiz-done">–</span> labelled by you</div>
+      <div class="wiz-bar"><div class="wiz-fill" id="wiz-fill" style="width:0%"></div></div>
+      <div class="muted-sm" id="wiz-note">Prev and Next save your vote on this page first. ← / → keys work too.</div>
+    </div>
+    <button type="button" class="btn" id="wiz-next">Next ›</button>
+    <button type="button" class="btn secondary-btn" id="wiz-jump" title="Go to the first page in the current filter that you have not labelled">First unlabelled</button>
+  </div>
+  {% endif %}
   <div id="gl-list">
   {% for p in pages %}
     <div class="card gl-card" data-url="{{ p.url }}" data-stage="{{ p.stage or '' }}" data-labelled="{{ '1' if p.label else '0' }}"
@@ -223,6 +239,12 @@
     .gs-actions { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:10px; }
     .samp { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; padding:3px 8px; border-radius:999px; background:#e8f1fb; color:#1d4e89; margin-left:6px; }
     .gl-card[data-sampled="0"] .stage { opacity:.7; }
+    .wiz-nav { display:flex; gap:14px; align-items:center; padding:12px 16px; margin-bottom:12px; position:sticky; top:0; z-index:5; }
+    .wiz-mid { flex:1; min-width:200px; }
+    .wiz-text { font-size:14px; }
+    .wiz-bar { height:8px; background:var(--surface-3); border-radius:999px; overflow:hidden; margin:6px 0 4px; }
+    .wiz-fill { height:100%; background:var(--blue); transition:width .2s; }
+    #wiz-prev, #wiz-next { padding:8px 18px; }
     .gl-who { padding:10px 16px; margin-bottom:12px; }
     .gw-row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
     #who { min-width:220px; font-size:13px; padding:5px 8px; }
@@ -315,8 +337,8 @@
       const out = wrap.querySelector(".rate-out");
       const reason = wrap.querySelector(".rate-reason").value.trim();
       const who = me();
-      if (!who) { out.className = "rate-out err"; out.textContent = "Say who is labelling first (top of the page)."; if (whoInput) whoInput.focus(); return; }
-      if ((verdict || label) && !reason) { out.className = "rate-out err"; out.textContent = "Add a one-line reason first."; wrap.querySelector(".rate-reason").focus(); return; }
+      if (!who) { out.className = "rate-out err"; out.textContent = "Say who is labelling first (top of the page)."; if (whoInput) whoInput.focus(); return false; }
+      if ((verdict || label) && !reason) { out.className = "rate-out err"; out.textContent = "Add a one-line reason first."; wrap.querySelector(".rate-reason").focus(); return false; }
       out.className = "rate-out"; out.textContent = "Saving…";
       try {
         const r = await fetch(`/api/categories/${CID}/gold`, {
@@ -330,18 +352,33 @@
         const box = wrap.querySelector(".votes"); box.dataset.consensus = j.label || ""; box.dataset.agreement = j.agreement || "";
         renderVotes(card, j.votes || [], j.label || "", j.agreement || "");
         out.innerHTML = j.my_label ? `your vote: <b class="lbl ${j.my_label}">${j.my_label}</b>` : "your vote cleared";
+        wrap.dataset.dirty = "";
         setStatus(j); paintProgress(j.progress); applyFilter();
-      } catch (e) { out.className = "rate-out err"; out.textContent = "Couldn't save: " + (e.message || e); }
+        return true;
+      } catch (e) { out.className = "rate-out err"; out.textContent = "Couldn't save: " + (e.message || e); return false; }
+    }
+    // What "save the state" means on Prev / Next: if the labeller changed anything on the card
+    // (picked a verdict or label, or edited the reason) it is saved before moving on.
+    async function commit(card) {
+      const wrap = card.querySelector(".rate");
+      if (wrap.dataset.dirty !== "1") return true;
+      if (blindBox.checked) {
+        if (!wrap.dataset.mylabel) return true;                    // nothing chosen: nothing to save
+        return save(card, { label: wrap.dataset.mylabel });
+      }
+      if (!wrap.dataset.verdict) return true;
+      return save(card, { verdict: wrap.dataset.verdict });
     }
     document.querySelectorAll(".gl-card").forEach(card => {
       const wrap = card.querySelector(".rate");
+      wrap.querySelector(".rate-reason").addEventListener("input", () => { wrap.dataset.dirty = "1"; });
       card.querySelectorAll(".rate-btn[data-verdict]").forEach(b => b.onclick = () => {
-        wrap.dataset.verdict = b.dataset.verdict; wrap.dataset.mylabel = ""; paint(card);
+        wrap.dataset.verdict = b.dataset.verdict; wrap.dataset.mylabel = ""; wrap.dataset.dirty = "1"; paint(card);
         if (wrap.querySelector(".rate-reason").value.trim()) save(card, { verdict: b.dataset.verdict });
         else wrap.querySelector(".rate-reason").focus();
       });
       card.querySelectorAll(".rate-btn[data-label]").forEach(b => b.onclick = () => {
-        wrap.dataset.mylabel = b.dataset.label; wrap.dataset.verdict = ""; paint(card);
+        wrap.dataset.mylabel = b.dataset.label; wrap.dataset.verdict = ""; wrap.dataset.dirty = "1"; paint(card);
         if (wrap.querySelector(".rate-reason").value.trim()) save(card, { label: b.dataset.label });
         else wrap.querySelector(".rate-reason").focus();
       });
@@ -370,13 +407,15 @@
       const sampledOnly = document.getElementById("only-sampled").checked;
       const q = (document.getElementById("gl-search").value || "").trim().toLowerCase();
       let shown = 0; const perStage = {};
+      wizOrder = [];
       document.querySelectorAll(".gl-card").forEach(c => {
         const inScope = (!sampledOnly || c.dataset.sampled === "1");
         if (inScope) perStage[c.dataset.stage] = (perStage[c.dataset.stage] || 0) + 1;
         const ok = inScope && (!stage || c.dataset.stage === stage) && (!only || c.dataset.labelled !== "1")
           && (!q || c.dataset.hay.includes(q));
-        c.hidden = !ok; if (ok) shown++;
+        c.hidden = !ok; if (ok) { shown++; wizOrder.push(c); }
       });
+      if (WIZARD) wizShow();
       document.querySelectorAll(".fbtn[data-stage]").forEach(b => {
         const cnt = b.querySelector(".count"); if (!cnt || !b.dataset.stage) return;
         cnt.textContent = sampledOnly ? (perStage[b.dataset.stage] || 0) : cnt.dataset.all;
@@ -392,6 +431,54 @@
       });
     }
     document.getElementById("only-sampled").onchange = applyFilter;
+
+    // ---- wizard: one card at a time; Prev / Next save first ----
+    const WIZARD = {{ wizard|tojson }};
+    let wizOrder = [], wizCur = null;
+    const LS_POS = "gold_wiz_" + CID + "_" + RUN;
+    const allCards = () => [...document.querySelectorAll(".gl-card")];
+    function wizShow() {
+      if (!WIZARD) return;
+      const cards = allCards();
+      if (!wizCur || !cards.includes(wizCur)) {
+        let saved = null; try { saved = localStorage.getItem(LS_POS); } catch (e) {}
+        wizCur = wizOrder.find(c => c.dataset.url === saved) || wizOrder.find(c => c.dataset.labelled !== "1") || wizOrder[0] || null;
+      }
+      cards.forEach(c => { c.hidden = c !== wizCur; });
+      const idx = wizCur ? (wizOrder.indexOf(wizCur) >= 0 ? wizOrder.indexOf(wizCur)
+                            : wizOrder.filter(c => c.compareDocumentPosition(wizCur) & Node.DOCUMENT_POSITION_FOLLOWING).length) : -1;
+      document.getElementById("wiz-pos").textContent = wizCur ? (idx + 1) : 0;
+      document.getElementById("wiz-total").textContent = wizOrder.length;
+      document.getElementById("wiz-done").textContent = wizOrder.filter(c => c.dataset.labelled === "1").length;
+      document.getElementById("wiz-fill").style.width = wizOrder.length ? Math.round(100 * (idx + 1) / wizOrder.length) + "%" : "0%";
+      document.getElementById("wiz-prev").disabled = !wizCur || !wizOrder.some(c => c.compareDocumentPosition(wizCur) & Node.DOCUMENT_POSITION_FOLLOWING);
+      document.getElementById("wiz-next").disabled = !wizCur || !wizOrder.some(c => c.compareDocumentPosition(wizCur) & Node.DOCUMENT_POSITION_PRECEDING);
+      if (wizCur) { try { localStorage.setItem(LS_POS, wizCur.dataset.url); } catch (e) {} }
+    }
+    async function wizGo(delta) {
+      if (!wizCur) return;
+      if (!(await commit(wizCur))) return;                            // stay if the save failed
+      const after = wizOrder.filter(c => c !== wizCur && (c.compareDocumentPosition(wizCur) & Node.DOCUMENT_POSITION_PRECEDING));
+      const before = wizOrder.filter(c => c !== wizCur && (c.compareDocumentPosition(wizCur) & Node.DOCUMENT_POSITION_FOLLOWING));
+      const target = delta > 0 ? after[0] : before[before.length - 1];
+      if (!target) { document.getElementById("wiz-note").textContent = delta > 0 ? "That was the last page in this filter." : "This is the first page in this filter."; return; }
+      wizCur = target; wizShow(); window.scrollTo({ top: 0 });
+      const inp = wizCur.querySelector(".rate-reason"); if (inp) inp.focus();
+    }
+    if (WIZARD) {
+      document.getElementById("wiz-prev").onclick = () => wizGo(-1);
+      document.getElementById("wiz-next").onclick = () => wizGo(1);
+      document.getElementById("wiz-jump").onclick = async () => {
+        if (wizCur && !(await commit(wizCur))) return;
+        const t = wizOrder.find(c => c.dataset.labelled !== "1");
+        if (t) { wizCur = t; wizShow(); } else document.getElementById("wiz-note").textContent = "Everything in this filter is labelled.";
+      };
+      document.addEventListener("keydown", e => {
+        if (["INPUT", "TEXTAREA", "SELECT"].includes((e.target.tagName || "").toUpperCase()) && e.target.type !== "checkbox") return;
+        if (e.key === "ArrowRight") { e.preventDefault(); wizGo(1); }
+        if (e.key === "ArrowLeft") { e.preventDefault(); wizGo(-1); }
+      });
+    }
     renderAllVotes(); applyBlind();
     document.getElementById("gs-save").onclick = async () => {
       const targets = {};
