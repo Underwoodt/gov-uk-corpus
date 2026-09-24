@@ -101,9 +101,9 @@
   <div class="card wiz-nav" id="wiz-nav">
     <button type="button" class="btn secondary-btn" id="wiz-prev">‹ Prev</button>
     <div class="wiz-mid">
-      <div class="wiz-text"><b id="wiz-pos">–</b> of <b id="wiz-total">–</b> in the current filter · <span id="wiz-done">–</span> labelled by you</div>
+      <div class="wiz-text"><b id="wiz-done">–</b> of <b id="wiz-total">–</b> labelled by you in the current filter · page <span id="wiz-pos">–</span></div>
       <div class="wiz-bar"><div class="wiz-fill" id="wiz-fill" style="width:0%"></div></div>
-      <div class="muted-sm" id="wiz-note">Save &amp; Next saves this page's vote and moves on; Prev / Next also save anything you changed. ← / → keys work too.</div>
+      <div class="muted-sm" id="wiz-note">The bar is your labelling progress; the page number is just where you are. Save &amp; Next saves this page's vote and moves on; Prev / Next also save anything you changed. ← / → keys work too.</div>
     </div>
     <button type="button" class="btn secondary-btn" id="wiz-next">Next ›</button>
     <button type="button" class="btn" id="wiz-savenext" title="Save your vote on this page and go to the next one (Enter in the reason box does the same)">Save &amp; Next ›</button>
@@ -451,7 +451,8 @@
       document.getElementById("wiz-pos").textContent = wizCur ? (idx + 1) : 0;
       document.getElementById("wiz-total").textContent = wizOrder.length;
       document.getElementById("wiz-done").textContent = wizOrder.filter(c => c.dataset.labelled === "1").length;
-      document.getElementById("wiz-fill").style.width = wizOrder.length ? Math.round(100 * (idx + 1) / wizOrder.length) + "%" : "0%";
+      const doneN = wizOrder.filter(c => c.dataset.labelled === "1").length;
+      document.getElementById("wiz-fill").style.width = wizOrder.length ? Math.round(100 * doneN / wizOrder.length) + "%" : "0%";
       document.getElementById("wiz-prev").disabled = !wizCur || !wizOrder.some(c => c.compareDocumentPosition(wizCur) & Node.DOCUMENT_POSITION_FOLLOWING);
       document.getElementById("wiz-next").disabled = !wizCur || !wizOrder.some(c => c.compareDocumentPosition(wizCur) & Node.DOCUMENT_POSITION_PRECEDING);
       if (wizCur) { try { localStorage.setItem(LS_POS, wizCur.dataset.url); } catch (e) {} }
