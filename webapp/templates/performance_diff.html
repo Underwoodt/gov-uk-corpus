@@ -73,6 +73,8 @@
 
   <a class="back" href="{{ url_for('performance_page', cid=category.id) }}">‹ Run performance</a>
   <h1 style="margin:16px 0 6px;">Why did the runs differ?</h1>
+  <p class="hint" style="margin:0 0 4px;">Want ground truth rather than a run-vs-run verdict? Rate one run's
+    outcomes page by page on the <a href="{{ url_for('gold_page', cid=category.id) }}{% if other_head %}?run={{ other_head }}{% elif base_head %}?run={{ base_head }}{% endif %}">Gold labels</a> page — each “correct / wrong” becomes a gold label.</p>
   <p class="hint" style="margin-top:0;">Every page below was scored by <strong>both</strong> runs but got a
     <strong>different</strong> keep/drop verdict — the detail behind “Decisions disagree with Run 1”, split by phase.
     Reasons are what each run recorded at the time; the <em>Why did they differ?</em> verdict is generated on demand by the

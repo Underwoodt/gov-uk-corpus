@@ -41,7 +41,7 @@ from govuk_corpus import accounts, ai_models, audit
 from govuk_corpus import categories as cat
 from govuk_corpus import category_counts, category_transfer, feedback, guardrails, sessions
 from govuk_corpus import (audit_stats, category_interview, evaluate, evaluate_driver, extract,
-                          keyword_explain, llm, orgs, peak_schedule, pricing, prompts, readability,
+                          gold, keyword_explain, llm, orgs, peak_schedule, pricing, prompts, readability,
                           reporting, roles, search_augment, settings, shortlist, stage_align,
                           sustainability, view_counts)
 from govuk_corpus import orgs as orgs_mod   # stable module handle (some routes take an `orgs` param)
@@ -2690,6 +2690,96 @@ async def api_performance_diff_explain(request: Request, cid: int):
                              "cost": res.get("cost_usd")})
     finally:
         conn.close()
+
+
+# ---- Gold labels from a run's outcomes (guc-0029) ------------------------
+# Rate one run chain page by page — "the pipeline was right / wrong here", with a reason — and
+# the verdict becomes a gold label (in / out / borderline) in category_gold_labels, the ground
+# truth the benchmark (govuk_corpus.bench) scores against. Partial sets are fine.
+
+@app.get("/categories/{cid}/gold", response_class=HTMLResponse)
+def gold_page(request: Request, cid: int, run: str = ""):
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    try:
+        category = cat.get_category(conn, cid)
+        if not category:
+            return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
+        category["display_name"] = cat.display_name(category)
+        head = run or evaluate.latest_inclusion_run(conn, cid) or ""
+        incl = evaluate.get_run(conn, head) if head else None
+        if incl and str(incl.get("category_id")) != str(cid):
+            incl = None
+        excl_id = evaluate.latest_exclusion_run(conn, head) if incl else None
+        excl = evaluate.get_run(conn, excl_id) if excl_id else None
+        pages = gold.run_pages(conn, category, head) if incl else []
+        # Inclusion runs (chain heads) of this category, for the run picker.
+        heads = [r for r in evaluate.list_runs(conn, cid) if not r.get("source_run_id")]
+        st = gold.status(conn, cid)
+        stage_counts = {k: sum(1 for p in pages if p["stage"] == k) for k in gold.STAGES}
+        ctxd = ctx(conn, request, category=category, run=incl, excl=excl, pages=pages, heads=heads,
+                   stages=gold.STAGES, stage_counts=stage_counts, gold_status=st,
+                   labelled_here=sum(1 for p in pages if p["label"]))
+        return templates.TemplateResponse("gold_labels.html", ctxd)
+    finally:
+        conn.close()
+
+
+@app.post("/api/categories/{cid}/gold")
+async def api_gold_label(request: Request, cid: int):
+    """Save (or clear, with an empty verdict) the gold label for one page, judged against the
+    outcome of the given inclusion run's chain."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    body = await request.json()
+    run_id = str(body.get("run") or ""); url = str(body.get("url") or "")
+    verdict = str(body.get("verdict") or ""); rationale = str(body.get("rationale") or "")
+    if not (run_id and url):
+        return JSONResponse({"error": "bad request"}, status_code=400)
+    conn = connect()
+    try:
+        category = cat.get_category(conn, cid)
+        run_row = evaluate.get_run(conn, run_id)
+        if not category or not run_row or str(run_row.get("category_id")) != str(cid):
+            return JSONResponse({"error": "not found"}, status_code=404)
+        page = next((p for p in gold.run_pages(conn, category, run_id) if p["url"] == url), None)
+        if not page:
+            return JSONResponse({"error": "that page is not in this run"}, status_code=404)
+        cu = current_user(request)
+        who = (cu.get("email") if cu else None) or "app"
+        try:
+            label = gold.save_verdict(conn, category, page, verdict, rationale, who)
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        st = gold.status(conn, cid)
+        return JSONResponse({"ok": True, "label": label, "counts": st["counts"], "labelled": st["labelled"],
+                            "forwarded": st["forwarded"], "gold_sha": st["gold_sha"]})
+    finally:
+        conn.close()
+
+
+@app.get("/categories/{cid}/gold/sheet.csv")
+def gold_sheet_download(request: Request, cid: int):
+    """The labelling sheet (govuk_corpus.gold export) pre-filled with the labels so far."""
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    try:
+        category = cat.get_category(conn, cid)
+        if not category:
+            return PlainTextResponse("not found", status_code=404)
+        rows = gold.build_sheet(conn, cid)
+    finally:
+        conn.close()
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=gold.SHEET_COLUMNS, extrasaction="ignore")
+    w.writeheader()
+    for r in rows:
+        w.writerow({k: ("" if r.get(k) is None else r.get(k)) for k in gold.SHEET_COLUMNS})
+    fname = f"{category.get('slug') or cid}-gold-sheet.csv"
+    return PlainTextResponse(buf.getvalue(), media_type="text/csv",
+                             headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
 
 # ---- Adjudication + prompt-improvement suggestions (guc-0028) ------------

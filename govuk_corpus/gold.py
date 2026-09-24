@@ -272,6 +272,139 @@ def upsert_label(conn, category_id: int, row: Dict) -> None:
         tuple(vals))
 
 
+# ---- labelling from a run's outcomes (the in-app path, guc-0029) -------------------
+
+STAGES = {
+    "p1_drop": "Dropped at Phase 1",
+    "p1_unparsed": "Unparsed at Phase 1",
+    "p2_drop": "Dropped at Phase 2",
+    "p2_unparsed": "Unparsed at Phase 2",
+    "kept": "Kept to the end",
+}
+VERDICTS = ("correct", "wrong", "borderline")
+
+
+def stage_of_result(p1: Optional[dict], p2: Optional[dict]) -> Optional[str]:
+    """Where a page left the pipeline in one run chain. p1/p2 = that page's evaluation_results
+    rows (or None). None when the page was not in the inclusion run at all."""
+    if not p1:
+        return None
+    if p1.get("keep") is None:
+        return "p1_unparsed"
+    if p1.get("keep") == 0:
+        return "p1_drop"
+    if p2 is None:
+        return "kept"              # Phase 2 not run / not reached: the Phase-1 keep stands
+    if p2.get("keep") is None:
+        return "p2_unparsed"
+    return "kept" if p2.get("keep") == 1 else "p2_drop"
+
+
+def final_keep(stage: Optional[str]) -> Optional[bool]:
+    """The chain's final outcome for a stage: True = in the final shortlist."""
+    if stage == "kept":
+        return True
+    if stage in ("p1_drop", "p2_drop"):
+        return False
+    return None                    # unparsed: no outcome to be right or wrong about
+
+
+def label_from_verdict(stage: Optional[str], verdict: str) -> Optional[str]:
+    """Turn 'the run was correct / wrong here' into a gold label from the page's final outcome:
+    correct keep -> in, correct drop -> out, wrong keep -> out, wrong drop -> in."""
+    if verdict == "borderline":
+        return "borderline"
+    fk = final_keep(stage)
+    if fk is None or verdict not in ("correct", "wrong"):
+        return None
+    return ("in" if fk else "out") if verdict == "correct" else ("out" if fk else "in")
+
+
+def verdict_from_label(stage: Optional[str], label: Optional[str]) -> Optional[str]:
+    """The inverse: how an existing label reads against this run's outcome."""
+    if not label:
+        return None
+    if label == "borderline":
+        return "borderline"
+    fk = final_keep(stage)
+    if fk is None:
+        return None
+    return "correct" if (label == "in") == fk else "wrong"
+
+
+def run_pages(conn, category: Dict, head_run_id: str) -> List[dict]:
+    """Every page the inclusion run `head_run_id` evaluated, with its Phase-1 / Phase-2 rows,
+    the stage it left at, the seed hint and any existing gold label."""
+    cid = int(category["id"])
+    p1 = {r["url"]: r for r in evaluate.run_results(conn, head_run_id)}
+    excl_id = evaluate.latest_exclusion_run(conn, head_run_id)
+    p2 = {r["url"]: r for r in evaluate.run_results(conn, excl_id)} if excl_id else {}
+    seeds = seed_labels(category)
+    existing = {r["url"]: r for r in load_gold(conn, cid, labelled_only=False)}
+    meta = _content_meta(conn, list(p1))
+    titles = {}
+    urls = list(p1)
+    for i in range(0, len(urls), 500):
+        chunk = urls[i:i + 500]
+        marks = ",".join([_P] * len(chunk))
+        for r in conn.execute(f"SELECT url, title FROM content WHERE url IN ({marks})", tuple(chunk)).fetchall():
+            titles[r["url"]] = r["title"]
+    sp = _search_page_index(conn, cid)
+    out = []
+    for url, a in p1.items():
+        b = p2.get(url)
+        stage = stage_of_result(a, b)
+        g = existing.get(url)
+        s = sp.get(url) or {}
+        out.append({
+            "url": url, "title": titles.get(url) or "", "stage": stage, "stage_label": STAGES.get(stage, ""),
+            "final_keep": final_keep(stage),
+            "p1": {"keep": a.get("keep"), "score": a.get("score"), "reason": a.get("reason") or "",
+                   "primary_topic": a.get("primary_topic") or ""},
+            "p2": ({"keep": b.get("keep"), "reason": b.get("reason") or ""} if b else None),
+            "has_p2_run": bool(excl_id),
+            "seed_label": seeds.get(url, ""),
+            "source": s.get("source") or "shortlister",
+            "document_type": (meta.get(url) or {}).get("document_type") or "",
+            "content_hash": (meta.get(url) or {}).get("content_hash"),
+            "content_id": (meta.get(url) or {}).get("content_id"),
+            "label": (g or {}).get("label") or "", "rationale": (g or {}).get("rationale") or "",
+            "verdict": verdict_from_label(stage, (g or {}).get("label")),
+            "labelled_by": (g or {}).get("labelled_by"), "labelled_at": (g or {}).get("labelled_at"),
+        })
+    out.sort(key=lambda r: r["url"])
+    return out
+
+
+def save_verdict(conn, category: Dict, page: dict, verdict: str, rationale: str,
+                 labelled_by: Optional[str]) -> Optional[str]:
+    """Upsert (or, with an empty verdict, delete) the gold label for one page of `run_pages`.
+    Returns the label written, or None when cleared. Raises ValueError on bad input."""
+    cid = int(category["id"])
+    if not verdict:
+        conn.execute(f"DELETE FROM category_gold_labels WHERE category_id = {_P} AND url = {_P}",
+                     (cid, page["url"]))
+        conn.commit()
+        return None
+    if verdict not in VERDICTS:
+        raise ValueError("verdict must be correct, wrong or borderline")
+    if not (rationale or "").strip():
+        raise ValueError("a one-line reason is required")
+    label = label_from_verdict(page["stage"], verdict)
+    if not label:
+        raise ValueError("this page has no keep/drop outcome to judge (unparsed reply)")
+    seeds = seed_labels(category)
+    upsert_label(conn, cid, {
+        "url": page["url"], "label": label, "rationale": rationale.strip(), "labelled_by": labelled_by,
+        "content_id": page.get("content_id"), "content_hash_at_label": page.get("content_hash"),
+        "stratum_score_band": score_band(page["p1"].get("score")),
+        "stratum_source": page.get("source"), "stratum_doc_type": page.get("document_type"),
+        "seed_origin": seeds.get(page["url"]),
+    })
+    conn.commit()
+    return label
+
+
 # ---- export --------------------------------------------------------------------
 
 def build_sheet(conn, category_id: int, *, seed: int = DEFAULT_SEED,

@@ -247,3 +247,150 @@ class TestCli(GoldBase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestRunLabelling(GoldBase):
+    """The in-app path (guc-0029): rate a run's outcome per page -> gold label."""
+
+    def _chain(self):
+        p1 = evaluate.create_run(self.conn, CID, "m", "anthropic")
+        evaluate.save_page(self.conn, p1, CID, "https://www.gov.uk/p0", {"keep": 1, "score": 0.9, "reason": "core"}, 5)
+        evaluate.save_page(self.conn, p1, CID, "https://www.gov.uk/p1", {"keep": 1, "score": 0.4, "reason": "some"}, 5)
+        evaluate.save_page(self.conn, p1, CID, "https://www.gov.uk/p2", {"keep": 0, "score": 0.0, "reason": "no"}, 5)
+        evaluate.save_page(self.conn, p1, CID, "https://www.gov.uk/p3", None, 5)
+        p2 = evaluate.create_run(self.conn, CID, "m", "anthropic", phase=evaluate.PHASE_EXCLUSION, source_run_id=p1)
+        evaluate.save_page(self.conn, p2, CID, "https://www.gov.uk/p0", {"keep": 1, "reason": "still"}, 5)
+        evaluate.save_page(self.conn, p2, CID, "https://www.gov.uk/p1", {"keep": 0, "reason": "homonym"}, 5)
+        return p1, p2
+
+    def test_stage_and_label_mapping(self):
+        self.assertEqual(gold.stage_of_result({"keep": 0}, None), "p1_drop")
+        self.assertEqual(gold.stage_of_result({"keep": None}, None), "p1_unparsed")
+        self.assertEqual(gold.stage_of_result({"keep": 1}, None), "kept")
+        self.assertEqual(gold.stage_of_result({"keep": 1}, {"keep": 0}), "p2_drop")
+        self.assertEqual(gold.stage_of_result({"keep": 1}, {"keep": 1}), "kept")
+        self.assertEqual(gold.stage_of_result({"keep": 1}, {"keep": None}), "p2_unparsed")
+        self.assertIsNone(gold.stage_of_result(None, None))
+        self.assertEqual(gold.label_from_verdict("kept", "correct"), "in")
+        self.assertEqual(gold.label_from_verdict("kept", "wrong"), "out")
+        self.assertEqual(gold.label_from_verdict("p1_drop", "correct"), "out")
+        self.assertEqual(gold.label_from_verdict("p2_drop", "wrong"), "in")
+        self.assertEqual(gold.label_from_verdict("p1_drop", "borderline"), "borderline")
+        self.assertIsNone(gold.label_from_verdict("p1_unparsed", "correct"))
+        self.assertEqual(gold.verdict_from_label("p2_drop", "in"), "wrong")
+        self.assertEqual(gold.verdict_from_label("kept", "in"), "correct")
+        self.assertIsNone(gold.verdict_from_label("kept", ""))
+
+    def test_run_pages_and_save_verdict(self):
+        p1, _ = self._chain()
+        pages = {p["url"]: p for p in gold.run_pages(self.conn, self._category(), p1)}
+        self.assertEqual(sorted(pages), ["https://www.gov.uk/p0", "https://www.gov.uk/p1",
+                                         "https://www.gov.uk/p2", "https://www.gov.uk/p3"])
+        self.assertEqual(pages["https://www.gov.uk/p0"]["stage"], "kept")
+        self.assertEqual(pages["https://www.gov.uk/p1"]["stage"], "p2_drop")
+        self.assertEqual(pages["https://www.gov.uk/p1"]["p2"]["reason"], "homonym")
+        self.assertEqual(pages["https://www.gov.uk/p2"]["stage"], "p1_drop")
+        self.assertEqual(pages["https://www.gov.uk/p3"]["stage"], "p1_unparsed")
+        self.assertEqual(pages["https://www.gov.uk/p0"]["seed_label"], "should_include")
+        self.assertEqual(pages["https://www.gov.uk/p0"]["source"], "both")
+        self.assertEqual(pages["https://www.gov.uk/p0"]["label"], "")
+        cat_ = self._category()
+        self.assertEqual(gold.save_verdict(self.conn, cat_, pages["https://www.gov.uk/p1"], "wrong", "it is IHT", "t@x"), "in")
+        self.assertEqual(gold.save_verdict(self.conn, cat_, pages["https://www.gov.uk/p2"], "correct", "unrelated", "t@x"), "out")
+        self.assertEqual(gold.save_verdict(self.conn, cat_, pages["https://www.gov.uk/p0"], "borderline", "meh", "t@x"), "borderline")
+        with self.assertRaises(ValueError):
+            gold.save_verdict(self.conn, cat_, pages["https://www.gov.uk/p3"], "correct", "x", "t@x")   # unparsed
+        with self.assertRaises(ValueError):
+            gold.save_verdict(self.conn, cat_, pages["https://www.gov.uk/p0"], "correct", "  ", "t@x")  # no reason
+        got = {r["url"]: r for r in gold.load_gold(self.conn, CID)}
+        self.assertEqual(got["https://www.gov.uk/p1"]["label"], "in")
+        self.assertEqual(got["https://www.gov.uk/p1"]["stratum_score_band"], "0.4-0.6")
+        self.assertEqual(got["https://www.gov.uk/p1"]["seed_origin"], "should_include")
+        self.assertEqual(got["https://www.gov.uk/p1"]["content_hash_at_label"], "hash-p1")
+        self.assertEqual(got["https://www.gov.uk/p1"]["labelled_by"], "t@x")
+        # Re-reading the run shows the verdict against this run's outcome.
+        pages = {p["url"]: p for p in gold.run_pages(self.conn, cat_, p1)}
+        self.assertEqual(pages["https://www.gov.uk/p1"]["verdict"], "wrong")
+        self.assertEqual(pages["https://www.gov.uk/p2"]["verdict"], "correct")
+        # Clearing removes the label; the exported sheet then carries the rest.
+        self.assertIsNone(gold.save_verdict(self.conn, cat_, pages["https://www.gov.uk/p0"], "", "", "t@x"))
+        self.assertEqual(sorted(r["url"] for r in gold.load_gold(self.conn, CID)),
+                         ["https://www.gov.uk/p1", "https://www.gov.uk/p2"])
+        self.assertEqual(gold.status(self.conn, CID)["counts"], {"in": 1, "out": 1, "borderline": 0})
+
+
+try:
+    import fastapi  # noqa: F401
+    _HAS_WEBAPP = True
+except Exception:
+    _HAS_WEBAPP = False
+
+
+@unittest.skipUnless(_HAS_WEBAPP, "fastapi not installed")
+class TestGoldRoutes(unittest.TestCase):
+    """guc-0029: the page renders a run's pages with stage badges; the API writes gold labels."""
+
+    def setUp(self):
+        fd, self.path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        os.environ["CORPUS_DB"] = self.path
+        os.environ.pop("DB_HOST", None)
+        os.environ["DASHBOARD_PASSWORD"] = ""
+        os.environ["AUTH_MODE"] = "shared"
+        import importlib
+        import webapp.app as app
+        importlib.reload(app)
+        self.app = app
+        conn = app.connect()
+        app.db.init_db(conn)
+        for slug, body in (("p0", "slurry"), ("p1", "slurry"), ("p2", "slurry")):
+            url = f"https://www.gov.uk/{slug}"
+            conn.execute("INSERT INTO content (url, document_type, is_redirect, content_hash, search_text, title, content_id) "
+                         "VALUES (?, 'guidance',0,?,?,?,?)", (url, f"h-{slug}", body, f"Title {slug}", f"c-{slug}"))
+            conn.execute("INSERT INTO page_organisations (page_url, organisation_content_id, organisation_slug, role) "
+                         "VALUES (?,?,?,?)", (url, "environment-agency", "environment-agency", "primary"))
+        from govuk_corpus import categories as cat
+        self.cid = cat.create_category(conn, {"slug": "demo", "owner_email": "a@b.co", "description": "Demo",
+                                              "dept_slugs": "environment-agency", "document_type_slugs": "guidance",
+                                              "keywords": "slurry", "inclusion_context": "slurry"})
+        self.p1 = evaluate.create_run(conn, self.cid, "m", "anthropic")
+        evaluate.save_page(conn, self.p1, self.cid, "https://www.gov.uk/p0", {"keep": 1, "score": 0.9, "reason": "yes"}, 5)
+        evaluate.save_page(conn, self.p1, self.cid, "https://www.gov.uk/p1", {"keep": 0, "score": 0.0, "reason": "no"}, 5)
+        conn.commit()
+        conn.close()
+
+    def tearDown(self):
+        os.environ.pop("CORPUS_DB", None)
+        if os.path.exists(self.path):
+            os.unlink(self.path)
+
+    def _client(self):
+        from fastapi.testclient import TestClient
+        return TestClient(self.app.app)
+
+    def test_page_renders_and_api_labels(self):
+        c = self._client()
+        r = c.get(f"/categories/{self.cid}/gold")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("guc-0029", r.text)
+        self.assertIn("Kept to the end", r.text)
+        self.assertIn("Dropped at Phase 1", r.text)
+        self.assertIn("https://www.gov.uk/p1", r.text)
+        tok = c.cookies.get("sb_csrf")
+        r = c.post(f"/api/categories/{self.cid}/gold", headers={"X-CSRF-Token": tok or ""},
+                   json={"run": self.p1, "url": "https://www.gov.uk/p1", "verdict": "wrong", "rationale": "it is slurry"})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["label"], "in")
+        self.assertEqual(r.json()["counts"], {"in": 1, "out": 0, "borderline": 0})
+        r = c.post(f"/api/categories/{self.cid}/gold", headers={"X-CSRF-Token": tok or ""},
+                   json={"run": self.p1, "url": "https://www.gov.uk/p0", "verdict": "correct", "rationale": ""})
+        self.assertEqual(r.status_code, 400)
+        r = c.post(f"/api/categories/{self.cid}/gold", headers={"X-CSRF-Token": tok or ""},
+                   json={"run": self.p1, "url": "https://www.gov.uk/p2", "verdict": "correct", "rationale": "x"})
+        self.assertEqual(r.status_code, 404)                      # not in this run
+        r = c.get(f"/categories/{self.cid}/gold/sheet.csv")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("order_hint,url", r.text)
+        self.assertIn("it is slurry", r.text)                     # the label is pre-filled in the sheet
+        r = c.get(f"/categories/{self.cid}/gold")
+        self.assertIn("by app", r.text)

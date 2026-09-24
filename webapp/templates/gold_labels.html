@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+{% block page_id %}guc-0029{% endblock %}
+{% block title %}{{ category.display_name }} — gold labels{% endblock %}
+{% block content %}
+
+  {% macro chip(k) %}
+    {%- if k == 1 -%}<span class="kd keep">KEEP</span>
+    {%- elif k == 0 -%}<span class="kd drop">DROP</span>
+    {%- else -%}<span class="kd none">—</span>{%- endif -%}
+  {% endmacro %}
+
+  <a class="back" href="{{ url_for('performance_page', cid=category.id) }}">‹ Run performance</a>
+  <h1 style="margin:16px 0 6px;">Gold labels</h1>
+  <p class="hint" style="margin-top:0;">Rate what the pipeline did with each page in <strong>one run</strong>:
+    <em>correct</em> / <em>wrong</em> / <em>borderline</em>, with a one-line reason. Each verdict is stored as a
+    gold label (correct keep → <b>in</b>, correct drop → <b>out</b>, wrong keep → <b>out</b>, wrong drop → <b>in</b>)
+    that the benchmark scores every model and run against. A partial set is fine — the stage filter lets you
+    work through, say, the Phase-1 drops first. Labels are per page, not per run, so they carry over to every run.</p>
+
+  <div class="card gl-top">
+    <form method="get" class="gl-runpick">
+      <label for="run-pick"><strong>Run</strong></label>
+      <select id="run-pick" name="run" onchange="this.form.submit()">
+        {% for h in heads %}
+          <option value="{{ h.run_id }}" {% if run and h.run_id == run.run_id %}selected{% endif %}>
+            {{ h.name or h.run_id }} · {{ (h.started_at or '')[:16]|replace('T',' ') }} · {{ h.provider }}/{{ h.actual_model or h.model }} · {{ h.pages or 0 }} pages, kept {{ h.kept or 0 }}
+          </option>
+        {% endfor %}
+      </select>
+    </form>
+    <div class="gl-status">
+      <span><strong id="st-labelled">{{ gold_status.labelled }}</strong> / {{ gold_status.forwarded }} forwarded pages labelled</span>
+      <span class="pill in">in <b id="st-in">{{ gold_status.counts['in'] }}</b></span>
+      <span class="pill out">out <b id="st-out">{{ gold_status.counts['out'] }}</b></span>
+      <span class="pill bl">borderline <b id="st-bl">{{ gold_status.counts['borderline'] }}</b></span>
+      {% if gold_status.drifted %}<span class="pill warn" title="Page body changed since it was labelled">{{ gold_status.drifted|length }} drifted</span>{% endif %}
+      <a class="btn secondary-btn" style="padding:5px 12px;font-size:13px;" href="{{ url_for('gold_sheet_download', cid=category.id) }}">Download sheet (CSV)</a>
+    </div>
+  </div>
+
+  {% if not run %}
+    <div class="card"><p>No inclusion run for this shortlist yet. Run the AI pipeline first, then come back to rate its outcomes.</p></div>
+  {% else %}
+  <div class="gl-filters" role="group" aria-label="Filter by the stage a page left">
+    <span class="gl-fl">Left at:</span>
+    <button type="button" class="fbtn on" data-stage="">All <span class="count">{{ pages|length }}</span></button>
+    {% for k, lbl in stages.items() %}{% if stage_counts[k] %}
+      <button type="button" class="fbtn" data-stage="{{ k }}">{{ lbl }} <span class="count">{{ stage_counts[k] }}</span></button>
+    {% endif %}{% endfor %}
+    <label class="gl-chk"><input type="checkbox" id="only-unlabelled"> unlabelled only</label>
+    <input type="search" id="gl-search" placeholder="filter by url or title" aria-label="filter by url or title">
+    <span class="muted-sm" id="gl-shown"></span>
+  </div>
+
+  <div id="gl-list">
+  {% for p in pages %}
+    <div class="card gl-card" data-url="{{ p.url }}" data-stage="{{ p.stage or '' }}" data-labelled="{{ '1' if p.label else '0' }}"
+         data-hay="{{ (p.url ~ ' ' ~ p.title)|lower }}">
+      <div class="gc-head">
+        <div class="gc-title">
+          <a href="{{ p.url }}" target="_blank" rel="noopener">{{ p.title or p.url }}</a>
+          <div class="gc-url mono">{{ p.url }}</div>
+        </div>
+        <span class="stage {{ p.stage }}">{{ p.stage_label }}</span>
+      </div>
+      <div class="table-wrap">
+        <table class="gc-table">
+          <thead><tr><th>Phase 1 · Inclusion</th><th class="rsn-col">Reason</th><th>Phase 2 · Exclusion</th><th class="rsn-col">Reason</th></tr></thead>
+          <tbody><tr>
+            <td>{{ chip(p.p1.keep) }}{% if p.p1.score is not none %}<span class="score">{{ '%.2f'|format(p.p1.score|float) }}</span>{% endif %}
+              {% if p.p1.primary_topic %}<div class="muted-sm" style="margin-top:4px;">topic: {{ p.p1.primary_topic }}</div>{% endif %}</td>
+            <td class="rsn-col"><div class="rsn">{{ p.p1.reason or '(no reason recorded)' }}</div></td>
+            <td>{% if p.p2 %}{{ chip(p.p2.keep) }}{% elif p.p1.keep == 1 and not p.has_p2_run %}<span class="muted-sm">no Phase 2 run</span>{% elif p.p1.keep == 1 %}<span class="muted-sm">not reached yet</span>{% else %}<span class="muted-sm">not reached — dropped at Phase 1</span>{% endif %}</td>
+            <td class="rsn-col">{% if p.p2 %}<div class="rsn">{{ p.p2.reason or '(no reason recorded)' }}</div>{% endif %}</td>
+          </tr></tbody>
+        </table>
+      </div>
+      <div class="rate" data-verdict="{{ p.verdict or '' }}" data-final="{{ 'keep' if p.final_keep else ('drop' if p.final_keep == False else '') }}">
+        <span class="rate-q">Was the final <b>{{ 'KEEP' if p.final_keep else ('DROP' if p.final_keep == False else '—') }}</b> right?</span>
+        {% if p.final_keep is none %}
+          <span class="muted-sm">No outcome to judge (the reply could not be parsed).</span>
+        {% else %}
+        <div class="rate-opts">
+          <button type="button" class="rate-btn" data-verdict="correct">Correct</button>
+          <button type="button" class="rate-btn" data-verdict="wrong">Wrong</button>
+          <button type="button" class="rate-btn" data-verdict="borderline">Borderline</button>
+        </div>
+        <input type="text" class="rate-reason" placeholder="one-line reason (required)" value="{{ p.rationale }}" maxlength="300">
+        <button type="button" class="btn rate-save">Save</button>
+        <button type="button" class="btn secondary-btn rate-clear" {% if not p.label %}hidden{% endif %}>Clear</button>
+        <span class="rate-out">{% if p.label %}→ gold <b class="lbl {{ p.label }}">{{ p.label }}</b>{% if p.labelled_by %} <span class="muted-sm">by {{ p.labelled_by }}</span>{% endif %}{% endif %}</span>
+        {% endif %}
+        {% if p.seed_label %}<span class="seed" title="From the category's URL-check lists — a hint, not a label">seed: {{ 'should be in' if p.seed_label == 'should_include' else 'should be out' }}</span>{% endif %}
+      </div>
+    </div>
+  {% endfor %}
+  </div>
+  {% endif %}
+
+  <style>
+    .gl-top { padding:12px 16px; display:flex; flex-wrap:wrap; gap:14px 24px; align-items:center; margin-bottom:14px; }
+    .gl-runpick { display:flex; gap:10px; align-items:center; flex:1 1 420px; }
+    .gl-runpick select { flex:1; min-width:260px; }
+    .gl-status { display:flex; gap:10px; align-items:center; flex-wrap:wrap; font-size:14px; }
+    .pill { display:inline-block; font-size:12px; font-weight:700; padding:2px 10px; border-radius:999px; background:var(--surface-3); }
+    .pill.in { background:#d9f2e4; color:var(--green-dark); } .pill.out { background:#fbe0db; color:#a5200f; }
+    .pill.bl { background:#fff1cc; color:#7a5a00; } .pill.warn { background:#fbe0db; color:#a5200f; }
+    .gl-filters { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:0 0 14px; }
+    .gl-fl { font-size:13px; font-weight:700; color:var(--muted); }
+    .fbtn { background:var(--surface); border:1px solid var(--border-mid); border-radius:999px; padding:4px 12px; font-size:13px; font-weight:600; cursor:pointer; color:var(--ink); }
+    .fbtn.on { background:var(--blue); color:var(--white); border-color:var(--blue); }
+    .fbtn .count { display:inline-block; min-width:18px; text-align:center; background:rgba(0,0,0,.08); border-radius:999px; font-size:12px; padding:0 6px; margin-left:4px; }
+    .fbtn.on .count { background:rgba(255,255,255,.25); }
+    .gl-chk { font-size:13px; margin-left:8px; } #gl-search { min-width:220px; font-size:13px; padding:5px 8px; }
+    .gl-card { padding:12px 16px; margin:0 0 12px; }
+    .gl-card[hidden] { display:none; }
+    .gc-head { display:flex; gap:12px; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; margin-bottom:8px; }
+    .gc-title a { font-weight:700; font-size:15px; } .gc-url { font-size:12px; color:var(--muted); word-break:break-all; }
+    .mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+    .stage { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; padding:3px 9px; border-radius:999px; white-space:nowrap; background:var(--surface-3); }
+    .stage.kept { background:#d9f2e4; color:var(--green-dark); } .stage.p1_drop { background:#fbe0db; color:#a5200f; }
+    .stage.p2_drop { background:#fbeee8; color:#8a3a1a; } .stage.p1_unparsed, .stage.p2_unparsed { background:#fff1cc; color:#7a5a00; }
+    .gc-table { font-size:14px; width:100%; } .gc-table th, .gc-table td { vertical-align:top; text-align:left; padding:6px 10px; }
+    .gc-table thead th { font-size:11px; text-transform:uppercase; letter-spacing:.02em; color:var(--muted); font-weight:700; border-bottom:1px solid var(--border); }
+    .rsn-col { min-width:200px; width:34%; } .rsn { max-height:120px; overflow:auto; line-height:1.4; }
+    .kd { display:inline-block; font-size:12px; font-weight:700; padding:2px 9px; border-radius:999px; }
+    .kd.keep { background:#d9f2e4; color:var(--green-dark); } .kd.drop { background:#fbe0db; color:#a5200f; } .kd.none { background:var(--surface-3); color:var(--muted); }
+    .score { margin-left:6px; font-size:12px; font-weight:600; color:var(--muted); font-variant-numeric:tabular-nums; }
+    .muted-sm { color:var(--muted); font-size:13px; }
+    .rate { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:10px; border-top:1px dashed var(--border); padding-top:10px; }
+    .rate-q { font-size:13px; font-weight:700; color:var(--muted); }
+    .rate-opts { display:inline-flex; border:1px solid var(--border-mid); border-radius:999px; overflow:hidden; }
+    .rate-btn { background:var(--surface); border:none; border-right:1px solid var(--border); padding:5px 14px; font-size:13px; font-weight:600; color:var(--ink); cursor:pointer; }
+    .rate-btn:last-child { border-right:none; } .rate-btn:hover { background:var(--surface-3); }
+    .rate-btn.on { background:var(--blue); color:var(--white); } .rate-btn.on[data-verdict="wrong"] { background:#a5200f; } .rate-btn.on[data-verdict="borderline"] { background:#7a5a00; }
+    .rate-reason { flex:1 1 260px; min-width:200px; font-size:13px; padding:5px 8px; }
+    .rate-save { padding:5px 14px; font-size:13px; } .rate-clear { padding:5px 12px; font-size:13px; }
+    .rate-out { font-size:13px; } .lbl { text-transform:uppercase; } .lbl.in { color:var(--green-dark); } .lbl.out { color:#a5200f; } .lbl.borderline { color:#7a5a00; }
+    .rate-out.err { color:var(--red); }
+    .seed { margin-left:auto; font-size:12px; color:var(--muted); font-style:italic; }
+  </style>
+
+  <script>
+    const CID = {{ category.id }};
+    const RUN = {{ (run.run_id if run else '')|tojson }};
+
+    function paint(card) {
+      const wrap = card.querySelector(".rate");
+      const v = wrap.dataset.verdict || "";
+      wrap.querySelectorAll(".rate-btn").forEach(b => b.classList.toggle("on", b.dataset.verdict === v));
+    }
+    function setStatus(j) {
+      if (!j || !j.counts) return;
+      document.getElementById("st-labelled").textContent = j.labelled;
+      document.getElementById("st-in").textContent = j.counts.in;
+      document.getElementById("st-out").textContent = j.counts.out;
+      document.getElementById("st-bl").textContent = j.counts.borderline;
+    }
+    async function save(card, verdict) {
+      const wrap = card.querySelector(".rate");
+      const out = wrap.querySelector(".rate-out");
+      const reason = wrap.querySelector(".rate-reason").value.trim();
+      if (verdict && !reason) { out.className = "rate-out err"; out.textContent = "Add a one-line reason first."; wrap.querySelector(".rate-reason").focus(); return; }
+      out.className = "rate-out"; out.textContent = "Saving…";
+      try {
+        const r = await fetch(`/api/categories/${CID}/gold`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ run: RUN, url: card.dataset.url, verdict: verdict, rationale: reason })
+        });
+        const j = await r.json();
+        if (!r.ok || j.error) throw new Error(j.error || ("HTTP " + r.status));
+        wrap.dataset.verdict = verdict; paint(card);
+        card.dataset.labelled = j.label ? "1" : "0";
+        wrap.querySelector(".rate-clear").hidden = !j.label;
+        out.innerHTML = j.label ? `→ gold <b class="lbl ${j.label}">${j.label}</b>` : "cleared";
+        setStatus(j); applyFilter();
+      } catch (e) { out.className = "rate-out err"; out.textContent = "Couldn't save: " + (e.message || e); }
+    }
+    document.querySelectorAll(".gl-card").forEach(card => {
+      paint(card);
+      card.querySelectorAll(".rate-btn").forEach(b => b.onclick = () => {
+        const wrap = card.querySelector(".rate"); wrap.dataset.verdict = b.dataset.verdict; paint(card);
+        if (wrap.querySelector(".rate-reason").value.trim()) save(card, b.dataset.verdict);
+        else wrap.querySelector(".rate-reason").focus();
+      });
+      const saveBtn = card.querySelector(".rate-save");
+      if (saveBtn) saveBtn.onclick = () => {
+        const v = card.querySelector(".rate").dataset.verdict;
+        if (!v) { const o = card.querySelector(".rate-out"); o.className = "rate-out err"; o.textContent = "Pick correct / wrong / borderline."; return; }
+        save(card, v);
+      };
+      const inp = card.querySelector(".rate-reason");
+      if (inp) inp.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); saveBtn.click(); } });
+      const clr = card.querySelector(".rate-clear");
+      if (clr) clr.onclick = () => { card.querySelector(".rate").dataset.verdict = ""; save(card, ""); };
+    });
+
+    // ---- filters: stage · unlabelled only · text ----
+    let stage = "";
+    function applyFilter() {
+      const only = document.getElementById("only-unlabelled").checked;
+      const q = (document.getElementById("gl-search").value || "").trim().toLowerCase();
+      let shown = 0;
+      document.querySelectorAll(".gl-card").forEach(c => {
+        const ok = (!stage || c.dataset.stage === stage) && (!only || c.dataset.labelled !== "1")
+          && (!q || c.dataset.hay.includes(q));
+        c.hidden = !ok; if (ok) shown++;
+      });
+      document.getElementById("gl-shown").textContent = shown + " shown";
+    }
+    document.querySelectorAll(".fbtn").forEach(b => b.onclick = () => {
+      stage = b.dataset.stage; document.querySelectorAll(".fbtn").forEach(x => x.classList.toggle("on", x === b)); applyFilter();
+    });
+    document.getElementById("only-unlabelled").onchange = applyFilter;
+    document.getElementById("gl-search").oninput = applyFilter;
+    if (document.getElementById("gl-shown")) applyFilter();
+  </script>
+{% endblock %}
