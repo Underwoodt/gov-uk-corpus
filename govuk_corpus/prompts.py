@@ -8,8 +8,8 @@ is what a run stamps as its template version. Callers resolve the current text w
 `default_text` and pass it in (evaluate/category_interview stay DB-free).
 
 (An earlier in-app "save a new version" mechanism backed by a `prompt_versions` table was
-retired: it could silently override git, and no version was ever saved. Runs never depended
-on it for reproducibility — each run stamps its full template in `prompt_spec`.)
+retired and the table dropped: it could silently override git, and no version was ever saved.
+Runs never depended on it for reproducibility — each run stamps its full template in `prompt_spec`.)
 """
 from __future__ import annotations
 

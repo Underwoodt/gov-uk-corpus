@@ -222,20 +222,6 @@ CREATE TABLE IF NOT EXISTS app_settings (
     value TEXT
 );
 
--- RETIRED. The AI prompts live in git (the single source of truth — see govuk_corpus/prompts.py);
--- nothing reads or writes this table any more. Kept as CREATE IF NOT EXISTS so existing databases
--- need no DROP migration; it is empty and safe to drop by hand.
-CREATE TABLE IF NOT EXISTS prompt_versions (
-    name        TEXT NOT NULL,
-    version     INTEGER NOT NULL,
-    body        TEXT NOT NULL,
-    note        TEXT,
-    active      SMALLINT NOT NULL DEFAULT 0,
-    created_at  TEXT,
-    created_by  TEXT,
-    PRIMARY KEY (name, version)
-);
-
 -- Per-page funnel audit for a category. Starting point is the organisation
 -- filter (so we never log the whole corpus): every row passed the org filter,
 -- and `outcome` says where it then dropped, or that it was included.
