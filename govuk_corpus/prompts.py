@@ -50,7 +50,7 @@ LABELS = {
 PLACEHOLDERS = {
     "inclusion": "{{INCLUDE}}, {{TITLE}}, {{DESCRIPTION}}, {{BODY}}",
     "exclusion": ("{{NAME}}, {{NAME_UPPER}}, {{SPEC}}, {{KEEP_SECTION}}, {{DROP_SECTION}}, "
-                  "{{PASS1_REASON}}, {{TITLE_LINE}}, {{BODY}}"),
+                  "{{PASS1_REASON}}, {{PASS1_TOPIC}}, {{TITLE_LINE}}, {{BODY}}"),
     "builder": "(none — a system prompt; the current-fields summary is appended automatically in edit mode)",
     "assistant": "(none — a system prompt)",
 }
@@ -67,7 +67,7 @@ _DEFAULTS = {
 REQUIRED_PLACEHOLDERS = {
     "inclusion": ("INCLUDE", "TITLE", "DESCRIPTION", "BODY"),
     "exclusion": ("NAME", "NAME_UPPER", "SPEC", "KEEP_SECTION", "DROP_SECTION",
-                  "PASS1_REASON", "TITLE_LINE", "BODY"),
+                  "PASS1_REASON", "PASS1_TOPIC", "TITLE_LINE", "BODY"),
     "builder": (),
     "assistant": (),
 }

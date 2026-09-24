@@ -64,22 +64,45 @@ def normalise_mode(value: Optional[str]) -> str:
 
 # Editable prompt templates. The wording lives here (and can be overridden by a saved version —
 # see govuk_corpus/prompts.py); the {{PLACEHOLDERS}} are filled in per page by the build_* helpers.
+# The grounding rules (evidence quotes, primary topic, observable score anchors) make the decision
+# checkable: every quote must appear verbatim in the page, keep == (score > 0), and the primary
+# topic gives Phase 2 the page's real subject to test against the exclusion criteria.
+_INCLUSION_RULES = (
+    "Rules\n"
+    "- Base your decision ONLY on the page text. Do not use outside knowledge about this page or GOV.UK.\n"
+    "- If the content is truncated, judge what is visible. Do not assume the missing part is relevant.\n"
+    "- A page is relevant if any part of it concerns the topic in the described sense.\n"
+    "- If the topic in the described sense is NOT mentioned anywhere in the page text, it is not relevant.\n\n"
+    "Evidence (required)\n"
+    "- Quote the passages that show the topic in the described sense, as EXACT substrings copied from the "
+    "page text — no paraphrasing, each at most 25 words.\n"
+    "- If you cannot quote at least one such passage, you must return keep=false and score=0.0.\n\n"
+    "Primary topic (required)\n"
+    "- State what the page is MAINLY about, as a noun phrase of at most 10 words.\n"
+    "- It must be consistent with the page title and description. Only if the title is generic "
+    "(for example \"Annex B\" or \"Schedule 3\") derive it from the first heading or paragraph of the content.\n"
+    "- Describe the page's actual subject. Do not restate the INCLUDE topic unless the page is genuinely "
+    "mainly about it.\n\n"
+    "Score = how much of the page is about the topic (coverage), not your confidence:\n"
+    "- 0.7–1.0: the topic (in the described sense) appears in the title or description, OR is the subject "
+    "of most of the page\n"
+    "- 0.4–0.6: it appears in two or more distinct passages of the body, but not in the title or description\n"
+    "- 0.1–0.3: exactly one passing mention in the body\n"
+    "- 0.0: not mentioned in the described sense (including not mentioned at all) — the only case for keep=false\n\n"
+    "keep must be true if and only if score > 0.\n\n"
+    "Return ONLY this JSON object, with exactly these keys and no prose:\n"
+    '{"keep": true|false, "score": 0.0-1.0, "where": ["title"|"description"|"body", ...], '
+    '"evidence": ["exact quote", ...], "primary_topic": "noun phrase, at most 10 words", '
+    '"reason": "one sentence: which sense matched and how much of the page it covers"}')
+
 DEFAULT_INCLUSION_TEMPLATE = (
     "You are assessing whether a GOV.UK page is relevant to a topic.\n\n"
-    "Topic to INCLUDE (keep pages about this):\n{{INCLUDE}}\n\n"
+    "Topic to INCLUDE (keep pages about this, in the sense described):\n{{INCLUDE}}\n\n"
+    "The topic may have other meanings. Only mentions in the sense described above count.\n\n"
     "Page title: {{TITLE}}\n"
     "Page description: {{DESCRIPTION}}\n\n"
     "Page content (may be truncated):\n{{BODY}}\n\n"
-    "Decide whether to KEEP this page for the topic. A page is relevant if it "
-    "concerns the topic in the sense described, even if only part of the page does. "
-    "Mark it FALSE only when every mention is the wrong sense; otherwise keep it.\n\n"
-    "Scoring guidance (amount, not the boolean):\n"
-    "- 0.1–0.3: mentioned once or in passing — still TRUE if the sense is right\n"
-    "- 0.4–0.6: discussed to a moderate extent\n"
-    "- 0.7–1.0: a major focus of the page\n"
-    "- 0.0: every hit is the wrong sense — the only case for FALSE\n\n"
-    "Return ONLY a JSON object, no prose:\n"
-    '{"keep": true|false, "score": 0.0-1.0, "reason": "1-2 sentence explanation"}')
+    + _INCLUSION_RULES)
 
 DEFAULT_EXCLUSION_TEMPLATE = (
     "You curate a GOV.UK corpus for a {{NAME_UPPER}} audit. A fast first pass flagged this "
@@ -93,7 +116,11 @@ DEFAULT_EXCLUSION_TEMPLATE = (
     "criteria (homonyms, incidental-only mentions, wrong domain).\n"
     "{{KEEP_SECTION}}{{DROP_SECTION}}"
     "If you are unsure, KEEP.\n\n"
-    "For context, the first pass wrote this note (it may be wrong): {{PASS1_REASON}}\n\n"
+    "For context, the first pass wrote this note (it may be wrong): {{PASS1_REASON}}\n"
+    "The first pass judged the page is mainly about: {{PASS1_TOPIC}}\n"
+    "Use the primary topic as a hint, not a verdict: test it against the exclusion criteria. A page "
+    "whose primary topic is clearly outside scope and whose only link to {{NAME}} is an incidental "
+    "mention should be dropped; if the primary topic is in scope, or you are unsure, KEEP.\n\n"
     "{{TITLE_LINE}}\nPage content (may be truncated):\n{{BODY}}\n\n"
     "Return ONLY a JSON object, no prose:\n"
     '{"keep": true|false, "exclusion_hit": "none"|"incidental"|"homonym"|"wrong_domain", '
@@ -109,17 +136,9 @@ PROMPT_SPLIT = "\n\n<<<PAGE>>>\n\n"
 
 DEFAULT_INCLUSION_TEMPLATE_CACHED = (
     "You are assessing whether a GOV.UK page is relevant to a topic.\n\n"
-    "Topic to INCLUDE (keep pages about this):\n{{INCLUDE}}\n\n"
-    "Decide whether to KEEP the page below for the topic. A page is relevant if it "
-    "concerns the topic in the sense described, even if only part of the page does. "
-    "Mark it FALSE only when every mention is the wrong sense; otherwise keep it.\n\n"
-    "Scoring guidance (amount, not the boolean):\n"
-    "- 0.1–0.3: mentioned once or in passing — still TRUE if the sense is right\n"
-    "- 0.4–0.6: discussed to a moderate extent\n"
-    "- 0.7–1.0: a major focus of the page\n"
-    "- 0.0: every hit is the wrong sense — the only case for FALSE\n\n"
-    "Return ONLY a JSON object, no prose:\n"
-    '{"keep": true|false, "score": 0.0-1.0, "reason": "1-2 sentence explanation"}'
+    "Topic to INCLUDE (keep pages about this, in the sense described):\n{{INCLUDE}}\n\n"
+    "The topic may have other meanings. Only mentions in the sense described above count.\n\n"
+    + _INCLUSION_RULES
     + PROMPT_SPLIT +
     "Page title: {{TITLE}}\nPage description: {{DESCRIPTION}}\n\n"
     "Page content (may be truncated):\n{{BODY}}")
@@ -140,7 +159,11 @@ DEFAULT_EXCLUSION_TEMPLATE_CACHED = (
     '{"keep": true|false, "exclusion_hit": "none"|"incidental"|"homonym"|"wrong_domain", '
     '"reason": "1-2 sentence explanation"}'
     + PROMPT_SPLIT +
-    "For context, the first pass wrote this note (it may be wrong): {{PASS1_REASON}}\n\n"
+    "For context, the first pass wrote this note (it may be wrong): {{PASS1_REASON}}\n"
+    "The first pass judged the page is mainly about: {{PASS1_TOPIC}}\n"
+    "Use the primary topic as a hint, not a verdict: test it against the exclusion criteria. A page "
+    "whose primary topic is clearly outside scope and whose only link to {{NAME}} is an incidental "
+    "mention should be dropped; if the primary topic is in scope, or you are unsure, KEEP.\n\n"
     "{{TITLE_LINE}}\nPage content (may be truncated):\n{{BODY}}")
 
 
@@ -241,8 +264,24 @@ def _extract_json_object(text: str, prefer_keys=("keep",)) -> Optional[Dict]:
     return candidates[-1]
 
 
+def _json_list(v) -> Optional[str]:
+    """A reply field that should be a list (evidence quotes, where-hit fields) as a JSON string for
+    storage; a bare string is wrapped; anything else is None. Capped so a runaway reply can't bloat."""
+    if v is None:
+        return None
+    if isinstance(v, str):
+        v = [v]
+    if not isinstance(v, (list, tuple)):
+        return None
+    return json.dumps([str(x)[:500] for x in v][:50], ensure_ascii=False)
+
+
 def parse_decision(text: str) -> Optional[Dict]:
-    """Parse the model reply into {keep, score, reason}, or None if unparseable."""
+    """Parse the model reply into {keep, score, reason, primary_topic, where_hit, evidence}, or None
+    if unparseable. The last three are the grounding fields the inclusion template asks for
+    (primary_topic: what the page is mainly about; where_hit: which fields carried the match;
+    evidence: verbatim quotes). They are None for replies that don't carry them (exclusion-phase or
+    legacy runs), so older results keep parsing unchanged."""
     d = _extract_json_object(text, prefer_keys=("keep",))
     if d is None:
         return None
@@ -251,8 +290,12 @@ def parse_decision(text: str) -> Optional[Dict]:
         score = float(d.get("score")) if d.get("score") is not None else None
     except (ValueError, TypeError):
         score = None
+    topic = d.get("primary_topic")
     return {"keep": 1 if keep else 0 if keep is not None else None,
-            "score": score, "reason": str(d.get("reason") or "")[:1000]}
+            "score": score, "reason": str(d.get("reason") or "")[:1000],
+            "primary_topic": (str(topic).strip()[:200] or None) if topic is not None else None,
+            "where_hit": _json_list(d.get("where")),
+            "evidence": _json_list(d.get("evidence"))}
 
 
 # Inclusion-score bands -> a plain-English confidence label, matching the scoring rubric in
@@ -282,7 +325,7 @@ def confidence_label(score) -> str:
 def build_exclusion_prompt(name: str, inclusion: str, exclusion: str,
                            keep_hints: str, drop_hints: str, title: str, body: str,
                            pass1_reason: str, body_limit: int = BODY_CHAR_LIMIT,
-                           template: Optional[str] = None) -> str:
+                           template: Optional[str] = None, *, pass1_topic: str = "") -> str:
     body = truncate_body(body, body_limit)
     nm = (name or "the topic").strip()
     # SPEC labels both halves so the model isn't left inferring which block is which; the
@@ -305,6 +348,7 @@ def build_exclusion_prompt(name: str, inclusion: str, exclusion: str,
         "KEEP_SECTION": keep_section,
         "DROP_SECTION": drop_section,
         "PASS1_REASON": repr(pass1_reason),
+        "PASS1_TOPIC": (pass1_topic or "").strip() or "(not given)",
         "TITLE_LINE": title_line,
         "BODY": body or "(no body text)",
     })
@@ -385,7 +429,7 @@ def exclusion_candidates(conn, run_id: str, source_run_id: str, limit: int) -> L
     yet re-evaluated. Carries the inclusion pass's reason as pass1_reason."""
     sql = (
         "SELECT c.url AS url, c.title AS title, c.description AS description, "
-        "c.search_text AS body, r.reason AS pass1_reason "
+        "c.search_text AS body, r.reason AS pass1_reason, r.primary_topic AS pass1_topic "
         "FROM evaluation_results r JOIN content c ON c.url = r.url "
         f"WHERE r.run_id = {_P} AND r.keep = 1 "
         f"AND r.url NOT IN (SELECT url FROM evaluation_results WHERE run_id = {_P}) "
@@ -488,10 +532,16 @@ def save_page(conn, run_id: str, category_id: int, url: str,
     # Keep the model's raw reply verbatim so an unparseable/odd decision can be debugged
     # later (capped so a runaway reply can't bloat the row).
     raw = (raw_reply or "")[:8000] or None
+    # Grounding fields from the inclusion template (None for exclusion-phase / legacy replies):
+    # primary_topic is passed to Phase 2 as {{PASS1_TOPIC}}; where_hit/evidence are JSON lists.
+    topic = decision.get("primary_topic") if decision else None
+    where_hit = decision.get("where_hit") if decision else None
+    evidence = decision.get("evidence") if decision else None
     conn.execute(
-        f"INSERT INTO evaluation_results (run_id, category_id, url, keep, score, reason, raw_reply, ms, created_at) "
-        f"VALUES ({_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P})",
-        (run_id, category_id, url, keep, score, reason, raw, ms, db.now_iso()))
+        f"INSERT INTO evaluation_results (run_id, category_id, url, keep, score, reason, raw_reply, ms, created_at, "
+        f"primary_topic, where_hit, evidence) "
+        f"VALUES ({_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P},{_P})",
+        (run_id, category_id, url, keep, score, reason, raw, ms, db.now_iso(), topic, where_hit, evidence))
     # update run totals
     kept = 1 if keep == 1 else 0
     dropped = 1 if keep == 0 else 0

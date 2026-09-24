@@ -30,7 +30,11 @@ class TestPromptAndParse(unittest.TestCase):
 
     def test_parse_plain_json(self):
         d = evaluate.parse_decision('{"keep": true, "score": 0.9, "reason": "on topic"}')
-        self.assertEqual(d, {"keep": 1, "score": 0.9, "reason": "on topic"})
+        # The three decision fields are unchanged; the grounding fields (primary_topic / where_hit /
+        # evidence) are always present in the return shape and None for a reply that omits them.
+        self.assertEqual({k: d[k] for k in ("keep", "score", "reason")},
+                         {"keep": 1, "score": 0.9, "reason": "on topic"})
+        self.assertEqual({d["primary_topic"], d["where_hit"], d["evidence"]}, {None})
 
     def test_parse_code_fence_and_prose(self):
         d = evaluate.parse_decision('Sure!\n```json\n{"keep": false, "score": 0.1, "reason": "off"}\n```')
@@ -203,6 +207,30 @@ class TestExclusion(unittest.TestCase):
         self.assertEqual(keep["keep"], 1)
         self.assertNotIn("[", keep["reason"])
         self.assertIsNone(evaluate.parse_exclusion("garbage"))
+
+    def test_parse_decision_captures_grounding_fields(self):
+        import json as _json
+        d = evaluate.parse_decision(
+            '{"keep": true, "score": 0.8, "where": ["title", "body"], '
+            '"evidence": ["nitrate vulnerable zones"], "primary_topic": "Nitrate rules for farmers", '
+            '"reason": "on topic"}')
+        self.assertEqual(d["keep"], 1)
+        self.assertEqual(d["primary_topic"], "Nitrate rules for farmers")
+        self.assertEqual(_json.loads(d["where_hit"]), ["title", "body"])
+        self.assertEqual(_json.loads(d["evidence"]), ["nitrate vulnerable zones"])
+        # Legacy / exclusion-style replies without the grounding fields still parse; fields are None.
+        legacy = evaluate.parse_decision('{"keep": false, "score": 0.0, "reason": "wrong sense"}')
+        self.assertEqual(legacy["keep"], 0)
+        self.assertIsNone(legacy["primary_topic"])
+        self.assertIsNone(legacy["where_hit"])
+        self.assertIsNone(legacy["evidence"])
+
+    def test_exclusion_prompt_carries_pass1_topic(self):
+        p = evaluate.build_exclusion_prompt("Slurry", "slurry storage", "", "", "", "T", "b", "note",
+                                            pass1_topic="Farm waste storage rules")
+        self.assertIn("mainly about: Farm waste storage rules", p)
+        p2 = evaluate.build_exclusion_prompt("Slurry", "slurry storage", "", "", "", "T", "b", "note")
+        self.assertIn("mainly about: (not given)", p2)
 
     def test_exclusion_candidates_are_source_keeps_only(self):
         for i in range(3):

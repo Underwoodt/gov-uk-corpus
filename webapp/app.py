@@ -2062,7 +2062,8 @@ def _evaluate_one_page(cfg, is_exclusion, variant, caching, tmpl, inclusion, exc
     if is_exclusion:
         prompt = evaluate.build_exclusion_prompt(
             name, inclusion, exclusion, keep_hints, drop_hints,
-            r["title"], r["body"], r.get("pass1_reason") or "", template=tmpl)
+            r["title"], r["body"], r.get("pass1_reason") or "", template=tmpl,
+            pass1_topic=r.get("pass1_topic") or "")
     else:
         prompt = evaluate.build_prompt(inclusion, exclusion, r["title"], r.get("description"),
                                        r["body"], template=tmpl)
@@ -2480,13 +2481,16 @@ def _retry_unparsable(cid: int, cap: int = 300) -> dict:
                 c = conn.execute(
                     f"SELECT title, description, search_text AS body FROM content WHERE url = {P}", (url,)).fetchone()
                 c = dict(c) if c else {"title": "", "description": "", "body": ""}
-                pass1 = ""
+                pass1 = pass1_topic = ""
                 if is_excl:
                     pr = conn.execute(
-                        f"SELECT reason FROM evaluation_results WHERE run_id = {P} AND url = {P}", (inc, url)).fetchone()
-                    pass1 = (dict(pr)["reason"] if pr else "") or ""
+                        f"SELECT reason, primary_topic FROM evaluation_results WHERE run_id = {P} AND url = {P}",
+                        (inc, url)).fetchone()
+                    pr = dict(pr) if pr else {}
+                    pass1 = pr.get("reason") or ""
+                    pass1_topic = pr.get("primary_topic") or ""
                 row = {"url": url, "title": c.get("title"), "description": c.get("description"),
-                       "body": c.get("body"), "pass1_reason": pass1}
+                       "body": c.get("body"), "pass1_reason": pass1, "pass1_topic": pass1_topic}
                 res, ms, _prompt = _evaluate_one_page(cfg, is_excl, rt["prompt_variant"], rt["caching"],
                                                       prompt_tmpl, inclusion, exclusion, name,
                                                       keep_hints, drop_hints, row)
@@ -3610,15 +3614,20 @@ def _example_phase_prompts(conn, category, run_id: str = "") -> dict:
         title = "(example page title)"
         description, body = "(example page description)", "(the page's body text goes here)"
 
-    # PASS1_REASON for the exclusion prompt: the inclusion run's stored note for that page.
+    # PASS1_REASON / PASS1_TOPIC for the exclusion prompt: the inclusion run's stored note and
+    # primary topic for that page.
     pass1 = "(the first pass's 1-2 sentence note for this page)"
+    pass1_topic = "(the first pass's primary topic for this page)"
     if url:
         ir = incl_run["run_id"] if incl_run else evaluate.latest_inclusion_run(conn, cid)
         if ir:
-            r = conn.execute(f"SELECT reason FROM evaluation_results WHERE run_id = {P} AND url = {P}",
+            r = conn.execute(f"SELECT reason, primary_topic FROM evaluation_results WHERE run_id = {P} AND url = {P}",
                              (ir, url)).fetchone()
-            if r and (dict(r).get("reason") or "").strip():
-                pass1 = dict(r)["reason"]
+            r = dict(r) if r else {}
+            if (r.get("reason") or "").strip():
+                pass1 = r["reason"]
+            if (r.get("primary_topic") or "").strip():
+                pass1_topic = r["primary_topic"]
 
     # The raw template each phase used (from the run's stamp, else the current active version) —
     # shown alongside the completed prompt for comparison.
@@ -3641,13 +3650,14 @@ def _example_phase_prompts(conn, category, run_id: str = "") -> dict:
             excl_spec.get("name") or "the topic", excl_spec.get("inclusion_context", ""),
             excl_spec.get("exclusion_context", ""), excl_spec.get("keep_hints", ""),
             excl_spec.get("drop_hints", ""), title, body, pass1,
-            body_limit=excl_spec.get("body_limit", evaluate.BODY_CHAR_LIMIT), template=excl_template)
+            body_limit=excl_spec.get("body_limit", evaluate.BODY_CHAR_LIMIT), template=excl_template,
+            pass1_topic=pass1_topic)
     else:
         exclusion_prompt = evaluate.build_exclusion_prompt(
             (category.get("description") or "").strip() or cat.prettify(category.get("slug")) or "the topic",
             category.get("inclusion_context") or "", category.get("exclusion_context") or "",
             category.get("adjudication_hints_keep") or "", category.get("adjudication_hints_drop") or "",
-            title, body, pass1, template=excl_template)
+            title, body, pass1, template=excl_template, pass1_topic=pass1_topic)
 
     return {
         "sample_url": url,

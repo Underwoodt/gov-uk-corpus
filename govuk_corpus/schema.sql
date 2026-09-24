@@ -179,6 +179,9 @@ CREATE TABLE IF NOT EXISTS evaluation_results (
     score        REAL,
     reason       TEXT,
     raw_reply    TEXT,          -- the model's raw reply, kept verbatim for debugging (esp. unparseable ones)
+    primary_topic TEXT,         -- inclusion pass: what the page is mainly about (<=10-word noun phrase); fed to Phase 2 as {{PASS1_TOPIC}}
+    where_hit    TEXT,          -- inclusion pass: JSON list of the fields the topic appeared in (title | description | body)
+    evidence     TEXT,          -- inclusion pass: JSON list of verbatim quotes grounding the decision
     ms           INTEGER,
     created_at   TEXT,
     PRIMARY KEY (run_id, url)
