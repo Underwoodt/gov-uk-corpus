@@ -2747,11 +2747,14 @@ def gold_page(request: Request, cid: int, run: str = ""):
         # Inclusion runs (chain heads) of this category, for the run picker.
         heads = [r for r in evaluate.list_runs(conn, cid) if not r.get("source_run_id")]
         st = gold.status(conn, cid)
+        cu = current_user(request)
         ctxd = ctx(conn, request, category=category, run=incl, excl=excl, pages=pages, heads=heads,
                    stages=gold.STAGES, stage_counts=stage_counts, gold_status=st,
                    targets=targets, progress=progress,
                    sample_total=sum(s["target"] for s in selection.values()),
-                   labelled_here=sum(1 for p in pages if p["label"]))
+                   labelled_here=sum(1 for p in pages if p["label"]),
+                   my_labeller=(cu.get("email") if cu else "") or "",
+                   labellers=gold.labellers(conn, cid))
         return templates.TemplateResponse("gold_labels.html", ctxd)
     finally:
         conn.close()
@@ -2766,6 +2769,9 @@ async def api_gold_label(request: Request, cid: int):
     body = await request.json()
     run_id = str(body.get("run") or ""); url = str(body.get("url") or "")
     verdict = str(body.get("verdict") or ""); rationale = str(body.get("rationale") or "")
+    label = str(body.get("label") or "")            # blind mode: the label itself, no verdict
+    blind = bool(body.get("blind"))
+    name = str(body.get("labeller") or "").strip()[:80]
     if not (run_id and url):
         return JSONResponse({"error": "bad request"}, status_code=400)
     conn = connect()
@@ -2779,16 +2785,86 @@ async def api_gold_label(request: Request, cid: int):
         if not page:
             return JSONResponse({"error": "that page is not in this run"}, status_code=404)
         cu = current_user(request)
-        who = (cu.get("email") if cu else None) or "app"
+        who = (cu.get("email") if cu else None) or name     # signed-in email wins; else the typed name
         try:
-            label = gold.save_verdict(conn, category, page, verdict, rationale, who, sample_run_id=run_id)
+            consensus = gold.save_verdict(conn, category, page, verdict, rationale, who,
+                                          sample_run_id=run_id, label=label or None, blind=blind)
         except ValueError as e:
             return JSONResponse({"error": str(e)}, status_code=400)
-        page["label"] = label or ""
+        page["label"] = consensus or ""
+        votes = gold.load_votes(conn, cid, url)
+        mine = next((v for v in votes if v["labeller"] == who), None)
+        row = next((r for r in gold.load_gold(conn, cid) if r["url"] == url), None)
         st = gold.status(conn, cid)
-        return JSONResponse({"ok": True, "label": label, "counts": st["counts"], "labelled": st["labelled"],
+        return JSONResponse({"ok": True, "label": consensus, "my_label": (mine or {}).get("label"),
+                            "labeller": who, "agreement": (row or {}).get("agreement"),
+                            "votes": [{"labeller": v["labeller"], "label": v["label"], "rationale": v["rationale"],
+                                       "blind": bool(v.get("blind"))} for v in votes],
+                            "counts": st["counts"], "labelled": st["labelled"],
                             "forwarded": st["forwarded"], "gold_sha": st["gold_sha"],
                             "progress": gold.sample_progress(pages, selection)})
+    finally:
+        conn.close()
+
+
+@app.get("/categories/{cid}/gold/agreement", response_class=HTMLResponse)
+def gold_agreement_page(request: Request, cid: int):
+    """Inter-labeller agreement (guc-0030): who labelled what, pairwise and Fleiss' κ, the pages
+    the labellers disagree on with an adjudicate control, and the adjudications so far."""
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    try:
+        category = cat.get_category(conn, cid)
+        if not category:
+            return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
+        category["display_name"] = cat.display_name(category)
+        ag = gold.agreement_stats(conn, cid)
+        rows = {r["url"]: r for r in gold.load_gold(conn, cid)}
+        titles = {}
+        urls = list(rows)
+        P = shortlist._P
+        for i in range(0, len(urls), 500):
+            chunk = urls[i:i + 500]
+            for r in conn.execute(f"SELECT url, title FROM content WHERE url IN ({','.join([P] * len(chunk))})",
+                                  tuple(chunk)).fetchall():
+                titles[r["url"]] = r["title"]
+        for d in ag["disagreements"]:
+            d["title"] = titles.get(d["url"]) or ""
+            d["consensus"] = rows.get(d["url"]) or {}
+        adjudicated = [dict(r, title=titles.get(r["url"]) or "") for r in rows.values() if r.get("adjudicated_at")]
+        st = gold.status(conn, cid)
+        cu = current_user(request)
+        ctxd = ctx(conn, request, category=category, ag=ag, adjudicated=adjudicated, gold_status=st,
+                   my_labeller=(cu.get("email") if cu else "") or "")
+        return templates.TemplateResponse("gold_agreement.html", ctxd)
+    finally:
+        conn.close()
+
+
+@app.post("/api/categories/{cid}/gold/adjudicate")
+async def api_gold_adjudicate(request: Request, cid: int):
+    """Set (label + note) or clear (empty label) the adjudicated consensus for one page."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    body = await request.json()
+    url = str(body.get("url") or ""); label = str(body.get("label") or "")
+    note = str(body.get("note") or ""); name = str(body.get("adjudicator") or "").strip()[:80]
+    if not url:
+        return JSONResponse({"error": "bad request"}, status_code=400)
+    conn = connect()
+    try:
+        if not cat.get_category(conn, cid):
+            return JSONResponse({"error": "not found"}, status_code=404)
+        cu = current_user(request)
+        who = (cu.get("email") if cu else None) or name or "adjudicator"
+        try:
+            result = gold.adjudicate(conn, cid, url, label or None, note, who)
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        row = next((r for r in gold.load_gold(conn, cid) if r["url"] == url), None)
+        return JSONResponse({"ok": True, "label": result, "agreement": (row or {}).get("agreement"),
+                            "counts": gold.status(conn, cid)["counts"]})
     finally:
         conn.close()
 

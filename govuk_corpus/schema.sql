@@ -354,5 +354,32 @@ CREATE TABLE IF NOT EXISTS category_gold_labels (
     sample_run_id         TEXT,               -- the run whose outcomes the page was sampled by (guc-0029)
     sample_stage          TEXT,               -- stage the page left that run at: p1_drop | p2_drop | kept | ...
     sample_frac           REAL,               -- sampling fraction of that stage (target / stage size); NULL = not sampled (weight 1)
+    n_votes               INTEGER,            -- votes behind this consensus row
+    agreement             TEXT,               -- single | unanimous | majority | split | adjudicated
+    adjudicated_by        TEXT,
+    adjudicated_at        TEXT,
+    resolution_note       TEXT,
     PRIMARY KEY (category_id, url)
+);
+
+-- One vote per (page, labeller). category_gold_labels holds the CONSENSUS row per page, derived
+-- from these votes (unanimous / majority / split→borderline) or set by an adjudication.
+CREATE TABLE IF NOT EXISTS category_gold_votes (
+    category_id           INTEGER NOT NULL,
+    url                   TEXT NOT NULL,
+    labeller              TEXT NOT NULL,      -- account email, or the name typed on the page
+    label                 TEXT NOT NULL,      -- in | out | borderline
+    rationale             TEXT,
+    labelled_at           TEXT,
+    blind                 INTEGER DEFAULT 0,  -- 1 = labelled with the model's verdicts hidden
+    content_id            TEXT,
+    content_hash_at_label TEXT,
+    stratum_score_band    TEXT,
+    stratum_source        TEXT,
+    stratum_doc_type      TEXT,
+    seed_origin           TEXT,
+    sample_run_id         TEXT,
+    sample_stage          TEXT,
+    sample_frac           REAL,
+    PRIMARY KEY (category_id, url, labeller)
 );

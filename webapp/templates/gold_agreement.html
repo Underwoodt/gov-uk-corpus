@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block page_id %}guc-0030{% endblock %}
+{% block title %}{{ category.display_name }} — gold agreement{% endblock %}
+{% block content %}
+  <a class="back" href="{{ url_for('gold_page', cid=category.id) }}">‹ Gold labels</a>
+  <h1 style="margin:16px 0 6px;">Agreement &amp; adjudication</h1>
+  <p class="hint" style="margin-top:0;">How closely the labellers agree, and the pages they disagree on. Adjudicate a
+    disagreement by choosing the final label with a one-line resolution note; the original votes are kept and the
+    benchmark uses the adjudicated label. Without adjudication a two-way split counts as <em>borderline</em>.</p>
+
+  <div class="card ag-summary">
+    <div class="ag-grid">
+      <div><div class="ag-k">Labellers</div><div class="ag-v">{{ ag.labellers|length }}</div><div class="muted-sm">{{ ag.labellers|join(', ') or '—' }}</div></div>
+      <div><div class="ag-k">Pages voted</div><div class="ag-v">{{ ag.pages_voted }}</div><div class="muted-sm">{{ ag.pages_multi }} with 2+ votes · {{ ag.pages_complete }} by everyone</div></div>
+      <div><div class="ag-k">Unanimous</div><div class="ag-v">{{ ag.unanimous }}</div><div class="muted-sm">of {{ ag.pages_multi }} multi-voted</div></div>
+      <div><div class="ag-k">Disagreements</div><div class="ag-v">{{ ag.disagreements|length }}</div><div class="muted-sm">{{ gold_status.split }} split · {{ gold_status.adjudicated }} adjudicated</div></div>
+      <div><div class="ag-k">Fleiss' κ</div><div class="ag-v">{{ '%.3f'|format(ag.fleiss_kappa) if ag.fleiss_kappa is not none else '—' }}</div><div class="muted-sm">pages every labeller voted on</div></div>
+      <div><div class="ag-k">Blind votes</div><div class="ag-v">{{ ag.blind_votes }}</div><div class="muted-sm">made with the model's verdicts hidden</div></div>
+    </div>
+    {% if ag.pairs %}
+    <table class="ag-pairs">
+      <thead><tr><th>Pair</th><th class="num">Shared pages</th><th class="num">Raw agreement</th><th class="num">Cohen's κ</th></tr></thead>
+      <tbody>{% for p in ag.pairs %}
+        <tr><td>{{ p.a }} vs {{ p.b }}</td><td class="num">{{ p.shared }}</td>
+            <td class="num">{{ '%.0f%%'|format(100 * p.agree) if p.agree is not none else '—' }}</td>
+            <td class="num">{{ '%.3f'|format(p.kappa) if p.kappa is not none else '—' }}</td></tr>
+      {% endfor %}</tbody>
+    </table>
+    <p class="muted-sm" style="margin:8px 0 0;">Rule of thumb for κ: below 0.4 the labelling guide needs work; 0.4–0.6 moderate; 0.6–0.8 substantial; above 0.8 near-perfect.</p>
+    {% endif %}
+  </div>
+
+  <h2 style="font-size:19px;margin:22px 0 10px;">Disagreements <span class="count">{{ ag.disagreements|length }}</span></h2>
+  {% if not ag.disagreements %}<p class="muted-sm">None — every multi-voted page has the same label from every labeller.</p>{% endif %}
+  {% for d in ag.disagreements %}
+    <div class="card ag-card" data-url="{{ d.url }}">
+      <div class="gc-head">
+        <div><a href="{{ d.url }}" target="_blank" rel="noopener" style="font-weight:700;">{{ d.title or d.url }}</a>
+          <div class="gc-url mono">{{ d.url }}</div></div>
+        <span class="cons {{ d.consensus.agreement or '' }}">{{ d.consensus.agreement or '' }}{% if d.consensus.label %} → {{ d.consensus.label }}{% endif %}</span>
+      </div>
+      <div class="votes">{% for v in d.votes %}<span class="vote"><span class="lbl {{ v.label }}">{{ v.label }}</span> {{ v.labeller }}{% if v.blind %} (blind){% endif %}: {{ v.rationale or '' }}</span>{% endfor %}</div>
+      <div class="rate">
+        <span class="rate-q">Final label</span>
+        <div class="rate-opts">
+          <button type="button" class="rate-btn" data-label="in">In</button>
+          <button type="button" class="rate-btn" data-label="out">Out</button>
+          <button type="button" class="rate-btn" data-label="borderline">Borderline</button>
+        </div>
+        <input type="text" class="rate-reason" placeholder="resolution note (required)" maxlength="300" value="{{ d.consensus.resolution_note or '' }}">
+        <button type="button" class="btn adj-save">Adjudicate</button>
+        {% if d.consensus.adjudicated_at %}<button type="button" class="btn secondary-btn adj-clear">Clear adjudication</button>{% endif %}
+        <span class="rate-out">{% if d.consensus.adjudicated_at %}adjudicated by {{ d.consensus.adjudicated_by }}{% endif %}</span>
+      </div>
+    </div>
+  {% endfor %}
+
+  {% if adjudicated %}
+  <h2 style="font-size:19px;margin:22px 0 10px;">Adjudicated <span class="count">{{ adjudicated|length }}</span></h2>
+  <table class="ag-pairs">
+    <thead><tr><th>Page</th><th>Label</th><th>Resolution</th><th>By</th></tr></thead>
+    <tbody>{% for r in adjudicated %}
+      <tr><td><a href="{{ r.url }}" target="_blank" rel="noopener">{{ r.title or r.url }}</a></td><td><b class="lbl {{ r.label }}">{{ r.label }}</b></td>
+          <td>{{ r.resolution_note or '' }}</td><td>{{ r.adjudicated_by or '' }}</td></tr>
+    {% endfor %}</tbody>
+  </table>
+  {% endif %}
+
+  <style>
+    .ag-summary { padding:14px 16px; }
+    .ag-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:14px; }
+    .ag-k { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.02em; color:var(--muted); }
+    .ag-v { font-size:24px; font-weight:700; font-variant-numeric:tabular-nums; }
+    .ag-pairs { font-size:14px; border-collapse:collapse; margin-top:12px; }
+    .ag-pairs th, .ag-pairs td { padding:5px 14px 5px 0; text-align:left; vertical-align:top; }
+    .ag-pairs thead th { font-size:11px; text-transform:uppercase; letter-spacing:.02em; color:var(--muted); border-bottom:1px solid var(--border); }
+    .ag-pairs .num { text-align:right; font-variant-numeric:tabular-nums; }
+    .count { display:inline-block; min-width:22px; text-align:center; background:var(--surface-3); color:var(--ink); border-radius:999px; font-size:13px; font-weight:700; padding:1px 9px; margin-left:4px; }
+    .ag-card { padding:12px 16px; margin:0 0 12px; }
+    .gc-head { display:flex; gap:12px; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; margin-bottom:8px; }
+    .gc-url { font-size:12px; color:var(--muted); word-break:break-all; } .mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+    .muted-sm { color:var(--muted); font-size:13px; }
+    .votes { display:flex; gap:8px; flex-wrap:wrap; font-size:13px; margin-bottom:8px; }
+    .vote { display:inline-flex; gap:6px; align-items:center; border:1px solid var(--border); border-radius:var(--radius-sm); padding:3px 8px; background:var(--surface-2); }
+    .lbl { text-transform:uppercase; font-weight:700; } .lbl.in { color:var(--green-dark); } .lbl.out { color:#a5200f; } .lbl.borderline { color:#7a5a00; }
+    .cons { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; padding:2px 8px; border-radius:999px; background:var(--surface-3); white-space:nowrap; }
+    .cons.unanimous, .cons.single { background:#d9f2e4; color:var(--green-dark); } .cons.majority { background:#e8f1fb; color:#1d4e89; }
+    .cons.split { background:#fbe0db; color:#a5200f; } .cons.adjudicated { background:#fff1cc; color:#7a5a00; }
+    .rate { display:flex; align-items:center; gap:10px; flex-wrap:wrap; border-top:1px dashed var(--border); padding-top:10px; }
+    .rate-q { font-size:13px; font-weight:700; color:var(--muted); }
+    .rate-opts { display:inline-flex; border:1px solid var(--border-mid); border-radius:999px; overflow:hidden; }
+    .rate-btn { background:var(--surface); border:none; border-right:1px solid var(--border); padding:5px 14px; font-size:13px; font-weight:600; color:var(--ink); cursor:pointer; }
+    .rate-btn:last-child { border-right:none; } .rate-btn.on { background:var(--blue); color:var(--white); }
+    .rate-reason { flex:1 1 260px; min-width:200px; font-size:13px; padding:5px 8px; }
+    .rate-out { font-size:13px; } .rate-out.err { color:var(--red); }
+  </style>
+  <script>
+    const CID = {{ category.id }};
+    const ACCOUNT = {{ my_labeller|tojson }};
+    function who() { let n = ACCOUNT; try { n = n || localStorage.getItem("gold_who") || ""; } catch (e) {} return n || prompt("Your name (for the adjudication record):") || ""; }
+    document.querySelectorAll(".ag-card").forEach(card => {
+      const wrap = card.querySelector(".rate"); const out = wrap.querySelector(".rate-out");
+      const paint = () => wrap.querySelectorAll(".rate-btn").forEach(b => b.classList.toggle("on", b.dataset.label === (wrap.dataset.label || "")));
+      const cons = card.querySelector(".cons");
+      if (cons && cons.classList.contains("adjudicated")) { wrap.dataset.label = (cons.textContent.split("→")[1] || "").trim(); paint(); }
+      wrap.querySelectorAll(".rate-btn").forEach(b => b.onclick = () => { wrap.dataset.label = b.dataset.label; paint(); });
+      async function post(label, note) {
+        out.className = "rate-out"; out.textContent = "Saving…";
+        try {
+          const r = await fetch(`/api/categories/${CID}/gold/adjudicate`, { method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: card.dataset.url, label, note, adjudicator: who() }) });
+          const j = await r.json(); if (!r.ok || j.error) throw new Error(j.error || ("HTTP " + r.status));
+          out.textContent = label ? `adjudicated → ${j.label}` : `cleared → consensus ${j.label || "none"}`;
+          if (cons) { cons.className = "cons " + (j.agreement || ""); cons.textContent = (j.agreement || "") + (j.label ? " → " + j.label : ""); }
+        } catch (e) { out.className = "rate-out err"; out.textContent = "Couldn't save: " + (e.message || e); }
+      }
+      card.querySelector(".adj-save").onclick = () => {
+        const l = wrap.dataset.label, note = wrap.querySelector(".rate-reason").value.trim();
+        if (!l) { out.className = "rate-out err"; out.textContent = "Pick the final label."; return; }
+        if (!note) { out.className = "rate-out err"; out.textContent = "Add a resolution note."; return; }
+        post(l, note);
+      };
+      const clr = card.querySelector(".adj-clear"); if (clr) clr.onclick = () => post("", "");
+    });
+  </script>
+{% endblock %}

@@ -17,6 +17,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 _SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "schema_pg.sql")
+GOLD_VOTES_BACKFILL = """INSERT INTO category_gold_votes (category_id, url, labeller, label, rationale, labelled_at, content_id, content_hash_at_label, stratum_score_band, stratum_source, stratum_doc_type, seed_origin, sample_run_id, sample_stage, sample_frac) SELECT category_id, url, COALESCE(labelled_by, 'unknown'), label, rationale, labelled_at, content_id, content_hash_at_label, stratum_score_band, stratum_source, stratum_doc_type, seed_origin, sample_run_id, sample_stage, sample_frac FROM category_gold_labels g WHERE g.label IS NOT NULL AND g.adjudicated_at IS NULL AND NOT EXISTS (SELECT 1 FROM category_gold_votes v WHERE v.category_id = g.category_id AND v.url = g.url)"""
 
 
 def now_iso() -> str:
@@ -71,6 +72,11 @@ def init_db(conn) -> None:
     conn.execute("ALTER TABLE category_gold_labels ADD COLUMN IF NOT EXISTS sample_run_id text")
     conn.execute("ALTER TABLE category_gold_labels ADD COLUMN IF NOT EXISTS sample_stage text")
     conn.execute("ALTER TABLE category_gold_labels ADD COLUMN IF NOT EXISTS sample_frac double precision")
+    for col, typ in (("n_votes", "integer"), ("agreement", "text"), ("adjudicated_by", "text"),
+                     ("adjudicated_at", "text"), ("resolution_note", "text")):
+        conn.execute(f"ALTER TABLE category_gold_labels ADD COLUMN IF NOT EXISTS {col} {typ}")
+    # Multi-labeller store: a consensus row that predates votes becomes its labeller's vote.
+    conn.execute(GOLD_VOTES_BACKFILL)
     # GOV.UK Search view_count (~14-day pageviews) + the date it was collected.
     conn.execute("ALTER TABLE content ADD COLUMN IF NOT EXISTS view_count integer")
     conn.execute("ALTER TABLE content ADD COLUMN IF NOT EXISTS view_count_updated text")

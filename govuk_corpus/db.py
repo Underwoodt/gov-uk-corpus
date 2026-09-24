@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 _SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "schema.sql")
+GOLD_VOTES_BACKFILL = """INSERT INTO category_gold_votes (category_id, url, labeller, label, rationale, labelled_at, content_id, content_hash_at_label, stratum_score_band, stratum_source, stratum_doc_type, seed_origin, sample_run_id, sample_stage, sample_frac) SELECT category_id, url, COALESCE(labelled_by, 'unknown'), label, rationale, labelled_at, content_id, content_hash_at_label, stratum_score_band, stratum_source, stratum_doc_type, seed_origin, sample_run_id, sample_stage, sample_frac FROM category_gold_labels g WHERE g.label IS NOT NULL AND g.adjudicated_at IS NULL AND NOT EXISTS (SELECT 1 FROM category_gold_votes v WHERE v.category_id = g.category_id AND v.url = g.url)"""
 
 
 def now_iso() -> str:
@@ -44,9 +45,13 @@ def init_db(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE evaluation_runs ADD COLUMN {col} {typ}")
     # Sampling provenance on gold labels (guc-0029 stage-stratified picks).
     have_gold = {r[1] for r in conn.execute("PRAGMA table_info(category_gold_labels)")}
-    for col, typ in (("sample_run_id", "TEXT"), ("sample_stage", "TEXT"), ("sample_frac", "REAL")):
+    for col, typ in (("sample_run_id", "TEXT"), ("sample_stage", "TEXT"), ("sample_frac", "REAL"),
+                     ("n_votes", "INTEGER"), ("agreement", "TEXT"), ("adjudicated_by", "TEXT"),
+                     ("adjudicated_at", "TEXT"), ("resolution_note", "TEXT")):
         if col not in have_gold:
             conn.execute(f"ALTER TABLE category_gold_labels ADD COLUMN {col} {typ}")
+    # Multi-labeller store: a consensus row that predates votes becomes its labeller's vote.
+    conn.execute(GOLD_VOTES_BACKFILL)
     # GOV.UK Search view_count + the date it was collected (per-page popularity).
     have_content = {r[1] for r in conn.execute("PRAGMA table_info(content)")}
     for col, typ in (("view_count", "INTEGER"), ("view_count_updated", "TEXT"),

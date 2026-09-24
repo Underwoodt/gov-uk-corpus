@@ -439,8 +439,12 @@ def report(conn, cid: int, out_dir: str, log: Callable[[str], None] = print) -> 
         return {u: results[rid].get(u, {}).get("score") for u in urls}
 
     per_run_rows, stability_rows, grounding_rows, paired_rows, per_page_rows = [], [], [], [], []
+    ag = gold.agreement_stats(conn, cid)
     summary: Dict = {"gold_sha": sha, "n": len(urls), "labels": {}, "drifted": sorted(drift),
                      "template_hash_mismatch": hash_mismatch, "arms": {}, "p1": {},
+                     "agreement": {k: v for k, v in ag.items() if k != "disagreements"},
+                     "disagreements": len(ag["disagreements"]),
+                     "adjudicated": sum(1 for u in urls if by_url[u].get("adjudicated_at")),
                      "weighted": weighted_any,
                      "sampling": sorted({(by_url[u].get("sample_stage") or "", round(float(by_url[u]["sample_frac"]), 3))
                                          for u in urls if by_url[u].get("sample_frac")})}
@@ -612,6 +616,14 @@ def _results_md(s: dict, code_sha: str, expected_hash: dict) -> str:
     if lbl.get("out", 0) < 15:
         L.append(f"_Note: only {lbl.get('out', 0)} definite `out` pages — precision and specificity are "
                  f"descriptive (protocol §5)._\n")
+    ag = s.get("agreement") or {}
+    if ag.get("labellers"):
+        pairs = "; ".join(f"{p['a']} vs {p['b']}: {p['shared']} shared, agree {_fmt(p['agree'], pct=True)}, κ {_fmt(p['kappa'])}"
+                          for p in ag.get("pairs", []))
+        L.append(f"_Labellers: {len(ag['labellers'])} ({', '.join(ag['labellers'])}); pages with 2+ votes "
+                 f"{ag.get('pages_multi', 0)}, unanimous {ag.get('unanimous', 0)}, disagreements {s.get('disagreements', 0)}, "
+                 f"adjudicated {s.get('adjudicated', 0)}, blind votes {ag.get('blind_votes', 0)}; Fleiss' κ "
+                 f"{_fmt(ag.get('fleiss_kappa'))}{'; ' + pairs if pairs else ''}._\n")
     if s.get("weighted"):
         L.append("_Gold pages were sampled per pipeline stage (guc-0029): stage / fraction = "
                  + ", ".join(f"{st} {f:.0%}" for st, f in s["sampling"])

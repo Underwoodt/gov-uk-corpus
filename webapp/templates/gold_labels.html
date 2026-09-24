@@ -19,6 +19,19 @@
     time and raising a target only adds pages). The sampling fraction is stored with each label so the benchmark
     can weight it. Labels are per page, not per run, so they carry over to every run.</p>
 
+  <div class="card gl-who">
+    <div class="gw-row">
+      <strong>Labelling as</strong>
+      {% if my_labeller %}<span class="pill in">{{ my_labeller }}</span>
+      {% else %}<input type="text" id="who" placeholder="your name or email" maxlength="80" aria-label="Your name">{% endif %}
+      <label class="gl-chk" title="Hide the pipeline's verdicts and reasons while you label, and give the label directly. Other people's votes stay hidden until you have voted."><input type="checkbox" id="blind"> label blind (hide the model's verdicts)</label>
+      <span class="muted-sm">{% if labellers %}labellers so far: {{ labellers|join(', ') }}{% else %}no votes yet{% endif %}</span>
+      <a class="btn secondary-btn" style="margin-left:auto;padding:5px 12px;font-size:13px;" href="{{ url_for('gold_agreement_page', cid=category.id) }}">Agreement &amp; adjudication ›</a>
+    </div>
+    <p class="muted-sm" style="margin:6px 0 0;">Each person's vote is kept separately. The gold label is the consensus: unanimous or majority wins,
+      a two-way split becomes <em>borderline</em> until it is adjudicated. Other people's votes on a page are shown only after you have saved yours.</p>
+  </div>
+
   <div class="card gl-top">
     <form method="get" class="gl-runpick">
       <label for="run-pick"><strong>Run</strong></label>
@@ -112,21 +125,26 @@
           </tr></tbody>
         </table>
       </div>
-      <div class="rate" data-verdict="{{ p.verdict or '' }}" data-final="{{ 'keep' if p.final_keep else ('drop' if p.final_keep == False else '') }}">
-        <span class="rate-q">Was the final <b>{{ 'KEEP' if p.final_keep else ('DROP' if p.final_keep == False else '—') }}</b> right?</span>
-        {% if p.final_keep is none %}
-          <span class="muted-sm">No outcome to judge (the reply could not be parsed).</span>
-        {% else %}
-        <div class="rate-opts">
+      <div class="rate" data-verdict="" data-final="{{ 'keep' if p.final_keep else ('drop' if p.final_keep == False else '') }}"
+           data-stage="{{ p.stage or '' }}" data-votes='{{ p.votes_json }}'>
+        <span class="rate-q model-only">Was the final <b>{{ 'KEEP' if p.final_keep else ('DROP' if p.final_keep == False else '—') }}</b> right?</span>
+        <span class="rate-q blind-only" hidden>Does this page belong in the shortlist?</span>
+        <div class="rate-opts model-only" {% if p.final_keep is none %}hidden{% endif %}>
           <button type="button" class="rate-btn" data-verdict="correct">Correct</button>
           <button type="button" class="rate-btn" data-verdict="wrong">Wrong</button>
           <button type="button" class="rate-btn" data-verdict="borderline">Borderline</button>
         </div>
-        <input type="text" class="rate-reason" placeholder="one-line reason (required)" value="{{ p.rationale }}" maxlength="300">
+        <div class="rate-opts blind-only" hidden>
+          <button type="button" class="rate-btn" data-label="in">In</button>
+          <button type="button" class="rate-btn" data-label="out">Out</button>
+          <button type="button" class="rate-btn" data-label="borderline">Borderline</button>
+        </div>
+        {% if p.final_keep is none %}<span class="muted-sm model-only">No outcome to judge (the reply could not be parsed) — switch to blind labelling to label it directly.</span>{% endif %}
+        <input type="text" class="rate-reason" placeholder="one-line reason (required)" value="" maxlength="300">
         <button type="button" class="btn rate-save">Save</button>
-        <button type="button" class="btn secondary-btn rate-clear" {% if not p.label %}hidden{% endif %}>Clear</button>
-        <span class="rate-out">{% if p.label %}→ gold <b class="lbl {{ p.label }}">{{ p.label }}</b>{% if p.labelled_by %} <span class="muted-sm">by {{ p.labelled_by }}</span>{% endif %}{% endif %}</span>
-        {% endif %}
+        <button type="button" class="btn secondary-btn rate-clear" hidden>Clear my vote</button>
+        <span class="rate-out"></span>
+        <div class="votes" data-agreement="{{ p.agreement or '' }}" data-consensus="{{ p.label }}"></div>
         {% if p.seed_label %}<span class="seed" title="From the category's URL-check lists — a hint, not a label">seed: {{ 'should be in' if p.seed_label == 'should_include' else 'should be out' }}</span>{% endif %}
       </div>
     </div>
@@ -195,17 +213,86 @@
     .gs-actions { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:10px; }
     .samp { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; padding:3px 8px; border-radius:999px; background:#e8f1fb; color:#1d4e89; margin-left:6px; }
     .gl-card[data-sampled="0"] .stage { opacity:.7; }
+    .gl-who { padding:10px 16px; margin-bottom:12px; }
+    .gw-row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+    #who { min-width:220px; font-size:13px; padding:5px 8px; }
+    .votes { flex-basis:100%; display:flex; gap:8px; flex-wrap:wrap; align-items:center; font-size:13px; }
+    .vote { display:inline-flex; gap:6px; align-items:center; border:1px solid var(--border); border-radius:var(--radius-sm); padding:3px 8px; background:var(--surface-2); }
+    .vote .lbl { font-weight:700; }
+    .vote.mine { border-color:var(--blue); }
+    .cons { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; padding:2px 8px; border-radius:999px; background:var(--surface-3); }
+    .cons.unanimous, .cons.single { background:#d9f2e4; color:var(--green-dark); }
+    .cons.majority { background:#e8f1fb; color:#1d4e89; } .cons.split { background:#fbe0db; color:#a5200f; } .cons.adjudicated { background:#fff1cc; color:#7a5a00; }
+    body.blind .model-only, body.blind .gc-table, body.blind .stage, body.blind .gl-filters .fbtn[data-stage]:not([data-stage=""]) { display:none !important; }
+    body.blind .blind-only { display:inline-flex !important; }
+    body.blind span.blind-only { display:inline !important; }
   </style>
 
   <script>
     const CID = {{ category.id }};
     const RUN = {{ (run.run_id if run else '')|tojson }};
+    const ACCOUNT = {{ my_labeller|tojson }};
+    const LS_WHO = "gold_who", LS_BLIND = "gold_blind_" + CID;
 
+    // ---- who is labelling (account email, else a name remembered in this browser) ----
+    const whoInput = document.getElementById("who");
+    if (whoInput) { try { whoInput.value = localStorage.getItem(LS_WHO) || ""; } catch (e) {}
+      whoInput.onchange = () => { try { localStorage.setItem(LS_WHO, whoInput.value.trim()); } catch (e) {} renderAllVotes(); }; }
+    function me() { return ACCOUNT || (whoInput ? whoInput.value.trim() : ""); }
+
+    // ---- blind mode: hide the model's verdicts, label directly ----
+    const blindBox = document.getElementById("blind");
+    try { blindBox.checked = localStorage.getItem(LS_BLIND) === "1"; } catch (e) {}
+    function applyBlind() {
+      document.body.classList.toggle("blind", blindBox.checked);
+      if (blindBox.checked && stage) { stage = ""; document.querySelectorAll(".fbtn").forEach(x => x.classList.toggle("on", x.dataset.stage === "")); }
+      applyFilter();
+    }
+    blindBox.onchange = () => { try { localStorage.setItem(LS_BLIND, blindBox.checked ? "1" : "0"); } catch (e) {} applyBlind(); };
+
+    // ---- votes: mine drives the buttons; others appear only once I have voted ----
+    const VERDICT_OF = { keep: { in: "correct", out: "wrong" }, drop: { out: "correct", in: "wrong" } };
+    function myVerdict(wrap, label) {
+      if (!label) return "";
+      if (label === "borderline") return "borderline";
+      return (VERDICT_OF[wrap.dataset.final] || {})[label] || "";
+    }
     function paint(card) {
       const wrap = card.querySelector(".rate");
-      const v = wrap.dataset.verdict || "";
-      wrap.querySelectorAll(".rate-btn").forEach(b => b.classList.toggle("on", b.dataset.verdict === v));
+      const v = wrap.dataset.verdict || "", l = wrap.dataset.mylabel || "";
+      wrap.querySelectorAll(".rate-btn[data-verdict]").forEach(b => b.classList.toggle("on", b.dataset.verdict === v));
+      wrap.querySelectorAll(".rate-btn[data-label]").forEach(b => b.classList.toggle("on", b.dataset.label === l));
     }
+    function renderVotes(card, votes, consensus, agreement) {
+      const wrap = card.querySelector(".rate");
+      const box = wrap.querySelector(".votes");
+      const who = me();
+      const mine = votes.find(v => v.labeller === who);
+      wrap.dataset.mylabel = mine ? mine.label : "";
+      wrap.dataset.verdict = mine ? myVerdict(wrap, mine.label) : "";
+      const reason = wrap.querySelector(".rate-reason");
+      if (mine && document.activeElement !== reason) reason.value = mine.rationale || "";
+      wrap.querySelector(".rate-clear").hidden = !mine;
+      card.dataset.labelled = mine ? "1" : "0";
+      paint(card);
+      let html = "";
+      if (votes.length) {
+        html += `<span class="cons ${agreement || ""}">${agreement ? agreement : ""}${consensus ? " → " + consensus : ""}</span>`;
+        if (mine) votes.forEach(v => { html += `<span class="vote ${v.labeller === who ? "mine" : ""}"><span class="lbl ${v.label}">${v.label}</span> ${escapeHtml(v.labeller)}${v.blind ? " (blind)" : ""}: ${escapeHtml(v.rationale || "")}</span>`; });
+        else html += `<span class="muted-sm">${votes.length} vote${votes.length > 1 ? "s" : ""} recorded — save yours to see them</span>`;
+      }
+      box.innerHTML = html;
+    }
+    function renderAllVotes() {
+      document.querySelectorAll(".gl-card").forEach(card => {
+        const wrap = card.querySelector(".rate"); let votes = [];
+        try { votes = JSON.parse(wrap.dataset.votes || "[]"); } catch (e) {}
+        const box = wrap.querySelector(".votes");
+        renderVotes(card, votes, box.dataset.consensus || "", box.dataset.agreement || "");
+      });
+      applyFilter();
+    }
+    function escapeHtml(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
     function setStatus(j) {
       if (!j || !j.counts) return;
       document.getElementById("st-labelled").textContent = j.labelled;
@@ -213,43 +300,57 @@
       document.getElementById("st-out").textContent = j.counts.out;
       document.getElementById("st-bl").textContent = j.counts.borderline;
     }
-    async function save(card, verdict) {
+    async function save(card, { verdict = "", label = "" } = {}) {
       const wrap = card.querySelector(".rate");
       const out = wrap.querySelector(".rate-out");
       const reason = wrap.querySelector(".rate-reason").value.trim();
-      if (verdict && !reason) { out.className = "rate-out err"; out.textContent = "Add a one-line reason first."; wrap.querySelector(".rate-reason").focus(); return; }
+      const who = me();
+      if (!who) { out.className = "rate-out err"; out.textContent = "Say who is labelling first (top of the page)."; if (whoInput) whoInput.focus(); return; }
+      if ((verdict || label) && !reason) { out.className = "rate-out err"; out.textContent = "Add a one-line reason first."; wrap.querySelector(".rate-reason").focus(); return; }
       out.className = "rate-out"; out.textContent = "Saving…";
       try {
         const r = await fetch(`/api/categories/${CID}/gold`, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ run: RUN, url: card.dataset.url, verdict: verdict, rationale: reason })
+          body: JSON.stringify({ run: RUN, url: card.dataset.url, verdict, label, rationale: reason,
+                                 labeller: who, blind: blindBox.checked })
         });
         const j = await r.json();
         if (!r.ok || j.error) throw new Error(j.error || ("HTTP " + r.status));
-        wrap.dataset.verdict = verdict; paint(card);
-        card.dataset.labelled = j.label ? "1" : "0";
-        wrap.querySelector(".rate-clear").hidden = !j.label;
-        out.innerHTML = j.label ? `→ gold <b class="lbl ${j.label}">${j.label}</b>` : "cleared";
+        wrap.dataset.votes = JSON.stringify(j.votes || []);
+        const box = wrap.querySelector(".votes"); box.dataset.consensus = j.label || ""; box.dataset.agreement = j.agreement || "";
+        renderVotes(card, j.votes || [], j.label || "", j.agreement || "");
+        out.innerHTML = j.my_label ? `your vote: <b class="lbl ${j.my_label}">${j.my_label}</b>` : "your vote cleared";
         setStatus(j); paintProgress(j.progress); applyFilter();
       } catch (e) { out.className = "rate-out err"; out.textContent = "Couldn't save: " + (e.message || e); }
     }
     document.querySelectorAll(".gl-card").forEach(card => {
-      paint(card);
-      card.querySelectorAll(".rate-btn").forEach(b => b.onclick = () => {
-        const wrap = card.querySelector(".rate"); wrap.dataset.verdict = b.dataset.verdict; paint(card);
-        if (wrap.querySelector(".rate-reason").value.trim()) save(card, b.dataset.verdict);
+      const wrap = card.querySelector(".rate");
+      card.querySelectorAll(".rate-btn[data-verdict]").forEach(b => b.onclick = () => {
+        wrap.dataset.verdict = b.dataset.verdict; wrap.dataset.mylabel = ""; paint(card);
+        if (wrap.querySelector(".rate-reason").value.trim()) save(card, { verdict: b.dataset.verdict });
+        else wrap.querySelector(".rate-reason").focus();
+      });
+      card.querySelectorAll(".rate-btn[data-label]").forEach(b => b.onclick = () => {
+        wrap.dataset.mylabel = b.dataset.label; wrap.dataset.verdict = ""; paint(card);
+        if (wrap.querySelector(".rate-reason").value.trim()) save(card, { label: b.dataset.label });
         else wrap.querySelector(".rate-reason").focus();
       });
       const saveBtn = card.querySelector(".rate-save");
-      if (saveBtn) saveBtn.onclick = () => {
-        const v = card.querySelector(".rate").dataset.verdict;
-        if (!v) { const o = card.querySelector(".rate-out"); o.className = "rate-out err"; o.textContent = "Pick correct / wrong / borderline."; return; }
-        save(card, v);
+      saveBtn.onclick = () => {
+        const o = card.querySelector(".rate-out");
+        if (blindBox.checked) {
+          const l = wrap.dataset.mylabel;
+          if (!l) { o.className = "rate-out err"; o.textContent = "Pick in / out / borderline."; return; }
+          save(card, { label: l });
+        } else {
+          const v = wrap.dataset.verdict;
+          if (!v) { o.className = "rate-out err"; o.textContent = "Pick correct / wrong / borderline."; return; }
+          save(card, { verdict: v });
+        }
       };
       const inp = card.querySelector(".rate-reason");
-      if (inp) inp.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); saveBtn.click(); } });
-      const clr = card.querySelector(".rate-clear");
-      if (clr) clr.onclick = () => { card.querySelector(".rate").dataset.verdict = ""; save(card, ""); };
+      inp.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); saveBtn.click(); } });
+      card.querySelector(".rate-clear").onclick = () => save(card, {});
     });
 
     // ---- filters: stage · sampled minimum · unlabelled only · text ----
@@ -281,6 +382,7 @@
       });
     }
     document.getElementById("only-sampled").onchange = applyFilter;
+    renderAllVotes(); applyBlind();
     document.getElementById("gs-save").onclick = async () => {
       const targets = {};
       document.querySelectorAll(".gs-target").forEach(i => { targets[i.dataset.stage] = parseInt(i.value || "0", 10); });

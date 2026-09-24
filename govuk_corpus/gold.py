@@ -289,12 +289,15 @@ def gold_sha(rows: Iterable[dict]) -> str:
 def upsert_label(conn, category_id: int, row: Dict) -> None:
     cols = ["category_id", "url", "content_id", "label", "rationale", "labelled_by",
             "labelled_at", "content_hash_at_label", "stratum_score_band", "stratum_source",
-            "stratum_doc_type", "seed_origin", "sample_run_id", "sample_stage", "sample_frac"]
+            "stratum_doc_type", "seed_origin", "sample_run_id", "sample_stage", "sample_frac",
+            "n_votes", "agreement", "adjudicated_by", "adjudicated_at", "resolution_note"]
     vals = [category_id, row["url"], row.get("content_id"), row["label"], row.get("rationale"),
             row.get("labelled_by"), row.get("labelled_at") or now_iso(),
             row.get("content_hash_at_label"), row.get("stratum_score_band"),
             row.get("stratum_source"), row.get("stratum_doc_type"), row.get("seed_origin"),
-            row.get("sample_run_id"), row.get("sample_stage"), row.get("sample_frac")]
+            row.get("sample_run_id"), row.get("sample_stage"), row.get("sample_frac"),
+            row.get("n_votes"), row.get("agreement"), row.get("adjudicated_by"),
+            row.get("adjudicated_at"), row.get("resolution_note")]
     sets = ", ".join(f"{c} = excluded.{c}" for c in cols[2:])
     conn.execute(
         f"INSERT INTO category_gold_labels ({', '.join(cols)}) "
@@ -373,6 +376,9 @@ def run_pages(conn, category: Dict, head_run_id: str) -> List[dict]:
     p2 = {r["url"]: r for r in evaluate.run_results(conn, excl_id)} if excl_id else {}
     seeds = seed_labels(category)
     existing = {r["url"]: r for r in load_gold(conn, cid, labelled_only=False)}
+    votes_by_url: Dict[str, List[dict]] = {}
+    for v in load_votes(conn, cid):
+        votes_by_url.setdefault(v["url"], []).append(v)
     meta = _content_meta(conn, list(p1))
     kw_hits = _matched_keywords(conn, cid, list(p1), meta)
     titles = {}
@@ -407,6 +413,11 @@ def run_pages(conn, category: Dict, head_run_id: str) -> List[dict]:
             "label": (g or {}).get("label") or "", "rationale": (g or {}).get("rationale") or "",
             "verdict": verdict_from_label(stage, (g or {}).get("label")),
             "labelled_by": (g or {}).get("labelled_by"), "labelled_at": (g or {}).get("labelled_at"),
+            "agreement": (g or {}).get("agreement"), "n_votes": (g or {}).get("n_votes") or 0,
+            "votes": votes_by_url.get(url, []),
+            "votes_json": json.dumps([{"labeller": v["labeller"], "label": v["label"], "rationale": v.get("rationale") or "",
+                                       "blind": bool(v.get("blind"))} for v in votes_by_url.get(url, [])],
+                                     ensure_ascii=False).replace("'", "&#39;"),
         })
     out.sort(key=lambda r: r["url"])
     return out
@@ -469,28 +480,206 @@ def weight_of(row: dict) -> float:
     return (1.0 / f) if f and 0 < f <= 1 else 1.0
 
 
-def save_verdict(conn, category: Dict, page: dict, verdict: str, rationale: str,
-                 labelled_by: Optional[str], sample_run_id: Optional[str] = None) -> Optional[str]:
-    """Upsert (or, with an empty verdict, delete) the gold label for one page of `run_pages`.
-    If the page carries `sample_frac` (it was in the stage sample) that fraction, the stage and
-    the run are stamped so the report can weight it. Returns the label written, or None when
-    cleared. Raises ValueError on bad input."""
-    cid = int(category["id"])
-    if not verdict:
-        conn.execute(f"DELETE FROM category_gold_labels WHERE category_id = {_P} AND url = {_P}",
-                     (cid, page["url"]))
+# ---- votes + consensus (multi-labeller) ---------------------------------------------
+
+VOTE_COLS = ["category_id", "url", "labeller", "label", "rationale", "labelled_at", "blind", "content_id",
+             "content_hash_at_label", "stratum_score_band", "stratum_source", "stratum_doc_type",
+             "seed_origin", "sample_run_id", "sample_stage", "sample_frac"]
+
+
+def load_votes(conn, category_id: int, url: Optional[str] = None) -> List[dict]:
+    sql = f"SELECT * FROM category_gold_votes WHERE category_id = {_P}"
+    params: list = [category_id]
+    if url:
+        sql += f" AND url = {_P}"
+        params.append(url)
+    sql += " ORDER BY url, labeller"
+    return [dict(r) for r in conn.execute(sql, tuple(params)).fetchall()]
+
+
+def labellers(conn, category_id: int) -> List[str]:
+    rows = conn.execute(f"SELECT DISTINCT labeller FROM category_gold_votes WHERE category_id = {_P} "
+                        f"ORDER BY labeller", (category_id,)).fetchall()
+    return [dict(r)["labeller"] for r in rows]
+
+
+def upsert_vote(conn, category_id: int, row: Dict) -> None:
+    vals = [category_id] + [row.get(c) for c in VOTE_COLS[1:]]
+    vals[VOTE_COLS.index("labelled_at")] = row.get("labelled_at") or now_iso()
+    vals[VOTE_COLS.index("blind")] = 1 if row.get("blind") else 0
+    sets = ", ".join(f"{c} = excluded.{c}" for c in VOTE_COLS[3:])
+    conn.execute(
+        f"INSERT INTO category_gold_votes ({', '.join(VOTE_COLS)}) VALUES ({', '.join([_P] * len(VOTE_COLS))}) "
+        f"ON CONFLICT (category_id, url, labeller) DO UPDATE SET {sets}", tuple(vals))
+
+
+def delete_vote(conn, category_id: int, url: str, labeller: str) -> None:
+    conn.execute(f"DELETE FROM category_gold_votes WHERE category_id = {_P} AND url = {_P} AND labeller = {_P}",
+                 (category_id, url, labeller))
+
+
+def consensus(votes: List[dict]) -> Optional[dict]:
+    """The consensus label for one page from its votes: one vote -> single; all equal ->
+    unanimous; a strict majority -> majority; otherwise split -> borderline. None when no votes."""
+    if not votes:
+        return None
+    counts = {k: 0 for k in LABELS}
+    for v in votes:
+        counts[v["label"]] = counts.get(v["label"], 0) + 1
+    n = len(votes)
+    top = max(counts, key=lambda k: counts[k])
+    if n == 1:
+        label, agreement = votes[0]["label"], "single"
+    elif counts[top] == n:
+        label, agreement = top, "unanimous"
+    elif counts[top] * 2 > n:
+        label, agreement = top, "majority"
+    else:
+        label, agreement = "borderline", "split"
+    if n == 1:
+        rationale = votes[0].get("rationale") or ""
+    else:
+        rationale = " | ".join(f"{v['labeller']}: {v['label']} — {v.get('rationale') or ''}" for v in votes)
+    return {"label": label, "agreement": agreement, "n_votes": n, "rationale": rationale, "counts": counts}
+
+
+def recompute_consensus(conn, category_id: int, url: str) -> Optional[str]:
+    """Rewrite the page's consensus row from its votes (an adjudication, if any, wins). Deletes the
+    row when there are no votes and no adjudication. Returns the consensus label or None."""
+    votes = load_votes(conn, category_id, url)
+    cur = conn.execute(f"SELECT * FROM category_gold_labels WHERE category_id = {_P} AND url = {_P}",
+                       (category_id, url)).fetchone()
+    cur = dict(cur) if cur else None
+    adjudicated = bool(cur and cur.get("adjudicated_at"))
+    if not votes and not adjudicated:
+        if cur:
+            conn.execute(f"DELETE FROM category_gold_labels WHERE category_id = {_P} AND url = {_P}",
+                         (category_id, url))
         conn.commit()
         return None
-    if verdict not in VERDICTS:
-        raise ValueError("verdict must be correct, wrong or borderline")
+    c = consensus(votes) or {"label": cur["label"], "agreement": "adjudicated", "n_votes": 0, "rationale": cur.get("rationale")}
+    first = votes[0] if votes else cur
+    row = {k: first.get(k) for k in ("content_id", "content_hash_at_label", "stratum_score_band", "stratum_source",
+                                     "stratum_doc_type", "seed_origin", "sample_run_id", "sample_stage", "sample_frac")}
+    row.update({"url": url, "n_votes": len(votes),
+                "labelled_by": ", ".join(sorted({v["labeller"] for v in votes})) or (cur or {}).get("labelled_by"),
+                "labelled_at": max((v.get("labelled_at") or "" for v in votes), default=(cur or {}).get("labelled_at"))})
+    if adjudicated:
+        row.update({"label": cur["label"], "agreement": "adjudicated", "rationale": cur.get("rationale"),
+                    "adjudicated_by": cur.get("adjudicated_by"), "adjudicated_at": cur.get("adjudicated_at"),
+                    "resolution_note": cur.get("resolution_note")})
+    else:
+        row.update({"label": c["label"], "agreement": c["agreement"], "rationale": c["rationale"],
+                    "adjudicated_by": None, "adjudicated_at": None, "resolution_note": None})
+    upsert_label(conn, category_id, row)
+    conn.commit()
+    return row["label"]
+
+
+def adjudicate(conn, category_id: int, url: str, label: Optional[str], note: str,
+               adjudicated_by: Optional[str]) -> Optional[str]:
+    """Set (label given) or clear (label empty) the adjudicated consensus for a page. Votes are
+    never touched. Returns the resulting consensus label."""
+    if label:
+        if label not in LABELS:
+            raise ValueError("label must be in, out or borderline")
+        if not (note or "").strip():
+            raise ValueError("a resolution note is required")
+        votes = load_votes(conn, category_id, url)
+        cur = conn.execute(f"SELECT * FROM category_gold_labels WHERE category_id = {_P} AND url = {_P}",
+                           (category_id, url)).fetchone()
+        if not votes and not cur:
+            raise ValueError("no votes for this page")
+        first = votes[0] if votes else dict(cur)
+        row = {k: first.get(k) for k in ("content_id", "content_hash_at_label", "stratum_score_band", "stratum_source",
+                                         "stratum_doc_type", "seed_origin", "sample_run_id", "sample_stage", "sample_frac")}
+        row.update({"url": url, "label": label, "rationale": note.strip(), "agreement": "adjudicated",
+                    "n_votes": len(votes), "labelled_by": ", ".join(sorted({v["labeller"] for v in votes})) or adjudicated_by,
+                    "adjudicated_by": adjudicated_by, "adjudicated_at": now_iso(), "resolution_note": note.strip()})
+        upsert_label(conn, category_id, row)
+        conn.commit()
+        return label
+    conn.execute(f"UPDATE category_gold_labels SET adjudicated_by = NULL, adjudicated_at = NULL, resolution_note = NULL "
+                 f"WHERE category_id = {_P} AND url = {_P}", (category_id, url))
+    conn.commit()
+    return recompute_consensus(conn, category_id, url)
+
+
+def _cohens_kappa_cat(a: Sequence[str], b: Sequence[str]) -> Optional[float]:
+    n = len(a)
+    if n == 0:
+        return None
+    po = sum(1 for x, y in zip(a, b) if x == y) / n
+    ca = {k: a.count(k) / n for k in LABELS}
+    cb = {k: b.count(k) / n for k in LABELS}
+    pe = sum(ca[k] * cb[k] for k in LABELS)
+    return 1.0 if pe >= 1.0 else (po - pe) / (1 - pe)
+
+
+def agreement_stats(conn, category_id: int) -> dict:
+    """Inter-labeller agreement over the pages every labeller voted on: raw agreement, Cohen's κ
+    per labeller pair (3 categories), Fleiss' κ across all labellers, and the disagreements."""
+    from . import bench_metrics as bm
+    votes = load_votes(conn, category_id)
+    people = sorted({v["labeller"] for v in votes})
+    by_url: Dict[str, Dict[str, dict]] = {}
+    for v in votes:
+        by_url.setdefault(v["url"], {})[v["labeller"]] = v
+    multi = {u: vs for u, vs in by_url.items() if len(vs) >= 2}
+    complete = {u: vs for u, vs in by_url.items() if len(vs) == len(people) and len(people) >= 2}
+    pairs = []
+    for i, a in enumerate(people):
+        for b in people[i + 1:]:
+            shared = [u for u, vs in by_url.items() if a in vs and b in vs]
+            la = [by_url[u][a]["label"] for u in shared]
+            lb = [by_url[u][b]["label"] for u in shared]
+            pairs.append({"a": a, "b": b, "shared": len(shared),
+                          "agree": (sum(1 for x, y in zip(la, lb) if x == y) / len(shared)) if shared else None,
+                          "kappa": _cohens_kappa_cat(la, lb)})
+    fleiss = bm.fleiss_kappa([tuple(sum(1 for v in vs.values() if v["label"] == k) for k in LABELS)
+                              for vs in complete.values()]) if complete else None
+    disagreements = []
+    for u, vs in sorted(multi.items()):
+        labels_ = {v["label"] for v in vs.values()}
+        if len(labels_) > 1:
+            disagreements.append({"url": u, "votes": [vs[p] for p in sorted(vs)]})
+    return {"labellers": people, "pages_voted": len(by_url), "pages_multi": len(multi),
+            "pages_complete": len(complete),
+            "unanimous": sum(1 for vs in multi.values() if len({v["label"] for v in vs.values()}) == 1),
+            "disagreements": disagreements, "pairs": pairs, "fleiss_kappa": fleiss,
+            "blind_votes": sum(1 for v in votes if v.get("blind"))}
+
+
+def save_verdict(conn, category: Dict, page: dict, verdict: str, rationale: str,
+                 labelled_by: Optional[str], sample_run_id: Optional[str] = None, *,
+                 label: Optional[str] = None, blind: bool = False) -> Optional[str]:
+    """Record one labeller's vote for one page of `run_pages` and recompute the consensus row.
+    Either `verdict` (correct / wrong / borderline, judged against the run's outcome) or, when
+    labelling blind, `label` (in / out / borderline) directly. An empty verdict and label clears
+    that labeller's vote. If the page carries `sample_frac` the sampling stage / fraction / run are
+    stamped so the report can weight it. Returns the consensus label after the change (None when
+    the page has no votes left). Raises ValueError on bad input."""
+    cid = int(category["id"])
+    who = (labelled_by or "").strip()
+    if not who:
+        raise ValueError("say who is labelling (sign in, or type a name on the page)")
+    if not verdict and not label:
+        delete_vote(conn, cid, page["url"], who)
+        return recompute_consensus(conn, cid, page["url"])
     if not (rationale or "").strip():
         raise ValueError("a one-line reason is required")
-    label = label_from_verdict(page["stage"], verdict)
-    if not label:
-        raise ValueError("this page has no keep/drop outcome to judge (unparsed reply)")
+    if label:
+        if label not in LABELS:
+            raise ValueError("label must be in, out or borderline")
+    else:
+        if verdict not in VERDICTS:
+            raise ValueError("verdict must be correct, wrong or borderline")
+        label = label_from_verdict(page["stage"], verdict)
+        if not label:
+            raise ValueError("this page has no keep/drop outcome to judge (unparsed reply)")
     seeds = seed_labels(category)
-    upsert_label(conn, cid, {
-        "url": page["url"], "label": label, "rationale": rationale.strip(), "labelled_by": labelled_by,
+    upsert_vote(conn, cid, {
+        "url": page["url"], "labeller": who, "label": label, "rationale": rationale.strip(), "blind": blind,
         "content_id": page.get("content_id"), "content_hash_at_label": page.get("content_hash"),
         "stratum_score_band": score_band(page["p1"].get("score")),
         "stratum_source": page.get("source"), "stratum_doc_type": page.get("document_type"),
@@ -500,7 +689,7 @@ def save_verdict(conn, category: Dict, page: dict, verdict: str, rationale: str,
         "sample_frac": page.get("sample_frac") if page.get("sampled") else None,
     })
     conn.commit()
-    return label
+    return recompute_consensus(conn, cid, page["url"])
 
 
 # ---- export --------------------------------------------------------------------
@@ -623,14 +812,23 @@ def import_sheet(conn, category_id: int, path: str, labelled_by: Optional[str],
     if result["errors"]:
         raise ValueError("\n".join(result["errors"]))
     ts = now_iso()
-    if replace:
-        conn.execute(f"DELETE FROM category_gold_labels WHERE category_id = {_P}", (category_id,))
+    who = (labelled_by or "").strip() or "sheet"
+    if replace:   # this labeller's votes start over; other labellers' votes are untouched
+        conn.execute(f"DELETE FROM category_gold_votes WHERE category_id = {_P} AND labeller = {_P}",
+                     (category_id, who))
+        stale = [dict(r)["url"] for r in conn.execute(
+            f"SELECT url FROM category_gold_labels WHERE category_id = {_P}", (category_id,)).fetchall()]
+    else:
+        stale = []
     for row in result["rows"]:
-        row["labelled_by"] = labelled_by
+        row["labeller"] = who
         row["labelled_at"] = ts
-        upsert_label(conn, category_id, row)
+        upsert_vote(conn, category_id, row)
     conn.commit()
+    for u in {r["url"] for r in result["rows"]} | set(stale):
+        recompute_consensus(conn, category_id, u)
     result["imported"] = len(result["rows"])
+    result["labeller"] = who
     return result
 
 
@@ -663,6 +861,9 @@ def status(conn, category_id: int, *, min_es_score: float = DEFAULT_MIN_ES_SCORE
         "drifted": drifted, "per_stratum": per_stratum,
         "borderline_share": (counts["borderline"] / len(labels)) if labels else 0.0,
         "gold_sha": gold_sha(labels) if labels else None,
+        "agreement": {k: v for k, v in agreement_stats(conn, category_id).items() if k != "disagreements"},
+        "adjudicated": sum(1 for r in labels if r.get("adjudicated_at")),
+        "split": sum(1 for r in labels if r.get("agreement") == "split"),
     }
 
 
@@ -728,6 +929,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                   f"borderline share {s['borderline_share']:.0%}), unlabelled "
                   f"{len(s['unlabelled'])}, drifted {len(s['drifted'])}, labelled-but-not-"
                   f"forwarded {len(s['not_forwarded'])}, gold_sha {s['gold_sha']}")
+            ag = s["agreement"]
+            print(f"  labellers {len(ag['labellers'])} ({', '.join(ag['labellers'])}); pages with 2+ votes "
+                  f"{ag['pages_multi']}, unanimous {ag['unanimous']}, split {s['split']}, adjudicated "
+                  f"{s['adjudicated']}, Fleiss κ {ag['fleiss_kappa'] if ag['fleiss_kappa'] is None else round(ag['fleiss_kappa'], 3)}")
+            for pr in ag["pairs"]:
+                agree = "—" if pr["agree"] is None else "%.0f%%" % (100 * pr["agree"])
+                kappa = "—" if pr["kappa"] is None else round(pr["kappa"], 3)
+                print(f"    {pr['a']} vs {pr['b']}: {pr['shared']} shared, agree {agree}, κ {kappa}")
             for key in sorted(s["per_stratum"]):
                 v = s["per_stratum"][key]
                 print(f"  {key}: in {v['in']}  out {v['out']}  borderline {v['borderline']}")

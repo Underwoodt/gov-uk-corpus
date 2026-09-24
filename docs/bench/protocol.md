@@ -52,6 +52,13 @@ invalidates the run.
   report therefore also gives **inverse-probability weighted** figures (each label counts
   1 / fraction) and names the fractions used. Labels imported from the CSV sheet carry no
   fraction (weight 1). Bootstrap intervals and paired tests are computed on the raw sample.
+- **Multiple labellers:** every labeller's vote is stored separately (`category_gold_votes`);
+  the gold label is the consensus: one vote stands; unanimous or strict-majority wins; a split
+  becomes `borderline` until adjudicated (final label + resolution note, votes retained). The
+  report gives inter-labeller agreement (raw, pairwise Cohen's κ over three categories, Fleiss'
+  κ on the pages everyone voted on), the number of adjudicated pages and the share of blind votes
+  (made with the model's verdicts hidden). Labellers do the same seeded sample; other people's
+  votes on a page are hidden until the labeller has saved their own.
 - **Exclusions at analysis:** pages whose `content_hash` at evaluation differs from
   `content_hash_at_label` (drift) and pages withdrawn since labelling are dropped from accuracy
   metrics and listed.

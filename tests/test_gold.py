@@ -400,9 +400,30 @@ class TestGoldRoutes(unittest.TestCase):
         tok = c.cookies.get("sb_csrf")
         r = c.post(f"/api/categories/{self.cid}/gold", headers={"X-CSRF-Token": tok or ""},
                    json={"run": self.p1, "url": "https://www.gov.uk/p1", "verdict": "wrong", "rationale": "it is slurry"})
+        self.assertEqual(r.status_code, 400)                      # shared mode: a labeller name is required
+        r = c.post(f"/api/categories/{self.cid}/gold", headers={"X-CSRF-Token": tok or ""},
+                   json={"run": self.p1, "url": "https://www.gov.uk/p1", "verdict": "wrong", "rationale": "it is slurry",
+                         "labeller": "ann"})
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(r.json()["label"], "in")
+        self.assertEqual(r.json()["my_label"], "in")
         self.assertEqual(r.json()["counts"], {"in": 1, "out": 0, "borderline": 0})
+        # a second labeller, blind, disagrees -> split -> borderline; votes come back
+        r = c.post(f"/api/categories/{self.cid}/gold", headers={"X-CSRF-Token": tok or ""},
+                   json={"run": self.p1, "url": "https://www.gov.uk/p1", "label": "out", "rationale": "no",
+                         "labeller": "bob", "blind": True})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual((r.json()["label"], r.json()["agreement"]), ("borderline", "split"))
+        self.assertEqual([(v["labeller"], v["label"], v["blind"]) for v in r.json()["votes"]],
+                         [("ann", "in", False), ("bob", "out", True)])
+        r = c.get(f"/categories/{self.cid}/gold/agreement")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("guc-0030", r.text)
+        self.assertIn("ann vs bob", r.text)
+        r = c.post(f"/api/categories/{self.cid}/gold/adjudicate", headers={"X-CSRF-Token": tok or ""},
+                   json={"url": "https://www.gov.uk/p1", "label": "in", "note": "agreed after discussion", "adjudicator": "ann"})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual((r.json()["label"], r.json()["agreement"]), ("in", "adjudicated"))
         r = c.post(f"/api/categories/{self.cid}/gold", headers={"X-CSRF-Token": tok or ""},
                    json={"run": self.p1, "url": "https://www.gov.uk/p0", "verdict": "correct", "rationale": ""})
         self.assertEqual(r.status_code, 400)
@@ -414,7 +435,8 @@ class TestGoldRoutes(unittest.TestCase):
         self.assertIn("order_hint,url", r.text)
         self.assertIn("it is slurry", r.text)                     # the label is pre-filled in the sheet
         r = c.get(f"/categories/{self.cid}/gold")
-        self.assertIn("by app", r.text)
+        self.assertIn("labellers so far: ann, bob", r.text)
+        self.assertIn('id="blind"', r.text)
 
 
 class TestSampling(unittest.TestCase):
@@ -476,3 +498,107 @@ class TestSampledVerdict(GoldBase):
         u = got[unsampled_drop["url"]]
         self.assertIsNone(u["sample_frac"])
         self.assertEqual(gold.weight_of(u), 1.0)
+
+
+class TestMultiLabeller(GoldBase):
+    def _run(self):
+        p1 = evaluate.create_run(self.conn, CID, "m", "anthropic")
+        for slug, keep in (("p0", 1), ("p1", 0), ("p2", 0), ("p3", 1)):
+            evaluate.save_page(self.conn, p1, CID, f"https://www.gov.uk/{slug}",
+                               {"keep": keep, "score": 0.8 if keep else 0.0, "reason": "r"}, 5)
+        return p1
+
+    def test_consensus_rules(self):
+        v = lambda who, lbl: {"labeller": who, "label": lbl, "rationale": "r"}
+        self.assertIsNone(gold.consensus([]))
+        self.assertEqual(gold.consensus([v("a", "in")])["agreement"], "single")
+        c = gold.consensus([v("a", "in"), v("b", "in")])
+        self.assertEqual((c["label"], c["agreement"], c["n_votes"]), ("in", "unanimous", 2))
+        c = gold.consensus([v("a", "in"), v("b", "out")])
+        self.assertEqual((c["label"], c["agreement"]), ("borderline", "split"))
+        c = gold.consensus([v("a", "in"), v("b", "out"), v("c", "in")])
+        self.assertEqual((c["label"], c["agreement"]), ("in", "majority"))
+        c = gold.consensus([v("a", "in"), v("b", "out"), v("c", "borderline")])
+        self.assertEqual((c["label"], c["agreement"]), ("borderline", "split"))
+        self.assertIn("a: in", gold.consensus([v("a", "in"), v("b", "out")])["rationale"])
+
+    def test_votes_consensus_adjudication_and_agreement(self):
+        p1 = self._run()
+        cat_ = self._category()
+        pages = {p["url"]: p for p in gold.run_pages(self.conn, cat_, p1)}
+        u0, u1 = "https://www.gov.uk/p0", "https://www.gov.uk/p1"
+        # Labeller A: p0 kept & correct -> in; p1 dropped & wrong -> in
+        self.assertEqual(gold.save_verdict(self.conn, cat_, pages[u0], "correct", "core", "a@x", sample_run_id=p1), "in")
+        self.assertEqual(gold.save_verdict(self.conn, cat_, pages[u1], "wrong", "belongs", "a@x", sample_run_id=p1), "in")
+        # Labeller B agrees on p0, disagrees on p1 (blind, direct label)
+        self.assertEqual(gold.save_verdict(self.conn, cat_, pages[u0], "correct", "yes", "b@x"), "in")
+        self.assertEqual(gold.save_verdict(self.conn, cat_, pages[u1], "", "not really", "b@x", label="out", blind=True),
+                         "borderline")                                   # 2-way split -> borderline
+        gl = {r["url"]: r for r in gold.load_gold(self.conn, CID)}
+        self.assertEqual((gl[u0]["label"], gl[u0]["agreement"], gl[u0]["n_votes"]), ("in", "unanimous", 2))
+        self.assertEqual((gl[u1]["label"], gl[u1]["agreement"]), ("borderline", "split"))
+        self.assertEqual(gl[u0]["labelled_by"], "a@x, b@x")
+        votes = {(v["url"], v["labeller"]): v for v in gold.load_votes(self.conn, CID)}
+        self.assertEqual(votes[(u1, "b@x")]["blind"], 1)
+        self.assertEqual(votes[(u1, "a@x")]["blind"], 0)
+        self.assertEqual(gold.labellers(self.conn, CID), ["a@x", "b@x"])
+        # run_pages exposes the votes per page and the consensus
+        pages = {p["url"]: p for p in gold.run_pages(self.conn, cat_, p1)}
+        self.assertEqual(pages[u1]["agreement"], "split")
+        self.assertEqual({v["labeller"]: v["label"] for v in pages[u1]["votes"]}, {"a@x": "in", "b@x": "out"})
+        # agreement stats
+        ag = gold.agreement_stats(self.conn, CID)
+        self.assertEqual((ag["pages_multi"], ag["unanimous"], len(ag["disagreements"])), (2, 1, 1))
+        self.assertEqual(ag["disagreements"][0]["url"], u1)
+        self.assertEqual(ag["pairs"][0]["shared"], 2)
+        self.assertAlmostEqual(ag["pairs"][0]["agree"], 0.5)
+        self.assertIsNotNone(ag["fleiss_kappa"])
+        self.assertEqual(ag["blind_votes"], 1)
+        # adjudicate the split: label + note; votes untouched
+        self.assertEqual(gold.adjudicate(self.conn, CID, u1, "in", "discussed: it is IHT guidance", "a@x"), "in")
+        gl = {r["url"]: r for r in gold.load_gold(self.conn, CID)}
+        self.assertEqual((gl[u1]["label"], gl[u1]["agreement"], gl[u1]["adjudicated_by"]), ("in", "adjudicated", "a@x"))
+        self.assertEqual(len(gold.load_votes(self.conn, CID, u1)), 2)
+        # a new vote does not override an adjudication
+        gold.save_verdict(self.conn, cat_, pages[u1], "", "meh", "c@x", label="out")
+        self.assertEqual(gold.load_gold(self.conn, CID)[1]["label"] if False else {r["url"]: r for r in gold.load_gold(self.conn, CID)}[u1]["label"], "in")
+        # clearing the adjudication recomputes: a in, b out, c out -> majority out
+        self.assertEqual(gold.adjudicate(self.conn, CID, u1, "", "", "a@x"), "out")
+        with self.assertRaises(ValueError):
+            gold.adjudicate(self.conn, CID, u1, "in", "  ", "a@x")
+        with self.assertRaises(ValueError):
+            gold.save_verdict(self.conn, cat_, pages[u0], "correct", "x", "")      # no labeller
+        # removing all votes removes the consensus row
+        for who in ("a@x", "b@x", "c@x"):
+            gold.save_verdict(self.conn, cat_, pages[u1], "", "", who)
+        self.assertNotIn(u1, {r["url"] for r in gold.load_gold(self.conn, CID)})
+        st = gold.status(self.conn, CID)
+        self.assertEqual(st["agreement"]["labellers"], ["a@x", "b@x"])
+
+    def test_sheet_import_is_a_vote_per_labeller(self):
+        rows = gold.build_sheet(self.conn, CID)
+        for r in rows:
+            if r["url"].endswith("/p0"):
+                r["label"], r["rationale"] = "in", "sheet says in"
+        d = tempfile.mkdtemp(); path = os.path.join(d, "a.csv"); gold.write_sheet(rows, path)
+        gold.import_sheet(self.conn, CID, path, "a@x")
+        for r in rows:
+            if r["url"].endswith("/p0"):
+                r["label"], r["rationale"] = "out", "sheet b says out"
+        gold.write_sheet(rows, path)
+        gold.import_sheet(self.conn, CID, path, "b@x")
+        gl = {r["url"]: r for r in gold.load_gold(self.conn, CID)}
+        self.assertEqual((gl["https://www.gov.uk/p0"]["label"], gl["https://www.gov.uk/p0"]["agreement"]), ("borderline", "split"))
+        self.assertEqual(len(gold.load_votes(self.conn, CID)), 2)
+        # --replace only resets that labeller's votes
+        gold.import_sheet(self.conn, CID, path, "b@x", replace=True)
+        self.assertEqual(len(gold.load_votes(self.conn, CID)), 2)
+
+    def test_backfill_migrates_legacy_consensus_rows_to_votes(self):
+        self.conn.execute("INSERT INTO category_gold_labels (category_id, url, label, rationale, labelled_by) "
+                          "VALUES (?,?,?,?,?)", (CID, "https://www.gov.uk/p0", "in", "old", "tom@x"))
+        self.conn.commit()
+        db.init_db(self.conn)          # idempotent migrations incl. the backfill
+        db.init_db(self.conn)
+        votes = gold.load_votes(self.conn, CID)
+        self.assertEqual([(v["labeller"], v["label"]) for v in votes], [("tom@x", "in")])

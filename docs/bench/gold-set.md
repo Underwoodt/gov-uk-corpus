@@ -85,6 +85,30 @@ three). The report gives both the raw and the weighted figures and names the fra
 a reader can see how much the sampling moved the numbers. Labels from the sheet carry no
 fraction and count once.
 
+## 4a. More than one labeller
+
+Every labeller's vote is stored on its own, keyed by page and labeller; the gold label is a
+*consensus* row computed from the votes. One vote stands on its own. When several people have
+voted, unanimous or strict-majority wins, and a two-way split becomes `borderline` until someone
+adjudicates it. Adjudication sets the final label with a one-line resolution note and never
+touches the votes, so the disagreement stays on record.
+
+Best practice, and how the page supports it:
+
+- **Everyone labels the same sample.** The seeded picks are identical for every labeller, so
+  agreement can be measured on every page rather than on an accidental overlap.
+- **A short calibration round first.** Both labellers do the same ten pages, compare, and write
+  down what "in" means for the category. Most disagreement is about the rules, not the pages.
+- **Label blind.** Other people's votes on a page stay hidden until you have saved yours. The
+  "label blind" switch also hides the model's verdicts and reasons, and asks for the label
+  directly (in / out / borderline) instead of "was the run right?". Votes made that way are
+  flagged, so the report can say how much seeing the model's answer moves people.
+- **Measure agreement, then adjudicate.** The Agreement page gives raw agreement and Cohen's κ
+  per pair, Fleiss' κ over everyone, and lists the disagreements with both rationales side by
+  side. A κ below about 0.4 means the labelling guide needs work before more labelling.
+- **The CSV path is a labeller too.** A sheet imported with a labeller name becomes that
+  person's votes; two people can label the same sheet independently and import both.
+
 ## 5. Choices we made, and why
 
 - **Three labels, not two.** Category boundaries are genuinely fuzzy. Forcing borderline pages
@@ -133,11 +157,15 @@ With even a partial gold set the benchmark can say, with intervals:
 
 ## 7. Limitations
 
-- **One labeller.** There is no inter-annotator agreement figure, so we cannot separate
-  labeller error from model error. The borderline label and the bounds narrow, but do not
-  remove, this.
-- **Anchoring.** The labeller sees the model's decision and reason. Disagreements are therefore
-  more deliberate than agreements, which may flatter the model slightly.
+- **Agreement depends on a second labeller actually labelling.** The store and the Agreement
+  page support several labellers, but until at least two people have covered the same sample
+  there is no inter-annotator figure, and we cannot separate labeller error from model error.
+- **Anchoring.** By default the labeller sees the model's decision and reason, so disagreements
+  are more deliberate than agreements, which may flatter the model slightly. Blind votes are
+  flagged and can be compared against sighted ones, but only once there are enough of each.
+- **Hidden is not secret.** Other labellers' votes are hidden in the page until you have voted,
+  as a discipline, not a security boundary; a determined person could read them from the page
+  source.
 - **Stratified by one run.** The stage sampler picks pages by where they left *one* reference
   run. Weighting corrects the overall figures, but a page another model keeps that this run
   dropped is only in the gold set if it fell into the Phase-1 sample.
