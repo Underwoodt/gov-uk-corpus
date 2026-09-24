@@ -103,9 +103,10 @@
     <div class="wiz-mid">
       <div class="wiz-text"><b id="wiz-pos">–</b> of <b id="wiz-total">–</b> in the current filter · <span id="wiz-done">–</span> labelled by you</div>
       <div class="wiz-bar"><div class="wiz-fill" id="wiz-fill" style="width:0%"></div></div>
-      <div class="muted-sm" id="wiz-note">Prev and Next save your vote on this page first. ← / → keys work too.</div>
+      <div class="muted-sm" id="wiz-note">Save &amp; Next saves this page's vote and moves on; Prev / Next also save anything you changed. ← / → keys work too.</div>
     </div>
-    <button type="button" class="btn" id="wiz-next">Next ›</button>
+    <button type="button" class="btn secondary-btn" id="wiz-next">Next ›</button>
+    <button type="button" class="btn" id="wiz-savenext" title="Save your vote on this page and go to the next one (Enter in the reason box does the same)">Save &amp; Next ›</button>
     <button type="button" class="btn secondary-btn" id="wiz-jump" title="Go to the first page in the current filter that you have not labelled">First unlabelled</button>
   </div>
   {% endif %}
@@ -244,7 +245,7 @@
     .wiz-text { font-size:14px; }
     .wiz-bar { height:8px; background:var(--surface-3); border-radius:999px; overflow:hidden; margin:6px 0 4px; }
     .wiz-fill { height:100%; background:var(--blue); transition:width .2s; }
-    #wiz-prev, #wiz-next { padding:8px 18px; }
+    #wiz-prev, #wiz-next, #wiz-savenext { padding:8px 18px; white-space:nowrap; }
     .gl-who { padding:10px 16px; margin-bottom:12px; }
     .gw-row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
     #who { min-width:220px; font-size:13px; padding:5px 8px; }
@@ -396,7 +397,7 @@
         }
       };
       const inp = card.querySelector(".rate-reason");
-      inp.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); saveBtn.click(); } });
+      inp.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); if (WIZARD) wizSaveNext(); else saveBtn.click(); } });
       card.querySelector(".rate-clear").onclick = () => save(card, {});
     });
 
@@ -455,6 +456,14 @@
       document.getElementById("wiz-next").disabled = !wizCur || !wizOrder.some(c => c.compareDocumentPosition(wizCur) & Node.DOCUMENT_POSITION_PRECEDING);
       if (wizCur) { try { localStorage.setItem(LS_POS, wizCur.dataset.url); } catch (e) {} }
     }
+    async function wizSaveNext() {
+      if (!wizCur) return;
+      const wrap = wizCur.querySelector(".rate"), out = wrap.querySelector(".rate-out");
+      const chosen = blindBox.checked ? wrap.dataset.mylabel : wrap.dataset.verdict;
+      if (!chosen) { out.className = "rate-out err"; out.textContent = blindBox.checked ? "Pick in / out / borderline first." : "Pick correct / wrong / borderline first."; return; }
+      const ok = await (blindBox.checked ? save(wizCur, { label: chosen }) : save(wizCur, { verdict: chosen }));
+      if (ok) wizGo(1);
+    }
     async function wizGo(delta) {
       if (!wizCur) return;
       if (!(await commit(wizCur))) return;                            // stay if the save failed
@@ -468,6 +477,7 @@
     if (WIZARD) {
       document.getElementById("wiz-prev").onclick = () => wizGo(-1);
       document.getElementById("wiz-next").onclick = () => wizGo(1);
+      document.getElementById("wiz-savenext").onclick = wizSaveNext;
       document.getElementById("wiz-jump").onclick = async () => {
         if (wizCur && !(await commit(wizCur))) return;
         const t = wizOrder.find(c => c.dataset.labelled !== "1");
