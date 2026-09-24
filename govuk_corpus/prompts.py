@@ -49,8 +49,8 @@ LABELS = {
 # reader knows which values the template carries.
 PLACEHOLDERS = {
     "inclusion": "{{INCLUDE}}, {{TITLE}}, {{DESCRIPTION}}, {{BODY}}",
-    "exclusion": ("{{NAME}}, {{NAME_UPPER}}, {{SPEC}}, {{KEEP_SECTION}}, {{DROP_SECTION}}, "
-                  "{{PASS1_REASON}}, {{PASS1_TOPIC}}, {{TITLE_LINE}}, {{BODY}}"),
+    "exclusion": ("{{NAME}}, {{NAME_UPPER}}, {{INCLUDE}}, {{EXCLUDE}}, {{KEEP}}, {{DROP}}, "
+                  "{{PASS1_REASON}}, {{PASS1_TOPIC}}, {{TITLE}}, {{DESCRIPTION}}, {{BODY}}"),
     "builder": "(none — a system prompt; the current-fields summary is appended automatically in edit mode)",
     "assistant": "(none — a system prompt)",
 }
@@ -66,8 +66,8 @@ _DEFAULTS = {
 # evaluation templates carry per-page values; the system prompts (builder/assistant) have none.
 REQUIRED_PLACEHOLDERS = {
     "inclusion": ("INCLUDE", "TITLE", "DESCRIPTION", "BODY"),
-    "exclusion": ("NAME", "NAME_UPPER", "SPEC", "KEEP_SECTION", "DROP_SECTION",
-                  "PASS1_REASON", "PASS1_TOPIC", "TITLE_LINE", "BODY"),
+    "exclusion": ("NAME", "NAME_UPPER", "INCLUDE", "EXCLUDE", "KEEP", "DROP",
+                  "PASS1_REASON", "PASS1_TOPIC", "TITLE", "BODY"),
     "builder": (),
     "assistant": (),
 }

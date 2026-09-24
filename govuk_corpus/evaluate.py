@@ -104,24 +104,31 @@ DEFAULT_INCLUSION_TEMPLATE = (
     "Page content (may be truncated):\n{{BODY}}\n\n"
     + _INCLUSION_RULES)
 
+# Phase 2 is a plain fill of EXCLUSION_FIELDS: the structure (labelled criteria, always-shown
+# example sections, the title line) is written HERE, not assembled in Python, so it can be
+# rearranged or relabelled by editing the template alone. Empty values render as their fallbacks.
 DEFAULT_EXCLUSION_TEMPLATE = (
     "You curate a GOV.UK corpus for a {{NAME_UPPER}} audit. A fast first pass flagged this "
     "page because it looked relevant; it forces KEEP on any mention. Remove ONLY pages that "
     "are clearly not about {{NAME}} at all. Missing a genuinely {{NAME}}-relevant page is "
     "unacceptable; keeping a borderline one is fine. Default to KEEP.\n\n"
-    "=== {{NAME_UPPER}} SPEC ===\n{{SPEC}}\n=== END SPEC ===\n\n"
+    "=== {{NAME_UPPER}} SPEC ===\n"
+    "Inclusion criteria:\n{{INCLUDE}}\n\n"
+    "Exclusion criteria:\n{{EXCLUDE}}\n"
+    "=== END SPEC ===\n\n"
     "Apply the inclusion and exclusion criteria above.\n"
     "KEEP (keep = true) — keep if the page has any audit-relevant {{NAME}} content, even briefly.\n"
     "DROP (keep = false) — drop ONLY when the page is clearly out of scope per the exclusion "
-    "criteria (homonyms, incidental-only mentions, wrong domain).\n"
-    "{{KEEP_SECTION}}{{DROP_SECTION}}"
+    "criteria (homonyms, incidental-only mentions, wrong domain).\n\n"
+    "KEEP examples (keep = true) — lean toward keeping when similar content appears:\n{{KEEP}}\n\n"
+    "DROP examples (keep = false) — drop only when clearly similar to:\n{{DROP}}\n\n"
     "If you are unsure, KEEP.\n\n"
     "For context, the first pass wrote this note (it may be wrong): {{PASS1_REASON}}\n"
     "The first pass judged the page is mainly about: {{PASS1_TOPIC}}\n"
     "Use the primary topic as a hint, not a verdict: test it against the exclusion criteria. A page "
     "whose primary topic is clearly outside scope and whose only link to {{NAME}} is an incidental "
     "mention should be dropped; if the primary topic is in scope, or you are unsure, KEEP.\n\n"
-    "{{TITLE_LINE}}\nPage content (may be truncated):\n{{BODY}}\n\n"
+    "Page title: {{TITLE}}\nPage content (may be truncated):\n{{BODY}}\n\n"
     "Return ONLY a JSON object, no prose:\n"
     '{"keep": true|false, "exclusion_hit": "none"|"incidental"|"homonym"|"wrong_domain", '
     '"reason": "1-2 sentence explanation"}')
@@ -148,12 +155,16 @@ DEFAULT_EXCLUSION_TEMPLATE_CACHED = (
     "page because it looked relevant; it forces KEEP on any mention. Remove ONLY pages that "
     "are clearly not about {{NAME}} at all. Missing a genuinely {{NAME}}-relevant page is "
     "unacceptable; keeping a borderline one is fine. Default to KEEP.\n\n"
-    "=== {{NAME_UPPER}} SPEC ===\n{{SPEC}}\n=== END SPEC ===\n\n"
+    "=== {{NAME_UPPER}} SPEC ===\n"
+    "Inclusion criteria:\n{{INCLUDE}}\n\n"
+    "Exclusion criteria:\n{{EXCLUDE}}\n"
+    "=== END SPEC ===\n\n"
     "Apply the inclusion and exclusion criteria above.\n"
     "KEEP (keep = true) — keep if the page has any audit-relevant {{NAME}} content, even briefly.\n"
     "DROP (keep = false) — drop ONLY when the page is clearly out of scope per the exclusion "
-    "criteria (homonyms, incidental-only mentions, wrong domain).\n"
-    "{{KEEP_SECTION}}{{DROP_SECTION}}"
+    "criteria (homonyms, incidental-only mentions, wrong domain).\n\n"
+    "KEEP examples (keep = true) — lean toward keeping when similar content appears:\n{{KEEP}}\n\n"
+    "DROP examples (keep = false) — drop only when clearly similar to:\n{{DROP}}\n\n"
     "If you are unsure, KEEP.\n\n"
     "Return ONLY a JSON object, no prose:\n"
     '{"keep": true|false, "exclusion_hit": "none"|"incidental"|"homonym"|"wrong_domain", '
@@ -164,7 +175,7 @@ DEFAULT_EXCLUSION_TEMPLATE_CACHED = (
     "Use the primary topic as a hint, not a verdict: test it against the exclusion criteria. A page "
     "whose primary topic is clearly outside scope and whose only link to {{NAME}} is an incidental "
     "mention should be dropped; if the primary topic is in scope, or you are unsure, KEEP.\n\n"
-    "{{TITLE_LINE}}\nPage content (may be truncated):\n{{BODY}}")
+    "Page title: {{TITLE}}\nPage content (may be truncated):\n{{BODY}}")
 
 
 def cached_template(name: str) -> str:
@@ -187,16 +198,75 @@ def _fill(template: str, values: Dict[str, str]) -> str:
     return out
 
 
+# ---- Generic prompt rendering ---------------------------------------------
+# Each phase declares its ATOMIC fields: placeholder -> (source, key, fallback). `source` is
+# "spec" (the shortlist's definition: contexts, hints, name) or "page" (per-page values). The
+# renderer does a plain fill and nothing else, so a template owns its structure entirely by where
+# it places these tokens. Every field has a fallback, so an empty value still renders (e.g.
+# "(none)") instead of a section silently vanishing — the template author decides what shows.
+INCLUSION_FIELDS = {
+    "INCLUDE":     ("spec", "inclusion",   "(not specified)"),
+    "EXCLUDE":     ("spec", "exclusion",   "(none given)"),   # legacy inclusion templates only
+    "TITLE":       ("page", "title",       "(none)"),
+    "DESCRIPTION": ("page", "description", "(none)"),
+    "BODY":        ("page", "body",        "(no body text)"),
+}
+EXCLUSION_FIELDS = {
+    "NAME":         ("spec", "name",        "the topic"),
+    "NAME_UPPER":   ("spec", "name_upper",  "THE TOPIC"),
+    "INCLUDE":      ("spec", "inclusion",   "(not specified)"),
+    "EXCLUDE":      ("spec", "exclusion",   "(none given)"),
+    "KEEP":         ("spec", "keep_hints",  "(none)"),
+    "DROP":         ("spec", "drop_hints",  "(none)"),
+    "PASS1_REASON": ("page", "pass1_reason", "(none)"),
+    "PASS1_TOPIC":  ("page", "pass1_topic",  "(not given)"),
+    "TITLE":        ("page", "title",       "(none)"),
+    "DESCRIPTION":  ("page", "description", "(none)"),
+    "BODY":         ("page", "body",        "(no body text)"),
+}
+
+# Composite tokens that older exclusion templates carried. Their structure used to be assembled
+# in Python; new templates write that structure themselves from the atomic fields. The shim below
+# still resolves them so a run stamped with an old template reproduces byte-for-byte.
+_LEGACY_TOKENS = ("{{SPEC}}", "{{KEEP_SECTION}}", "{{DROP_SECTION}}", "{{TITLE_LINE}}")
+
+
+def _legacy_composites(values: Dict[str, str], spec: Dict, page: Dict) -> Dict[str, str]:
+    """The old Python-assembled blocks, built exactly as the previous builder did (conditional
+    sections, repr()'d pass-1 note), for templates that still reference them."""
+    keep, drop = spec.get("keep_hints") or "", spec.get("drop_hints") or ""
+    title = page.get("title") or ""
+    return {
+        "SPEC": "Inclusion criteria:\n" + values["INCLUDE"] + "\n\nExclusion criteria:\n" + values["EXCLUDE"],
+        "KEEP_SECTION": ("\nKEEP examples (keep = true) — lean toward keeping when similar "
+                         f"content appears:\n{keep}\n") if keep else "",
+        "DROP_SECTION": ("\nDROP examples (keep = false) — drop only when clearly similar to:\n"
+                         f"{drop}\n") if drop else "",
+        "TITLE_LINE": f"Page title: {title}\n" if title else "",
+        "PASS1_REASON": repr(page.get("pass1_reason") or ""),
+    }
+
+
+def render_phase_prompt(fields: Dict, template: str, spec: Dict, page: Dict) -> str:
+    """Fill `template` from the phase's atomic `fields`: a plain substitution of each placeholder
+    with its value (or fallback when empty). No phase-specific assembly — the only extra is the
+    legacy shim, applied solely when the template carries an old composite token."""
+    values: Dict[str, str] = {}
+    for token, (source, key, fallback) in fields.items():
+        raw = (spec if source == "spec" else page).get(key)
+        val = "" if raw is None else str(raw)
+        values[token] = val if val != "" else fallback
+    if any(t in template for t in _LEGACY_TOKENS):
+        values.update(_legacy_composites(values, spec, page))
+    return _fill(template, values)
+
+
 def build_prompt(inclusion: str, exclusion: str, title: str, description: str,
                  body: str, body_limit: int = BODY_CHAR_LIMIT, template: Optional[str] = None) -> str:
-    body = truncate_body(body, body_limit)
-    return _fill(template or DEFAULT_INCLUSION_TEMPLATE, {
-        "INCLUDE": inclusion.strip() or "(not specified)",
-        "EXCLUDE": exclusion.strip() or "(none given)",
-        "TITLE": title or "(none)",
-        "DESCRIPTION": description or "(none)",
-        "BODY": body or "(no body text)",
-    })
+    """Phase 1 prompt: a plain fill of INCLUSION_FIELDS (see render_phase_prompt)."""
+    spec = {"inclusion": (inclusion or "").strip(), "exclusion": (exclusion or "").strip()}
+    page = {"title": title, "description": description, "body": truncate_body(body, body_limit)}
+    return render_phase_prompt(INCLUSION_FIELDS, template or DEFAULT_INCLUSION_TEMPLATE, spec, page)
 
 
 def _iter_json_spans(text: str):
@@ -326,32 +396,15 @@ def build_exclusion_prompt(name: str, inclusion: str, exclusion: str,
                            keep_hints: str, drop_hints: str, title: str, body: str,
                            pass1_reason: str, body_limit: int = BODY_CHAR_LIMIT,
                            template: Optional[str] = None, *, pass1_topic: str = "") -> str:
-    body = truncate_body(body, body_limit)
+    """Phase 2 prompt: a plain fill of EXCLUSION_FIELDS (see render_phase_prompt). A template
+    stamped before the atomic fields still renders byte-for-byte via the legacy shim."""
     nm = (name or "the topic").strip()
-    # SPEC labels both halves so the model isn't left inferring which block is which; the
-    # exclusion half always shows, with (none given) when no exclusion text was provided.
-    spec = ("Inclusion criteria:\n" + ((inclusion or "").strip() or "(not specified)")
-            + "\n\nExclusion criteria:\n" + ((exclusion or "").strip() or "(none given)"))
-    keep_section = ""
-    if (keep_hints or "").strip():
-        keep_section = ("\nKEEP examples (keep = true) — lean toward keeping when similar "
-                        f"content appears:\n{keep_hints.strip()}\n")
-    drop_section = ""
-    if (drop_hints or "").strip():
-        drop_section = ("\nDROP examples (keep = false) — drop only when clearly similar to:\n"
-                        f"{drop_hints.strip()}\n")
-    title_line = f"Page title: {title}\n" if title else ""
-    return _fill(template or DEFAULT_EXCLUSION_TEMPLATE, {
-        "NAME_UPPER": nm.upper(),
-        "NAME": nm,
-        "SPEC": spec,
-        "KEEP_SECTION": keep_section,
-        "DROP_SECTION": drop_section,
-        "PASS1_REASON": repr(pass1_reason),
-        "PASS1_TOPIC": (pass1_topic or "").strip() or "(not given)",
-        "TITLE_LINE": title_line,
-        "BODY": body or "(no body text)",
-    })
+    spec = {"name": nm, "name_upper": nm.upper(),
+            "inclusion": (inclusion or "").strip(), "exclusion": (exclusion or "").strip(),
+            "keep_hints": (keep_hints or "").strip(), "drop_hints": (drop_hints or "").strip()}
+    page = {"title": title, "body": truncate_body(body, body_limit),
+            "pass1_reason": pass1_reason, "pass1_topic": (pass1_topic or "").strip()}
+    return render_phase_prompt(EXCLUSION_FIELDS, template or DEFAULT_EXCLUSION_TEMPLATE, spec, page)
 
 
 def parse_exclusion(text: str) -> Optional[Dict]:

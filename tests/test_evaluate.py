@@ -232,6 +232,37 @@ class TestExclusion(unittest.TestCase):
         p2 = evaluate.build_exclusion_prompt("Slurry", "slurry storage", "", "", "", "T", "b", "note")
         self.assertIn("mainly about: (not given)", p2)
 
+    def test_legacy_composite_template_reproduces_old_assembly(self):
+        # A template stamped before the atomic fields still renders exactly as the old Python
+        # assembly did: composed SPEC, conditional KEEP/DROP sections, TITLE_LINE, repr()'d note.
+        tmpl = "{{SPEC}}|{{KEEP_SECTION}}|{{DROP_SECTION}}|{{TITLE_LINE}}|{{PASS1_REASON}}|{{BODY}}"
+        p = evaluate.build_exclusion_prompt("Slurry", " slurry storage ", "", "keep farms", "",
+                                            "T", "b", "pass 1 said relevant", template=tmpl)
+        self.assertEqual(
+            p,
+            "Inclusion criteria:\nslurry storage\n\nExclusion criteria:\n(none given)"
+            "|\nKEEP examples (keep = true) — lean toward keeping when similar content appears:\nkeep farms\n"
+            "||Page title: T\n|'pass 1 said relevant'|b")
+        # No title and no hints -> those blocks are empty strings, exactly as before.
+        p2 = evaluate.build_exclusion_prompt("S", "i", "", "", "", "", "b", "n", template=tmpl)
+        self.assertIn("|||", p2)
+        self.assertNotIn("{{", p2)
+
+    def test_atomic_default_always_shows_sections(self):
+        p = evaluate.build_exclusion_prompt("Slurry", "slurry storage", "", "", "", "T", "b", "note")
+        self.assertIn("KEEP examples (keep = true)", p)
+        self.assertIn("DROP examples (keep = false)", p)
+        self.assertEqual(p.count("\n(none)\n"), 2)     # empty keep + drop hints render as (none)
+        self.assertIn("Exclusion criteria:\n(none given)", p)
+        self.assertIn("Page title: T\n", p)
+        self.assertNotIn("{{", p)
+
+    def test_render_phase_prompt_is_plain_fill(self):
+        out = evaluate.render_phase_prompt(
+            evaluate.EXCLUSION_FIELDS, "A {{INCLUDE}} B {{KEEP}} C {{NAME_UPPER}}",
+            {"inclusion": "x", "name_upper": "SLURRY"}, {})
+        self.assertEqual(out, "A x B (none) C SLURRY")
+
     def test_exclusion_candidates_are_source_keeps_only(self):
         for i in range(3):
             self.conn.execute("INSERT INTO content (url, title, description, search_text) VALUES (?,?,?,?)",
