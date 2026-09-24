@@ -118,7 +118,7 @@
           <thead><tr><th>Phase 1 · Inclusion</th>
             <th class="rsn-col">{% if p.p1.keep == 1 %}<span class="kd keep">Kept in Phase 1 because</span>{% elif p.p1.keep == 0 %}<span class="kd drop">Dropped at Phase 1 because</span>{% else %}Reason{% endif %}</th>
             <th>Phase 2 · Exclusion</th>
-            <th class="rsn-col">{% if p.p2 and p.p2.keep == 1 %}<span class="kd keep">Kept in shortlist because</span>{% elif p.p2 and p.p2.keep == 0 %}<span class="kd drop">Dropped at Phase 2 because</span>{% else %}Reason{% endif %}</th></tr></thead>
+            <th class="rsn-col">{% if p.p2 and p.p2.keep == 1 %}<span class="kd keep">Kept in shortlist because</span>{% elif p.p2 and p.p2.keep == 0 %}<span class="kd drop">Dropped at Phase 2 because</span>{% endif %}</th></tr></thead>
           <tbody><tr>
             <td>{{ chip(p.p1.keep) }}{% if p.p1.score is not none %}<span class="score">{{ '%.2f'|format(p.p1.score|float) }}</span>{% endif %}
               {% if p.p1.primary_topic %}<div class="topic" style="margin-top:4px;">Topic: {{ p.p1.primary_topic }}</div>{% endif %}</td>
