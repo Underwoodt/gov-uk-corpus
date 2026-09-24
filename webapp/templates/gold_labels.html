@@ -116,9 +116,9 @@
       <div class="table-wrap">
         <table class="gc-table">
           <thead><tr><th>Phase 1 · Inclusion</th>
-            <th class="rsn-col">{% if p.p1.keep == 1 %}Kept in Phase 1 because{% elif p.p1.keep == 0 %}Dropped at Phase 1 because{% else %}Reason{% endif %}</th>
+            <th class="rsn-col">{% if p.p1.keep == 1 %}<span class="kd keep">Kept in Phase 1 because</span>{% elif p.p1.keep == 0 %}<span class="kd drop">Dropped at Phase 1 because</span>{% else %}Reason{% endif %}</th>
             <th>Phase 2 · Exclusion</th>
-            <th class="rsn-col">{% if p.p2 and p.p2.keep == 1 %}Kept in shortlist because{% elif p.p2 and p.p2.keep == 0 %}Dropped at Phase 2 because{% else %}Reason{% endif %}</th></tr></thead>
+            <th class="rsn-col">{% if p.p2 and p.p2.keep == 1 %}<span class="kd keep">Kept in shortlist because</span>{% elif p.p2 and p.p2.keep == 0 %}<span class="kd drop">Dropped at Phase 2 because</span>{% else %}Reason{% endif %}</th></tr></thead>
           <tbody><tr>
             <td>{{ chip(p.p1.keep) }}{% if p.p1.score is not none %}<span class="score">{{ '%.2f'|format(p.p1.score|float) }}</span>{% endif %}
               {% if p.p1.primary_topic %}<div class="topic" style="margin-top:4px;">Topic: {{ p.p1.primary_topic }}</div>{% endif %}</td>
@@ -189,6 +189,7 @@
     .stage.p2_drop { background:#fbeee8; color:#8a3a1a; } .stage.p1_unparsed, .stage.p2_unparsed { background:#fff1cc; color:#7a5a00; }
     .gc-table { font-size:14px; width:100%; } .gc-table th, .gc-table td { vertical-align:top; text-align:left; padding:6px 10px; }
     .gc-table thead th { font-size:11px; text-transform:uppercase; letter-spacing:.02em; color:var(--muted); font-weight:700; border-bottom:1px solid var(--border); }
+    .gc-table thead th .kd { text-transform:none; letter-spacing:0; font-size:12px; }
     .rsn-col { min-width:200px; width:34%; } .rsn { max-height:120px; overflow:auto; line-height:1.4; }
     .kd { display:inline-block; font-size:12px; font-weight:700; padding:2px 9px; border-radius:999px; }
     .kd.keep { background:#d9f2e4; color:var(--green-dark); } .kd.drop { background:#fbe0db; color:#a5200f; } .kd.none { background:var(--surface-3); color:var(--muted); }
