@@ -18,7 +18,7 @@ we can pin the report to an exact page.
 
 ## Next free serial
 
-**`guc-0028`** ← assign this to the next new page, then increment this line. (guc-0023 is free; 0024–0026 used by the password-reset pages; 0027 = GOV.UK Search additions.)
+**`guc-0029`** ← assign this to the next new page, then increment this line. (guc-0023 is free; 0024–0026 used by the password-reset pages; 0027 = GOV.UK Search additions; 0028 = Run performance diff.)
 
 ## How it's wired (so the rule is automatic)
 
@@ -69,6 +69,7 @@ we can pin the report to an exact page.
 | guc-0025 | Reset password via token | inline (`_LOGIN_HEAD`) | `GET/POST /reset-password/{token}` | Active |
 | guc-0026 | Forced password change (must_change) | inline (`_LOGIN_HEAD`) | `GET/POST /account/set-password` | Active |
 | guc-0027 | GOV.UK Search additions (review) | `govuk_additions.html` | `GET /categories/{id}/govuk-additions` | Active |
+| guc-0028 | Run performance diff (disagreements, judge, adjudicate, suggest) | `performance_diff.html` | `GET /categories/{id}/performance/diff`, `POST /api/categories/{id}/performance/diff/{explain,adjudicate,suggest}` | Active |
 
 ## Sub-tab IDs
 

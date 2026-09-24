@@ -2478,7 +2478,7 @@ def performance_page(request: Request, cid: int):
     return resp
 
 
-# ---- Run-vs-baseline disagreement drilldown (guc-0019) -------------------
+# ---- Run-vs-baseline disagreement drilldown (guc-0028) -------------------
 # "Why did the runs differ?" — the per-page detail behind the performance page's
 # "Decisions disagree with Run 1" count, per phase, with an on-demand LLM verdict.
 _DIFF_NOTES_READY = False
@@ -2667,10 +2667,16 @@ async def api_performance_diff_explain(request: Request, cid: int):
             "Why did Run 1 and Run 2 differ on this page in this phase?")
 
         judge = _diff_judge_config(conn, o_excl or o_incl)
+        budget, spent = _budget(conn), _daily_spend(conn)
+        if budget > 0 and spent >= budget:
+            return JSONResponse({"error": f"Daily AI budget of ${budget:.2f} reached "
+                                 f"(${spent:.4f} spent today)."}, status_code=402)
         res = await run_in_threadpool(_ai_chat, judge, system,
                                       [{"role": "user", "content": prompt}], 700)
         if res.get("error") or res.get("fatal"):
             return JSONResponse({"error": res.get("error") or "AI error"}, status_code=502)
+        _log_ai_usage(conn, res.get("cost_usd") or 0.0, res.get("input_tokens"),
+                      res.get("output_tokens"), "judge")
         verdict = (res.get("reply") or "").strip()
         conn.execute(
             f"INSERT INTO run_diff_notes (base_run, other_run, url, phase, verdict, model, created_at) "
@@ -2686,7 +2692,7 @@ async def api_performance_diff_explain(request: Request, cid: int):
         conn.close()
 
 
-# ---- Adjudication + prompt-improvement suggestions (guc-0019) ------------
+# ---- Adjudication + prompt-improvement suggestions (guc-0028) ------------
 # The user marks which run got a disagreement right; those judgements feed an LLM that
 # proposes edits to THIS category's include/exclude criteria to reduce future divergence.
 def _ensure_diff_adjud(conn) -> None:
@@ -2807,10 +2813,16 @@ async def api_performance_diff_suggest(request: Request, cid: int):
             "Propose the criteria edits.")
 
         cfg = _ai_config_for_phase(conn, "exclusion")
+        budget, spent = _budget(conn), _daily_spend(conn)
+        if budget > 0 and spent >= budget:
+            return JSONResponse({"error": f"Daily AI budget of ${budget:.2f} reached "
+                                 f"(${spent:.4f} spent today)."}, status_code=402)
         res = await run_in_threadpool(_ai_chat, cfg, system,
                                       [{"role": "user", "content": prompt}], 1500)
         if res.get("error") or res.get("fatal"):
             return JSONResponse({"error": res.get("error") or "AI error"}, status_code=502)
+        _log_ai_usage(conn, res.get("cost_usd") or 0.0, res.get("input_tokens"),
+                      res.get("output_tokens"), "suggest")
         return JSONResponse({"suggestion": (res.get("reply") or "").strip(),
                              "judged": len(cases), "model": res.get("actual_model"),
                              "cost": res.get("cost_usd"),
