@@ -283,7 +283,17 @@ class TestRunLabelling(GoldBase):
 
     def test_run_pages_and_save_verdict(self):
         p1, _ = self._chain()
+        # Keyword hits live on the shortlist membership, keyed by content_id: p0 is stored under
+        # its own URL; p1's hits are stored under an alias URL (a multi-URL guide's base), so a
+        # plain URL join would miss them and only the content_id resolution finds them.
+        self.conn.execute("INSERT INTO category_shortlist_pages (category_id, content_id, url, matched_keywords) "
+                          "VALUES (?,?,?,?)", (CID, "cid-p0", "https://www.gov.uk/p0", '["slurry", "manure"]'))
+        self.conn.execute("INSERT INTO category_shortlist_pages (category_id, content_id, url, matched_keywords) "
+                          "VALUES (?,?,?,?)", (CID, "cid-p1", "https://www.gov.uk/p1-guide", '["slurry"]'))
         pages = {p["url"]: p for p in gold.run_pages(self.conn, self._category(), p1)}
+        self.assertEqual(pages["https://www.gov.uk/p0"]["matched_keywords"], ["slurry", "manure"])
+        self.assertEqual(pages["https://www.gov.uk/p1"]["matched_keywords"], ["slurry"])
+        self.assertEqual(pages["https://www.gov.uk/p2"]["matched_keywords"], [])
         self.assertEqual(sorted(pages), ["https://www.gov.uk/p0", "https://www.gov.uk/p1",
                                          "https://www.gov.uk/p2", "https://www.gov.uk/p3"])
         self.assertEqual(pages["https://www.gov.uk/p0"]["stage"], "kept")
@@ -376,6 +386,7 @@ class TestGoldRoutes(unittest.TestCase):
         self.assertIn("Kept to the end", r.text)
         self.assertIn("Dropped at Phase 1", r.text)
         self.assertIn("https://www.gov.uk/p1", r.text)
+        self.assertIn("Keywords matched", r.text)
         tok = c.cookies.get("sb_csrf")
         r = c.post(f"/api/categories/{self.cid}/gold", headers={"X-CSRF-Token": tok or ""},
                    json={"run": self.p1, "url": "https://www.gov.uk/p1", "verdict": "wrong", "rationale": "it is slurry"})

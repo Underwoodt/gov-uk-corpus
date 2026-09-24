@@ -102,6 +102,36 @@ def _content_meta(conn, urls: Sequence[str]) -> Dict[str, dict]:
     return out
 
 
+def _matched_keywords(conn, category_id: int, urls: Sequence[str], meta: Dict[str, dict]) -> Dict[str, list]:
+    """Corpus keyword hits per URL (category_shortlist_pages.matched_keywords, the same values
+    the Preview/Results row lozenges show). Hits are stored once per page under its
+    representative URL, so an alias URL (e.g. one chapter of a multi-URL guide) would miss a
+    direct URL join; resolve by content_id first, then by URL for pages with no content row."""
+    key_of = {u: ((meta.get(u) or {}).get("content_id") or u) for u in urls}
+    keys = list({k for k in key_of.values()})
+    found: Dict[str, str] = {}
+    for col in ("content_id", "url"):
+        for i in range(0, len(keys), 500):
+            chunk = [k for k in keys[i:i + 500] if k not in found]
+            if not chunk:
+                continue
+            marks = ",".join([_P] * len(chunk))
+            for r in conn.execute(
+                    f"SELECT {col} AS k, matched_keywords AS val FROM category_shortlist_pages "
+                    f"WHERE category_id = {_P} AND {col} IN ({marks})", tuple([category_id] + chunk)).fetchall():
+                if r["val"]:
+                    found.setdefault(r["k"], r["val"])
+    out: Dict[str, list] = {}
+    for u, k in key_of.items():
+        raw = found.get(k) or found.get(u)
+        try:
+            parsed = json.loads(raw) if raw else []
+        except Exception:
+            parsed = []
+        out[u] = parsed if isinstance(parsed, list) else []
+    return out
+
+
 def forwarded_pages(conn, category: Dict, *, min_es_score: float = DEFAULT_MIN_ES_SCORE,
                     include_below_floor: bool = False) -> List[dict]:
     """The pages a fresh Phase-1 run would evaluate for the category, each tagged with its
@@ -343,6 +373,7 @@ def run_pages(conn, category: Dict, head_run_id: str) -> List[dict]:
     seeds = seed_labels(category)
     existing = {r["url"]: r for r in load_gold(conn, cid, labelled_only=False)}
     meta = _content_meta(conn, list(p1))
+    kw_hits = _matched_keywords(conn, cid, list(p1), meta)
     titles = {}
     urls = list(p1)
     for i in range(0, len(urls), 500):
@@ -367,6 +398,7 @@ def run_pages(conn, category: Dict, head_run_id: str) -> List[dict]:
             "seed_label": seeds.get(url, ""),
             "source": s.get("source") or "shortlister",
             "document_type": (meta.get(url) or {}).get("document_type") or "",
+            "matched_keywords": kw_hits.get(url, []),
             "content_hash": (meta.get(url) or {}).get("content_hash"),
             "content_id": (meta.get(url) or {}).get("content_id"),
             "label": (g or {}).get("label") or "", "rationale": (g or {}).get("rationale") or "",
