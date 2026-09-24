@@ -370,6 +370,18 @@ def parse_exclusion(text: str) -> Optional[Dict]:
     return {"keep": 1 if keep else 0, "score": None, "reason": reason}
 
 
+def json_list_display(val) -> str:
+    """A stored JSON list (evidence quotes, where-hit fields) as readable text for tables and
+    exports: items joined with ' | '. Empty -> ''; non-JSON input passes through unchanged."""
+    if not val:
+        return ""
+    try:
+        items = json.loads(val)
+    except (ValueError, TypeError):
+        return str(val)
+    return " | ".join(str(x) for x in items) if isinstance(items, list) else str(items)
+
+
 # The model's exclusion_hit categories -> the display label shown as a header line above the
 # reason. parse_exclusion (above) tags an excluded page's stored reason with a leading [hit];
 # an untagged reason is a page that survived the exclusion pass -> "KEPT" (exclusion_hit "none").
@@ -943,13 +955,20 @@ def run_results_query(run_id: str, keep: Optional[int] = None, limit: Optional[i
     if source_run_id:
         p = "r."
         sql = (f"SELECT r.url AS url, r.keep AS keep, r.score AS score, r.reason AS reason, "
-               f"s.reason AS src_reason FROM evaluation_results r "
+               f"s.reason AS src_reason, "
+               # The grounding fields are written by the inclusion pass only, so on an exclusion
+               # run they live on the joined inclusion row `s`; COALESCE covers both run types.
+               f"COALESCE(r.primary_topic, s.primary_topic) AS primary_topic, "
+               f"COALESCE(r.where_hit, s.where_hit) AS where_hit, "
+               f"COALESCE(r.evidence, s.evidence) AS evidence "
+               f"FROM evaluation_results r "
                f"LEFT JOIN evaluation_results s ON s.run_id = {_P} AND s.url = r.url "
                f"WHERE r.run_id = {_P}")
         params: list = [source_run_id, run_id]
     else:
         p = ""
-        sql = f"SELECT url, keep, score, reason, NULL AS src_reason FROM evaluation_results WHERE run_id = {_P}"
+        sql = (f"SELECT url, keep, score, reason, NULL AS src_reason, primary_topic, where_hit, evidence "
+               f"FROM evaluation_results WHERE run_id = {_P}")
         params = [run_id]
     if keep is not None:
         sql += f" AND {p}keep = {_P}"

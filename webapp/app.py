@@ -3690,6 +3690,30 @@ def api_example_prompts(request: Request, cid: int, run_id: str = ""):
         conn.close()
 
 
+@app.get("/api/categories/{cid}/runs/{run_id}/results")
+def api_run_results(request: Request, cid: int, run_id: str, keep: Optional[int] = None,
+                    limit: int = 2000):
+    """Per-page results for a run (guc-0006): url, verdict, score + confidence label, reason, and
+    the inclusion pass's grounding fields (primary_topic, where_hit, evidence). On an exclusion run
+    the grounding fields come from its inclusion run — only Phase 1 writes them."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    conn = connect()
+    try:
+        run = evaluate.get_run(conn, run_id)
+        if not run or str(run.get("category_id")) != str(cid):
+            return JSONResponse({"error": "not found"}, status_code=404)
+        rows = evaluate.run_results(conn, run_id, keep=keep, limit=max(1, min(int(limit), 5000)),
+                                    source_run_id=run.get("source_run_id"))
+        for r in rows:
+            r["confidence"] = evaluate.confidence_label(r.get("score"))
+            r["where_hit"] = evaluate.json_list_display(r.get("where_hit"))
+            r["evidence"] = evaluate.json_list_display(r.get("evidence"))
+        return JSONResponse({"run_id": run_id, "phase": run.get("phase"), "rows": rows, "total": len(rows)})
+    finally:
+        conn.close()
+
+
 @app.post("/api/categories/{cid}/runs/{run_id}/activate")
 async def api_activate_run(request: Request, cid: int, run_id: str):
     """Make this run the active run for the category — Evaluate / background runs
@@ -3833,6 +3857,9 @@ _VIRTUAL_FIELDS = {
     "inclusion_reason": "Inclusion reason",
     "exclusion_reason": "Exclusion reason",
     "confidence": "Confidence",
+    "primary_topic": "Primary topic",
+    "where_hit": "Matched in",
+    "evidence": "Evidence quotes",
     "inclusion_raw_reply": "Inclusion raw reply",
     "exclusion_raw_reply": "Exclusion raw reply",
     "stage": "Stage",
@@ -3873,6 +3900,13 @@ _DOWNLOAD_SECTIONS = [
         ("confidence", "Confidence", False, False,
          "how central the topic is to the page, from the inclusion score (Wrong sense / Mentioned in "
          "passing / Discussed a moderate amount / Major focus)"),
+        ("primary_topic", "Primary topic", False, False,
+         "from the latest inclusion run: what the page is mainly about (<=10-word noun phrase), "
+         "grounded in its title/description"),
+        ("where_hit", "Matched in", False, False,
+         "from the latest inclusion run: which fields carried the topic — title, description, body"),
+        ("evidence", "Evidence quotes", False, False,
+         "from the latest inclusion run: the verbatim passages quoted as grounding for the decision"),
     ]),
     ("Ownership", [
         ("primary_org", "Primary publishing organisation", False, False, None),
@@ -3969,21 +4003,27 @@ def _enrich_audit_rows(conn, cid: int, rows: list, keys: list, stage: str = None
         for r in rows:
             key = url2key.get(r.get("url"), r.get("url"))
             r["matched_keywords"] = ", ".join(search_augment._load_list(key2kw.get(key)))
+    # The inclusion pass's grounding fields (only Phase 1 writes them) — always read from the
+    # inclusion run, whatever the field name starts with.
+    _GROUNDING = ("primary_topic", "where_hit", "evidence")
     _phase_cols = {"inclusion_reason": "reason", "exclusion_reason": "reason",
-                   "inclusion_raw_reply": "raw_reply", "exclusion_raw_reply": "raw_reply"}
+                   "inclusion_raw_reply": "raw_reply", "exclusion_raw_reply": "raw_reply",
+                   "primary_topic": "primary_topic", "where_hit": "where_hit", "evidence": "evidence"}
     if any(k in need for k in _phase_cols):
         inc = evaluate.latest_inclusion_run(conn, cid)
         exc = evaluate.latest_exclusion_run(conn, inc) if inc else None
         for field, col in _phase_cols.items():
             if field not in need:
                 continue
-            run_id = inc if field.startswith("inclusion") else exc
+            run_id = inc if (field.startswith("inclusion") or field in _GROUNDING) else exc
             m = _map(f"SELECT url, {col} AS val FROM evaluation_results WHERE run_id = {P}", run_id) if run_id else {}
             for r in rows:
                 val = m.get(r.get("url")) or ""
                 # Prefix the exclusion reason with its exclusion_hit label header (single source
                 # for the table + every export); other virtual fields pass through unchanged.
-                r[field] = evaluate.exclusion_display(val) if field == "exclusion_reason" else val
+                r[field] = (evaluate.exclusion_display(val) if field == "exclusion_reason"
+                            else evaluate.json_list_display(val) if field in ("where_hit", "evidence")
+                            else val)
     if "decision" in need:
         # The AI verdict for each page — Keep / Drop / Unscored (a row with keep = NULL) — from
         # the run relevant to the stage: the inclusion run for include/excl_include, the exclusion

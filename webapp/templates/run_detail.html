@@ -115,6 +115,30 @@
     </table>
   </div>
 
+  {# Per-page results: every page this run scored, with the inclusion pass's grounding fields
+     (primary topic / matched-in / verbatim evidence). Loaded from the run's results API. #}
+  <h2 style="margin-top:30px;">Per-page results</h2>
+  <p class="hint" style="max-width:860px;">Every page this run scored, with the inclusion pass's grounding:
+    the <strong>primary topic</strong> (what the page is mainly about), where the topic was
+    <strong>matched in</strong> (title, description, body) and the <strong>evidence</strong> quotes copied
+    verbatim from the page. On an exclusion run these come from its inclusion run.</p>
+  <div class="controls" style="align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 8px;">
+    <label class="secondary" style="font-size:14px;">Show
+      <select id="pr-filter" style="font:inherit;padding:3px 6px;border:2px solid var(--black);border-radius:4px;margin-left:4px;">
+        <option value="">All</option><option value="1">Kept</option><option value="0">Dropped</option>
+      </select></label>
+    <span id="pr-summary" class="secondary"></span>
+  </div>
+  <div class="table-wrap">
+    <table id="pr-table" style="font-size:13px;">
+      <thead><tr>
+        <th>Page</th><th>Verdict</th><th class="num">Score</th><th>Confidence</th>
+        <th>Primary topic</th><th>Matched in</th><th>Evidence</th><th>Reason</th>
+      </tr></thead>
+      <tbody><tr><td colspan="8" class="secondary" style="padding:10px 6px;"><span class="spinner"></span></td></tr></tbody>
+    </table>
+  </div>
+
   <h2 style="margin-top:30px;">Run commentary</h2>
   <p class="hint">An automatic read of this run's phases — what has run, any errors, and whether each phase's
     output reconciles with its input (input = kept + dropped, allowing for unparseable replies).</p>
@@ -232,6 +256,45 @@
   <script>
     const CID = {{ category.id }}, RUN_ID = {{ run.run_id|tojson }};
     const CHAIN_IDS = {{ (chain|map(attribute='run_id')|list)|tojson }};
+
+    // Per-page results (guc-0006): fetched from the run's results API, filtered client-side.
+    (function () {
+      const tbody = document.querySelector("#pr-table tbody"), sum = document.getElementById("pr-summary");
+      const filter = document.getElementById("pr-filter");
+      const esc = s => { const d = document.createElement("div"); d.textContent = s == null ? "" : s; return d.innerHTML; };
+      let all = [];
+      function render() {
+        const f = filter.value;
+        const rows = f === "" ? all : all.filter(r => String(r.keep) === f);
+        sum.textContent = `${rows.length} of ${all.length} page${all.length === 1 ? "" : "s"}`;
+        if (!rows.length) {
+          tbody.innerHTML = '<tr><td colspan="8" class="secondary" style="padding:10px 6px;">No pages.</td></tr>';
+          return;
+        }
+        tbody.innerHTML = rows.map(r => {
+          const verdict = r.keep === 1 ? '<span style="color:var(--green,#00703c);font-weight:700;">Keep</span>'
+                        : r.keep === 0 ? '<span style="color:var(--red,#d4351c);font-weight:700;">Drop</span>'
+                        : '<span class="secondary">Unscored</span>';
+          const quotes = (r.evidence || "").split(" | ").filter(Boolean)
+                           .map(q => `<li>“${esc(q)}”</li>`).join("");
+          return `<tr>
+            <td><a href="${esc(r.url)}" target="_blank" rel="noopener" style="word-break:break-all;">${esc(r.url)}</a></td>
+            <td>${verdict}</td>
+            <td class="num">${r.score == null ? '<span class="secondary">—</span>' : Number(r.score).toFixed(2)}</td>
+            <td>${esc(r.confidence || "")}</td>
+            <td>${esc(r.primary_topic || "—")}</td>
+            <td>${esc(r.where_hit || "—")}</td>
+            <td>${quotes ? `<ul style="margin:0;padding-left:16px;">${quotes}</ul>` : '<span class="secondary">—</span>'}</td>
+            <td class="secondary">${esc(r.reason || "")}</td>
+          </tr>`;
+        }).join("");
+      }
+      filter.addEventListener("change", render);
+      fetch(`/api/categories/${CID}/runs/${RUN_ID}/results`, { headers: { "Accept": "application/json" } })
+        .then(r => r.json())
+        .then(j => { all = (j && j.rows) || []; render(); })
+        .catch(() => { tbody.innerHTML = '<tr><td colspan="8" class="secondary" style="padding:10px 6px;">Could not load results.</td></tr>'; });
+    })();
     const nameInput = document.getElementById("run-name");
     const status = document.getElementById("name-status");
     async function saveName() {
