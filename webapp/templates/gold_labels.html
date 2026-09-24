@@ -117,13 +117,13 @@
         <table class="gc-table">
           <thead><tr><th>Phase 1 · Inclusion</th>
             <th class="rsn-col">{% if p.p1.keep == 1 %}<span class="kd keep">Kept in Phase 1 because</span>{% elif p.p1.keep == 0 %}<span class="kd drop">Dropped at Phase 1 because</span>{% else %}Reason{% endif %}</th>
-            <th>Phase 2 · Exclusion</th>
+            <th></th>
             <th class="rsn-col">{% if p.p2 and p.p2.keep == 1 %}<span class="kd keep">Kept in shortlist because</span>{% elif p.p2 and p.p2.keep == 0 %}<span class="kd drop">Dropped at Phase 2 because</span>{% endif %}</th></tr></thead>
           <tbody><tr>
-            <td>{{ chip(p.p1.keep) }}{% if p.p1.score is not none %}<span class="score">{{ '%.2f'|format(p.p1.score|float) }}</span>{% endif %}
+            <td>{% if p.p1.keep is none %}{{ chip(None) }}{% endif %}{% if p.p1.score is not none %}<span class="score" style="margin-left:0;">{{ '%.2f'|format(p.p1.score|float) }}</span>{% endif %}
               {% if p.p1.primary_topic %}<div class="topic" style="margin-top:4px;">Topic: {{ p.p1.primary_topic }}</div>{% endif %}</td>
             <td class="rsn-col"><div class="rsn">{{ p.p1.reason or '(no reason recorded)' }}</div></td>
-            <td>{% if p.p2 %}{{ chip(p.p2.keep) }}{% elif p.p1.keep == 1 and not p.has_p2_run %}<span class="muted-sm">no Phase 2 run</span>{% elif p.p1.keep == 1 %}<span class="muted-sm">not reached yet</span>{% else %}<span class="muted-sm">not reached — dropped at Phase 1</span>{% endif %}</td>
+            <td>{% if p.p2 %}{% if p.p2.keep is none %}{{ chip(None) }}{% endif %}{% elif p.p1.keep == 1 and not p.has_p2_run %}<span class="muted-sm">no Phase 2 run</span>{% elif p.p1.keep == 1 %}<span class="muted-sm">not reached yet</span>{% else %}<span class="muted-sm">not reached — dropped at Phase 1</span>{% endif %}</td>
             <td class="rsn-col">{% if p.p2 %}<div class="rsn">{{ p.p2.reason or '(no reason recorded)' }}</div>{% endif %}</td>
           </tr></tbody>
         </table>
