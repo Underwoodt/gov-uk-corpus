@@ -32,7 +32,8 @@ def init_db(conn: sqlite3.Connection) -> None:
     # raw_reply (debugging) + the inclusion pass's grounding fields (primary_topic / where_hit /
     # evidence) — see evaluate.parse_decision.
     for col, typ in (("raw_reply", "TEXT"), ("primary_topic", "TEXT"),
-                     ("where_hit", "TEXT"), ("evidence", "TEXT")):
+                     ("where_hit", "TEXT"), ("evidence", "TEXT"),
+                     ("content_hash", "TEXT")):
         if col not in have:
             conn.execute(f"ALTER TABLE evaluation_results ADD COLUMN {col} {typ}")
     # Live run state (driver liveness): see db_pg.init_db for the rationale.

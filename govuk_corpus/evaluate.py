@@ -568,7 +568,7 @@ def run_candidates(conn, run_id: str, category_id: int, limit: int, *,
     relevance is below the floor (a page with no es_score is kept — the score is unknown,
     not low)."""
     select_expr = ("c.url AS url, c.title AS title, c.description AS description, "
-                   "c.search_text AS body")
+                   "c.search_text AS body, c.content_hash AS content_hash")
     extra_where = (f"c.url NOT IN (SELECT url FROM evaluation_results WHERE run_id = {_P})")
     sql, params = shortlist.build_query(
         select_expr=select_expr, extra_where=extra_where, extra_params=[run_id],
@@ -585,7 +585,8 @@ def run_candidates(conn, run_id: str, category_id: int, limit: int, *,
         floor_params = [min_es_score]
     got = {r["url"] for r in rows}
     top = conn.execute(
-        f"SELECT c.url AS url, c.title AS title, c.description AS description, c.search_text AS body "
+        f"SELECT c.url AS url, c.title AS title, c.description AS description, c.search_text AS body, "
+        f"c.content_hash AS content_hash "
         f"FROM category_search_pages sp JOIN content c ON c.url = sp.url "
         f"WHERE sp.category_id = {_P} AND sp.source = 'search'{floor_sql} "
         f"AND c.is_redirect = 0 AND c.content_hash IS NOT NULL "

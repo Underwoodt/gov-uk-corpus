@@ -163,6 +163,7 @@ CREATE TABLE IF NOT EXISTS evaluation_results (
     score        real,
     reason       text,
     raw_reply    text,          -- the model's raw reply, kept verbatim for debugging (esp. unparseable ones)
+    content_hash text,          -- content.content_hash of the body actually evaluated (drift detection vs gold labels)
     ms           integer,
     created_at   text,
     PRIMARY KEY (run_id, url)
@@ -398,3 +399,21 @@ CREATE TABLE IF NOT EXISTS page_feedback (
     created_by_email text
 );
 CREATE INDEX IF NOT EXISTS idx_page_feedback_created ON page_feedback (created_at DESC);
+
+-- Gold labels for the pipeline quality benchmark (see govuk_corpus/gold.py).
+CREATE TABLE IF NOT EXISTS category_gold_labels (
+    category_id           bigint  NOT NULL,
+    url                   text    NOT NULL,   -- canonicalised
+    content_id            text,
+    label                 text    NOT NULL,   -- in | out | borderline
+    rationale             text,
+    labelled_by           text,
+    labelled_at           text,
+    content_hash_at_label text,
+    stratum_score_band    text,               -- 0 | 0.1-0.3 | 0.4-0.6 | 0.7-1.0 | unscored (at export)
+    stratum_source        text,               -- both | shortlister | search | search_below_floor
+    stratum_doc_type      text,               -- effective document type at export
+    seed_origin           text,               -- should_include | should_exclude | NULL
+    gold_version          integer DEFAULT 1,
+    PRIMARY KEY (category_id, url)
+);

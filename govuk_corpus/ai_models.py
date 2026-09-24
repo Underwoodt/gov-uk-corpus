@@ -41,6 +41,7 @@ _COLS = "id, provider, model_id, input_per_m, output_per_m, " + ", ".join(PRICE_
 _DEFAULTS = [
     ("anthropic", "claude-haiku-4-5-20251001", 1.0, 5.0),
     ("anthropic", "claude-sonnet-5", 2.0, 10.0),
+    ("anthropic", "claude-sonnet-4-6", 3.0, 15.0),   # benchmark arm: accepts temperature=0, no thinking by default
     ("deepseek", "deepseek-chat", 0.27, 1.10),
 ]
 

@@ -182,6 +182,7 @@ CREATE TABLE IF NOT EXISTS evaluation_results (
     primary_topic TEXT,         -- inclusion pass: what the page is mainly about (<=10-word noun phrase); fed to Phase 2 as {{PASS1_TOPIC}}
     where_hit    TEXT,          -- inclusion pass: JSON list of the fields the topic appeared in (title | description | body)
     evidence     TEXT,          -- inclusion pass: JSON list of verbatim quotes grounding the decision
+    content_hash TEXT,          -- content.content_hash of the body actually evaluated (drift detection vs gold labels)
     ms           INTEGER,
     created_at   TEXT,
     PRIMARY KEY (run_id, url)
@@ -329,4 +330,25 @@ CREATE TABLE IF NOT EXISTS page_feedback (
     created_at       TEXT,
     created_by       TEXT,
     created_by_email TEXT
+);
+
+-- Gold labels for the pipeline quality benchmark: a human's verdict per page, in / out /
+-- borderline, with a one-line rationale. The stratum_* fields record how the page was sampled
+-- (score band, source, doc type) and content_hash_at_label the page body the labeller saw, so
+-- drift between labelling and evaluation is detectable. Managed by govuk_corpus/gold.py.
+CREATE TABLE IF NOT EXISTS category_gold_labels (
+    category_id           INTEGER NOT NULL,
+    url                   TEXT NOT NULL,      -- canonicalised
+    content_id            TEXT,
+    label                 TEXT NOT NULL,      -- in | out | borderline
+    rationale             TEXT,
+    labelled_by           TEXT,
+    labelled_at           TEXT,
+    content_hash_at_label TEXT,
+    stratum_score_band    TEXT,               -- 0 | 0.1-0.3 | 0.4-0.6 | 0.7-1.0 | unscored (at export)
+    stratum_source        TEXT,               -- both | shortlister | search | search_below_floor
+    stratum_doc_type      TEXT,               -- effective document type at export
+    seed_origin           TEXT,               -- should_include | should_exclude | NULL
+    gold_version          INTEGER DEFAULT 1,
+    PRIMARY KEY (category_id, url)
 );
