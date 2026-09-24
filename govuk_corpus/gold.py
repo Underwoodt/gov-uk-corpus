@@ -413,7 +413,9 @@ def run_pages(conn, category: Dict, head_run_id: str) -> List[dict]:
             "label": (g or {}).get("label") or "", "rationale": (g or {}).get("rationale") or "",
             "verdict": verdict_from_label(stage, (g or {}).get("label")),
             "labelled_by": (g or {}).get("labelled_by"), "labelled_at": (g or {}).get("labelled_at"),
-            "agreement": (g or {}).get("agreement"), "n_votes": (g or {}).get("n_votes") or 0,
+            # A consensus row written before votes existed has no agreement value; derive it.
+            "agreement": (g or {}).get("agreement") or ((consensus(votes_by_url.get(url, [])) or {}).get("agreement") if g else None),
+            "n_votes": (g or {}).get("n_votes") or len(votes_by_url.get(url, [])),
             "votes": votes_by_url.get(url, []),
             "votes_json": json.dumps([{"labeller": v["labeller"], "label": v["label"], "rationale": v.get("rationale") or "",
                                        "blind": bool(v.get("blind"))} for v in votes_by_url.get(url, [])],
