@@ -110,6 +110,10 @@
     <button type="button" class="btn secondary-btn" id="wiz-jump" title="Go to the first page in the current filter that you have not labelled">First unlabelled</button>
   </div>
   {% endif %}
+  <div class="blind-banner" id="blind-banner" hidden>
+    <strong>Blind mode is on.</strong> The pipeline's verdicts, reasons, scores and the stage filters are hidden and you label in / out / borderline directly.
+    <button type="button" class="btn secondary-btn" id="blind-off" style="padding:4px 10px;font-size:13px;margin-left:10px;">Show the model's verdicts</button>
+  </div>
   <div id="gl-list">
   {% for p in pages %}
     <div class="card gl-card" data-url="{{ p.url }}" data-stage="{{ p.stage or '' }}" data-labelled="{{ '1' if p.label else '0' }}"
@@ -257,6 +261,7 @@
     .cons.unanimous, .cons.single { background:#d9f2e4; color:var(--green-dark); }
     .cons.majority { background:#e8f1fb; color:#1d4e89; } .cons.split { background:#fbe0db; color:#a5200f; } .cons.adjudicated { background:#fff1cc; color:#7a5a00; }
     body.blind .model-only, body.blind .gc-table, body.blind .stage, body.blind .gl-filters .fbtn[data-stage]:not([data-stage=""]) { display:none !important; }
+    .blind-banner { background:#fff1cc; border:1px solid #f0d98a; color:#7a5a00; border-radius:var(--radius); padding:10px 14px; margin:0 0 12px; font-size:14px; display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
     body.blind .blind-only { display:inline-flex !important; }
     body.blind span.blind-only { display:inline !important; }
   </style>
@@ -278,10 +283,12 @@
     try { blindBox.checked = localStorage.getItem(LS_BLIND) === "1"; } catch (e) {}
     function applyBlind() {
       document.body.classList.toggle("blind", blindBox.checked);
+      const bb = document.getElementById("blind-banner"); if (bb) bb.hidden = !blindBox.checked;
       if (blindBox.checked && stage) { stage = ""; document.querySelectorAll(".fbtn").forEach(x => x.classList.toggle("on", x.dataset.stage === "")); }
       applyFilter();
     }
     blindBox.onchange = () => { try { localStorage.setItem(LS_BLIND, blindBox.checked ? "1" : "0"); } catch (e) {} applyBlind(); };
+    const blindOff = document.getElementById("blind-off"); if (blindOff) blindOff.onclick = () => { blindBox.checked = false; blindBox.onchange(); };
 
     // ---- votes: mine drives the buttons; others appear only once I have voted ----
     const VERDICT_OF = { keep: { in: "correct", out: "wrong" }, drop: { out: "correct", in: "wrong" } };
