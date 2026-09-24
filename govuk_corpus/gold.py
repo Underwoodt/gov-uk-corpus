@@ -399,6 +399,8 @@ def run_pages(conn, category: Dict, head_run_id: str) -> List[dict]:
             "url": url, "title": titles.get(url) or "", "stage": stage, "stage_label": STAGES.get(stage, ""),
             "final_keep": final_keep(stage),
             "p1": {"keep": a.get("keep"), "score": a.get("score"), "reason": a.get("reason") or "",
+                   "confidence": evaluate.confidence_label(a.get("score")),
+                   "band": score_band(a.get("score")),
                    "primary_topic": a.get("primary_topic") or ""},
             "p2": ({"keep": b.get("keep"), "reason": b.get("reason") or ""} if b else None),
             "has_p2_run": bool(excl_id),
