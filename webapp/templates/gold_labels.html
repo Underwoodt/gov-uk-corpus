@@ -111,7 +111,7 @@
             <span class="kw-hit kw-dt-parent" title="Parent publication's document type (used as the effective type for html_publication pages)">{{ p.parent_document_type }}</span>{% endif %}
           </div>
         </div>
-        <span class="stage {{ p.stage }}">{{ p.stage_label }}</span>{% if p.sampled %}<span class="samp" title="In the sampled minimum for this stage">sampled</span>{% endif %}
+        {% if p.sampled %}<span class="samp" title="In the sampled minimum for this stage">sampled</span>{% endif %}
       </div>
       <div class="table-wrap">
         <table class="gc-table">
