@@ -95,7 +95,8 @@ def _content_meta(conn, urls: Sequence[str]) -> Dict[str, dict]:
         marks = ",".join([_P] * len(chunk))
         rows = conn.execute(
             f"SELECT c.url AS url, c.content_id AS content_id, c.content_hash AS content_hash, "
-            f"{shortlist._EFF_DOCTYPE_EXPR} AS document_type "
+            f"{shortlist._EFF_DOCTYPE_EXPR} AS document_type, "
+            f"c.document_type AS raw_document_type, {shortlist._PARENT_DT_EXPR} AS parent_document_type "
             f"FROM content c WHERE c.url IN ({marks})", tuple(chunk)).fetchall()
         for r in rows:
             out[r["url"]] = dict(r)
@@ -398,6 +399,8 @@ def run_pages(conn, category: Dict, head_run_id: str) -> List[dict]:
             "seed_label": seeds.get(url, ""),
             "source": s.get("source") or "shortlister",
             "document_type": (meta.get(url) or {}).get("document_type") or "",
+            "raw_document_type": (meta.get(url) or {}).get("raw_document_type") or "",
+            "parent_document_type": (meta.get(url) or {}).get("parent_document_type") or "",
             "matched_keywords": kw_hits.get(url, []),
             "content_hash": (meta.get(url) or {}).get("content_hash"),
             "content_id": (meta.get(url) or {}).get("content_id"),

@@ -83,7 +83,7 @@
   <div id="gl-list">
   {% for p in pages %}
     <div class="card gl-card" data-url="{{ p.url }}" data-stage="{{ p.stage or '' }}" data-labelled="{{ '1' if p.label else '0' }}"
-         data-sampled="{{ '1' if p.sampled else '0' }}" data-hay="{{ (p.url ~ ' ' ~ p.title ~ ' ' ~ (p.matched_keywords|join(' ')))|lower }}">
+         data-sampled="{{ '1' if p.sampled else '0' }}" data-hay="{{ (p.url ~ ' ' ~ p.title ~ ' ' ~ (p.matched_keywords|join(' ')) ~ ' ' ~ p.raw_document_type ~ ' ' ~ p.parent_document_type)|lower }}">
       <div class="gc-head">
         <div class="gc-title">
           <a href="{{ p.url }}" target="_blank" rel="noopener">{{ p.title or p.url }}</a>
@@ -92,6 +92,10 @@
             <span class="gc-kw-lbl">Keywords matched</span>
             {% if p.matched_keywords %}<span class="kw-hits">{% for k in p.matched_keywords %}<span class="kw-hit kw-corpus">{{ k }}</span>{% endfor %}</span>
             {% else %}<span class="kw-none">{{ 'none — GOV.UK Search only' if p.source == 'search' else '—' }}</span>{% endif %}
+            <span class="gc-kw-lbl" style="margin-left:10px;">Document type</span>
+            <span class="kw-hit kw-dt" title="content.document_type">{{ p.raw_document_type or '—' }}</span>
+            {% if p.parent_document_type %}<span class="gc-kw-lbl">Parent</span>
+            <span class="kw-hit kw-dt-parent" title="Parent publication's document type (used as the effective type for html_publication pages)">{{ p.parent_document_type }}</span>{% endif %}
           </div>
         </div>
         <span class="stage {{ p.stage }}">{{ p.stage_label }}</span>{% if p.sampled %}<span class="samp" title="In the sampled minimum for this stage">sampled</span>{% endif %}
@@ -157,6 +161,8 @@
     .kw-hit { display:inline-block; font-size:12px; font-weight:600; padding:1px 8px; border-radius:999px; white-space:nowrap; border:1px solid transparent; }
     .kw-corpus { background:#eef3ff; color:var(--dark-blue,#003078); border-color:#cfe0f7; }
     .kw-none { color:var(--muted,#6b7477); font-size:12px; }
+    .kw-dt { background:var(--surface-3,#f3f2f1); color:var(--ink,#0b0c0c); border-color:var(--border-mid,#b1b4b6); }
+    .kw-dt-parent { background:#fff1cc; color:#7a5a00; border-color:#f0d98a; }
     .stage { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; padding:3px 9px; border-radius:999px; white-space:nowrap; background:var(--surface-3); }
     .stage.kept { background:#d9f2e4; color:var(--green-dark); } .stage.p1_drop { background:#fbe0db; color:#a5200f; }
     .stage.p2_drop { background:#fbeee8; color:#8a3a1a; } .stage.p1_unparsed, .stage.p2_unparsed { background:#fff1cc; color:#7a5a00; }

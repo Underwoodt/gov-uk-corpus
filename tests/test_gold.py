@@ -294,6 +294,15 @@ class TestRunLabelling(GoldBase):
         self.assertEqual(pages["https://www.gov.uk/p0"]["matched_keywords"], ["slurry", "manure"])
         self.assertEqual(pages["https://www.gov.uk/p1"]["matched_keywords"], ["slurry"])
         self.assertEqual(pages["https://www.gov.uk/p2"]["matched_keywords"], [])
+        # Raw document type + parent type (effective type is the parent's for html_publication).
+        self.conn.execute("UPDATE content SET document_type='html_publication', parent_document_type='guidance' "
+                          "WHERE url='https://www.gov.uk/p2'")
+        pages2 = {p["url"]: p for p in gold.run_pages(self.conn, self._category(), p1)}
+        self.assertEqual(pages2["https://www.gov.uk/p2"]["raw_document_type"], "html_publication")
+        self.assertEqual(pages2["https://www.gov.uk/p2"]["parent_document_type"], "guidance")
+        self.assertEqual(pages2["https://www.gov.uk/p2"]["document_type"], "guidance")
+        self.assertEqual(pages2["https://www.gov.uk/p0"]["raw_document_type"], "guidance")
+        self.assertEqual(pages2["https://www.gov.uk/p0"]["parent_document_type"], "")
         self.assertEqual(sorted(pages), ["https://www.gov.uk/p0", "https://www.gov.uk/p1",
                                          "https://www.gov.uk/p2", "https://www.gov.uk/p3"])
         self.assertEqual(pages["https://www.gov.uk/p0"]["stage"], "kept")
@@ -387,6 +396,7 @@ class TestGoldRoutes(unittest.TestCase):
         self.assertIn("Dropped at Phase 1", r.text)
         self.assertIn("https://www.gov.uk/p1", r.text)
         self.assertIn("Keywords matched", r.text)
+        self.assertIn("Document type", r.text)
         tok = c.cookies.get("sb_csrf")
         r = c.post(f"/api/categories/{self.cid}/gold", headers={"X-CSRF-Token": tok or ""},
                    json={"run": self.p1, "url": "https://www.gov.uk/p1", "verdict": "wrong", "rationale": "it is slurry"})
