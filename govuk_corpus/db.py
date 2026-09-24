@@ -42,6 +42,11 @@ def init_db(conn: sqlite3.Connection) -> None:
                      ("host", "TEXT"), ("heartbeat_at", "TEXT"), ("prompt_spec", "TEXT")):
         if col not in have_runs:
             conn.execute(f"ALTER TABLE evaluation_runs ADD COLUMN {col} {typ}")
+    # Sampling provenance on gold labels (guc-0029 stage-stratified picks).
+    have_gold = {r[1] for r in conn.execute("PRAGMA table_info(category_gold_labels)")}
+    for col, typ in (("sample_run_id", "TEXT"), ("sample_stage", "TEXT"), ("sample_frac", "REAL")):
+        if col not in have_gold:
+            conn.execute(f"ALTER TABLE category_gold_labels ADD COLUMN {col} {typ}")
     # GOV.UK Search view_count + the date it was collected (per-page popularity).
     have_content = {r[1] for r in conn.execute("PRAGMA table_info(content)")}
     for col, typ in (("view_count", "INTEGER"), ("view_count_updated", "TEXT"),

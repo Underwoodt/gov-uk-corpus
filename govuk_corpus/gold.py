@@ -258,11 +258,12 @@ def gold_sha(rows: Iterable[dict]) -> str:
 def upsert_label(conn, category_id: int, row: Dict) -> None:
     cols = ["category_id", "url", "content_id", "label", "rationale", "labelled_by",
             "labelled_at", "content_hash_at_label", "stratum_score_band", "stratum_source",
-            "stratum_doc_type", "seed_origin"]
+            "stratum_doc_type", "seed_origin", "sample_run_id", "sample_stage", "sample_frac"]
     vals = [category_id, row["url"], row.get("content_id"), row["label"], row.get("rationale"),
             row.get("labelled_by"), row.get("labelled_at") or now_iso(),
             row.get("content_hash_at_label"), row.get("stratum_score_band"),
-            row.get("stratum_source"), row.get("stratum_doc_type"), row.get("seed_origin")]
+            row.get("stratum_source"), row.get("stratum_doc_type"), row.get("seed_origin"),
+            row.get("sample_run_id"), row.get("sample_stage"), row.get("sample_frac")]
     sets = ", ".join(f"{c} = excluded.{c}" for c in cols[2:])
     conn.execute(
         f"INSERT INTO category_gold_labels ({', '.join(cols)}) "
@@ -376,10 +377,69 @@ def run_pages(conn, category: Dict, head_run_id: str) -> List[dict]:
     return out
 
 
+# ---- stage-stratified sampling (which pages to label first) -------------------------
+
+SAMPLE_FULL_UPTO = 25      # a stage this small is labelled in full
+SAMPLE_DEFAULT_TARGET = 40  # otherwise: this many, picked in the seeded order
+
+
+def default_targets(stage_counts: Dict[str, int]) -> Dict[str, int]:
+    return {k: (n if n <= SAMPLE_FULL_UPTO else SAMPLE_DEFAULT_TARGET) for k, n in stage_counts.items() if n}
+
+
+def sample_selection(pages: List[dict], targets: Dict[str, int], seed: int = DEFAULT_SEED) -> Dict[str, dict]:
+    """Per stage: the first `target` pages in a fixed seeded order (uniform within the stage,
+    blind to seed hints). Deterministic: reloads, other browsers and later top-ups pick the same
+    pages; raising a target only adds. Returns {stage: {n, target, frac, urls}}."""
+    by_stage: Dict[str, List[dict]] = {}
+    for p in pages:
+        if p.get("stage"):
+            by_stage.setdefault(p["stage"], []).append(p)
+    out: Dict[str, dict] = {}
+    for stage, rows in by_stage.items():
+        n = len(rows)
+        target = max(0, min(int(targets.get(stage, n) if targets.get(stage) is not None else n), n))
+        ordered = sorted(rows, key=lambda r: _shuffle_key(seed, r["url"]))
+        chosen = [r["url"] for r in ordered[:target]]
+        out[stage] = {"n": n, "target": target, "frac": (target / n) if n else None, "urls": set(chosen)}
+    return out
+
+
+def apply_sampling(pages: List[dict], selection: Dict[str, dict]) -> None:
+    """Mark each page sampled / not and attach its stage's sampling fraction."""
+    for p in pages:
+        s = selection.get(p.get("stage") or "")
+        p["sampled"] = bool(s and p["url"] in s["urls"])
+        p["sample_frac"] = s["frac"] if s else None
+
+
+def sample_progress(pages: List[dict], selection: Dict[str, dict]) -> Dict[str, dict]:
+    """Per stage: labelled-in-sample / target, plus labelled overall."""
+    out = {}
+    for stage, s in selection.items():
+        in_sample = [p for p in pages if p.get("stage") == stage and p["url"] in s["urls"]]
+        out[stage] = {"n": s["n"], "target": s["target"], "frac": s["frac"],
+                      "labelled_in_sample": sum(1 for p in in_sample if p.get("label")),
+                      "labelled_total": sum(1 for p in pages if p.get("stage") == stage and p.get("label"))}
+    return out
+
+
+def weight_of(row: dict) -> float:
+    """Inverse-probability weight for a label: 1 / sampling fraction (1 when not sampled)."""
+    f = row.get("sample_frac")
+    try:
+        f = float(f) if f is not None else None
+    except (TypeError, ValueError):
+        f = None
+    return (1.0 / f) if f and 0 < f <= 1 else 1.0
+
+
 def save_verdict(conn, category: Dict, page: dict, verdict: str, rationale: str,
-                 labelled_by: Optional[str]) -> Optional[str]:
+                 labelled_by: Optional[str], sample_run_id: Optional[str] = None) -> Optional[str]:
     """Upsert (or, with an empty verdict, delete) the gold label for one page of `run_pages`.
-    Returns the label written, or None when cleared. Raises ValueError on bad input."""
+    If the page carries `sample_frac` (it was in the stage sample) that fraction, the stage and
+    the run are stamped so the report can weight it. Returns the label written, or None when
+    cleared. Raises ValueError on bad input."""
     cid = int(category["id"])
     if not verdict:
         conn.execute(f"DELETE FROM category_gold_labels WHERE category_id = {_P} AND url = {_P}",
@@ -400,6 +460,9 @@ def save_verdict(conn, category: Dict, page: dict, verdict: str, rationale: str,
         "stratum_score_band": score_band(page["p1"].get("score")),
         "stratum_source": page.get("source"), "stratum_doc_type": page.get("document_type"),
         "seed_origin": seeds.get(page["url"]),
+        "sample_run_id": sample_run_id if page.get("sampled") else None,
+        "sample_stage": page.get("stage") if page.get("sampled") else None,
+        "sample_frac": page.get("sample_frac") if page.get("sampled") else None,
     })
     conn.commit()
     return label

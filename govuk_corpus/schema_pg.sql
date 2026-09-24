@@ -416,5 +416,8 @@ CREATE TABLE IF NOT EXISTS category_gold_labels (
     stratum_doc_type      text,               -- effective document type at export
     seed_origin           text,               -- should_include | should_exclude | NULL
     gold_version          integer DEFAULT 1,
+    sample_run_id         text,               -- the run whose outcomes the page was sampled by (guc-0029)
+    sample_stage          text,               -- stage the page left that run at: p1_drop | p2_drop | kept | ...
+    sample_frac           double precision,   -- sampling fraction of that stage (target / stage size); NULL = not sampled (weight 1)
     PRIMARY KEY (category_id, url)
 );

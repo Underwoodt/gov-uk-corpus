@@ -400,6 +400,8 @@ def report(conn, cid: int, out_dir: str, log: Callable[[str], None] = print) -> 
     os.makedirs(out_dir, exist_ok=True)
     urls, sha, by_url = gold_set(conn, cid)
     gold_labels = {u: by_url[u]["label"] for u in urls}
+    weights = {u: gold.weight_of(by_url[u]) for u in urls}
+    weighted_any = any(w != 1.0 for w in weights.values())
     runs = [r for r in _bench_runs(conn, cid) if (r["spec"].get("scope") or {}).get("sha") == sha
             and r["spec"].get("bench")]
     other = [r["name"] for r in _bench_runs(conn, cid) if (r["spec"].get("scope") or {}).get("sha") != sha]
@@ -438,7 +440,10 @@ def report(conn, cid: int, out_dir: str, log: Callable[[str], None] = print) -> 
 
     per_run_rows, stability_rows, grounding_rows, paired_rows, per_page_rows = [], [], [], [], []
     summary: Dict = {"gold_sha": sha, "n": len(urls), "labels": {}, "drifted": sorted(drift),
-                     "template_hash_mismatch": hash_mismatch, "arms": {}, "p1": {}}
+                     "template_hash_mismatch": hash_mismatch, "arms": {}, "p1": {},
+                     "weighted": weighted_any,
+                     "sampling": sorted({(by_url[u].get("sample_stage") or "", round(float(by_url[u]["sample_frac"]), 3))
+                                         for u in urls if by_url[u].get("sample_frac")})}
     for l in gold.LABELS:
         summary["labels"][l] = sum(1 for v in gold_labels.values() if v == l)
     include_text = runs[0]["spec"].get("inclusion_context", "")
@@ -452,8 +457,12 @@ def report(conn, cid: int, out_dir: str, log: Callable[[str], None] = print) -> 
             arm["phase1"][bound] = {
                 "micro": bm.rates(bm.confusion(
                     [(bm.resolve_gold(gold_ok[u], bound), v.get(u)) for v in reps for u in gold_ok])),
+                # Inverse-probability weighted (pages sampled per stage on guc-0029 count 1/fraction).
+                "micro_weighted": bm.rates(bm.confusion_weighted(
+                    [(bm.resolve_gold(gold_ok[u], bound), v.get(u), weights[u]) for v in reps for u in gold_ok])),
                 "per_repeat": ms,
                 "majority": bm.phase_metrics(gold_ok, bm.majority_vote(reps, urls), bound),
+                "majority_weighted": bm.phase_metrics_weighted(gold_ok, bm.majority_vote(reps, urls), weights, bound),
             }
         arm["borderline_kept_share"] = [bm.borderline_agreement(gold_labels, v) for v in reps]
         st = bm.stability(reps, urls)
@@ -522,6 +531,8 @@ def report(conn, cid: int, out_dir: str, log: Callable[[str], None] = print) -> 
             for bound in bm.BOUNDS:
                 e2e[bound] = {"micro": bm.rates(bm.confusion(
                     [(bm.resolve_gold(gold_ok[u], bound), e.get(u)) for e in e_reps for u in gold_ok])),
+                    "micro_weighted": bm.rates(bm.confusion_weighted(
+                        [(bm.resolve_gold(gold_ok[u], bound), e.get(u), weights[u]) for e in e_reps for u in gold_ok])),
                     "value_add_mean": {k: sum(v[bound][k] or 0 for v in va_reps) / len(va_reps)
                                        for k in ("fp_removed", "tp_wrongly_dropped", "net")},
                     "value_add": [v[bound] for v in va_reps]}
@@ -601,6 +612,11 @@ def _results_md(s: dict, code_sha: str, expected_hash: dict) -> str:
     if lbl.get("out", 0) < 15:
         L.append(f"_Note: only {lbl.get('out', 0)} definite `out` pages — precision and specificity are "
                  f"descriptive (protocol §5)._\n")
+    if s.get("weighted"):
+        L.append("_Gold pages were sampled per pipeline stage (guc-0029): stage / fraction = "
+                 + ", ".join(f"{st} {f:.0%}" for st, f in s["sampling"])
+                 + ". **Weighted** figures count each label 1/fraction (inverse-probability); raw figures "
+                 "treat the sample as the population and overstate recall when drops were under-sampled._\n")
     L.append("## Headline — Phase-1 recall on D (micro over repeats, T=0)\n")
     L.append("| Arm | Repeats | Recall (D) | Precision (D) | F1 | Specificity | Unparseable | Unanimous | Fleiss κ | $/run | ms p50 / p90 |")
     L.append("|---|---|---|---|---|---|---|---|---|---|---|")
@@ -612,6 +628,10 @@ def _results_md(s: dict, code_sha: str, expected_hash: dict) -> str:
                  f"{_fmt(d['specificity'])} | {_fmt(a['unparseable_rate'], pct=True)} | "
                  f"{_fmt(st['unanimous_share'], pct=True)} | {_fmt(st['fleiss_kappa'])} | "
                  f"{_fmt(c['per_run_mean'], nd=4)} | {_fmt(c['ms_median'], nd=0)} / {_fmt(c['ms_p90'], nd=0)} |")
+        if s.get("weighted"):
+            w = a["phase1"]["D"]["micro_weighted"]
+            L.append(f"| p1-{m} (weighted) | {a['repeats']} | {_fmt(w['recall'])} | {_fmt(w['precision'])} | {_fmt(w['f1'])} | "
+                     f"{_fmt(w['specificity'])} | | | | | |")
     if s.get("paired"):
         d = s["paired"][0]
         L.append(f"\n**H1** ({d['b']} − {d['a']} Phase-1 recall on D, majority vote): Δ = {_fmt(d['recall_diff_b_minus_a'])} "

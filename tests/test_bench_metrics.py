@@ -166,3 +166,21 @@ class TestPaired(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestWeighted(unittest.TestCase):
+    def test_weighted_confusion_counts_inverse_probability(self):
+        gold = {"k1": "in", "k2": "out", "d1": "in", "d2": "out"}
+        v = {"k1": 1, "k2": 1, "d1": 0, "d2": 0}
+        # keeps sampled fully (w=1), drops sampled at 1/3 (w=3): the missed 'in' counts three times
+        w = {"k1": 1.0, "k2": 1.0, "d1": 3.0, "d2": 3.0}
+        raw = bm.phase_metrics(gold, v)
+        wt = bm.phase_metrics_weighted(gold, v, w)
+        self.assertAlmostEqual(raw["recall"], 0.5)
+        self.assertAlmostEqual(wt["recall"], 1 / 4)            # tp 1 vs fn 3
+        self.assertEqual(wt["pages"], 4)
+        self.assertAlmostEqual(wt["n"], 8.0)
+        self.assertAlmostEqual(wt["specificity"], 3 / 4)
+        # all weights 1 -> identical to the raw figures
+        same = bm.phase_metrics_weighted(gold, v, {})
+        self.assertEqual((same["recall"], same["precision"]), (raw["recall"], raw["precision"]))

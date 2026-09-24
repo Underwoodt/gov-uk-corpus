@@ -14,8 +14,10 @@
   <p class="hint" style="margin-top:0;">Rate what the pipeline did with each page in <strong>one run</strong>:
     <em>correct</em> / <em>wrong</em> / <em>borderline</em>, with a one-line reason. Each verdict is stored as a
     gold label (correct keep → <b>in</b>, correct drop → <b>out</b>, wrong keep → <b>out</b>, wrong drop → <b>in</b>)
-    that the benchmark scores every model and run against. A partial set is fine — the stage filter lets you
-    work through, say, the Phase-1 drops first. Labels are per page, not per run, so they carry over to every run.</p>
+    that the benchmark scores every model and run against. You don't need every page: set a <strong>target per
+    stage</strong> below and the page picks that many at random (a fixed, seeded pick, so it is the same set every
+    time and raising a target only adds pages). The sampling fraction is stored with each label so the benchmark
+    can weight it. Labels are per page, not per run, so they carry over to every run.</p>
 
   <div class="card gl-top">
     <form method="get" class="gl-runpick">
@@ -41,11 +43,37 @@
   {% if not run %}
     <div class="card"><p>No inclusion run for this shortlist yet. Run the AI pipeline first, then come back to rate its outcomes.</p></div>
   {% else %}
+  <div class="card gl-sample">
+    <div class="gs-head">
+      <strong>Minimum gold set for this run</strong>
+      <span class="muted-sm">how many pages of each stage to label · picked at random, fixed by seed {{ 42 }}</span>
+      <label class="gl-chk" style="margin-left:auto;"><input type="checkbox" id="only-sampled" checked> show only the sampled minimum</label>
+    </div>
+    <table class="gs-table">
+      <thead><tr><th>Stage</th><th class="num">Pages</th><th class="num">Target</th><th class="num">Fraction</th><th class="num">Labelled (in sample)</th></tr></thead>
+      <tbody>
+      {% for k, lbl in stages.items() %}{% if stage_counts[k] %}
+        <tr data-stage="{{ k }}">
+          <td>{{ lbl }}</td><td class="num">{{ stage_counts[k] }}</td>
+          <td class="num"><input type="number" class="gs-target" min="0" max="{{ stage_counts[k] }}" value="{{ targets[k] }}" data-stage="{{ k }}"></td>
+          <td class="num gs-frac">{{ '%.0f'|format(100 * progress[k].frac) if progress[k] and progress[k].frac is not none else '—' }}%</td>
+          <td class="num"><span class="gs-prog">{{ progress[k].labelled_in_sample }} / {{ progress[k].target }}</span></td>
+        </tr>
+      {% endif %}{% endfor %}
+      </tbody>
+      <tfoot><tr><td>Total</td><td class="num">{{ pages|length }}</td><td class="num" id="gs-total">{{ sample_total }}</td><td></td><td></td></tr></tfoot>
+    </table>
+    <div class="gs-actions">
+      <button type="button" class="btn secondary-btn" id="gs-save">Save targets</button>
+      <span class="muted-sm" id="gs-note">Small stages are labelled in full (≤ 25 pages); bigger ones default to 40. Raising a target keeps the pages already picked.</span>
+    </div>
+  </div>
+
   <div class="gl-filters" role="group" aria-label="Filter by the stage a page left">
     <span class="gl-fl">Left at:</span>
     <button type="button" class="fbtn on" data-stage="">All <span class="count">{{ pages|length }}</span></button>
     {% for k, lbl in stages.items() %}{% if stage_counts[k] %}
-      <button type="button" class="fbtn" data-stage="{{ k }}">{{ lbl }} <span class="count">{{ stage_counts[k] }}</span></button>
+      <button type="button" class="fbtn" data-stage="{{ k }}">{{ lbl }} <span class="count" data-all="{{ stage_counts[k] }}">{{ stage_counts[k] }}</span></button>
     {% endif %}{% endfor %}
     <label class="gl-chk"><input type="checkbox" id="only-unlabelled"> unlabelled only</label>
     <input type="search" id="gl-search" placeholder="filter by url or title" aria-label="filter by url or title">
@@ -55,13 +83,13 @@
   <div id="gl-list">
   {% for p in pages %}
     <div class="card gl-card" data-url="{{ p.url }}" data-stage="{{ p.stage or '' }}" data-labelled="{{ '1' if p.label else '0' }}"
-         data-hay="{{ (p.url ~ ' ' ~ p.title)|lower }}">
+         data-sampled="{{ '1' if p.sampled else '0' }}" data-hay="{{ (p.url ~ ' ' ~ p.title)|lower }}">
       <div class="gc-head">
         <div class="gc-title">
           <a href="{{ p.url }}" target="_blank" rel="noopener">{{ p.title or p.url }}</a>
           <div class="gc-url mono">{{ p.url }}</div>
         </div>
-        <span class="stage {{ p.stage }}">{{ p.stage_label }}</span>
+        <span class="stage {{ p.stage }}">{{ p.stage_label }}</span>{% if p.sampled %}<span class="samp" title="In the sampled minimum for this stage">sampled</span>{% endif %}
       </div>
       <div class="table-wrap">
         <table class="gc-table">
@@ -138,6 +166,17 @@
     .rate-out { font-size:13px; } .lbl { text-transform:uppercase; } .lbl.in { color:var(--green-dark); } .lbl.out { color:#a5200f; } .lbl.borderline { color:#7a5a00; }
     .rate-out.err { color:var(--red); }
     .seed { margin-left:auto; font-size:12px; color:var(--muted); font-style:italic; }
+    .gl-sample { padding:12px 16px; margin-bottom:14px; }
+    .gs-head { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
+    .gs-table { font-size:14px; border-collapse:collapse; }
+    .gs-table th, .gs-table td { padding:4px 12px 4px 0; text-align:left; }
+    .gs-table thead th { font-size:11px; text-transform:uppercase; letter-spacing:.02em; color:var(--muted); border-bottom:1px solid var(--border); }
+    .gs-table tfoot td { border-top:1px solid var(--border); font-weight:700; }
+    .gs-table .num { text-align:right; font-variant-numeric:tabular-nums; }
+    .gs-target { width:72px; text-align:right; font-size:13px; padding:3px 6px; }
+    .gs-actions { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:10px; }
+    .samp { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; padding:3px 8px; border-radius:999px; background:#e8f1fb; color:#1d4e89; margin-left:6px; }
+    .gl-card[data-sampled="0"] .stage { opacity:.7; }
   </style>
 
   <script>
@@ -173,7 +212,7 @@
         card.dataset.labelled = j.label ? "1" : "0";
         wrap.querySelector(".rate-clear").hidden = !j.label;
         out.innerHTML = j.label ? `→ gold <b class="lbl ${j.label}">${j.label}</b>` : "cleared";
-        setStatus(j); applyFilter();
+        setStatus(j); paintProgress(j.progress); applyFilter();
       } catch (e) { out.className = "rate-out err"; out.textContent = "Couldn't save: " + (e.message || e); }
     }
     document.querySelectorAll(".gl-card").forEach(card => {
@@ -195,19 +234,58 @@
       if (clr) clr.onclick = () => { card.querySelector(".rate").dataset.verdict = ""; save(card, ""); };
     });
 
-    // ---- filters: stage · unlabelled only · text ----
+    // ---- filters: stage · sampled minimum · unlabelled only · text ----
     let stage = "";
     function applyFilter() {
       const only = document.getElementById("only-unlabelled").checked;
+      const sampledOnly = document.getElementById("only-sampled").checked;
       const q = (document.getElementById("gl-search").value || "").trim().toLowerCase();
-      let shown = 0;
+      let shown = 0; const perStage = {};
       document.querySelectorAll(".gl-card").forEach(c => {
-        const ok = (!stage || c.dataset.stage === stage) && (!only || c.dataset.labelled !== "1")
+        const inScope = (!sampledOnly || c.dataset.sampled === "1");
+        if (inScope) perStage[c.dataset.stage] = (perStage[c.dataset.stage] || 0) + 1;
+        const ok = inScope && (!stage || c.dataset.stage === stage) && (!only || c.dataset.labelled !== "1")
           && (!q || c.dataset.hay.includes(q));
         c.hidden = !ok; if (ok) shown++;
       });
+      document.querySelectorAll(".fbtn[data-stage]").forEach(b => {
+        const cnt = b.querySelector(".count"); if (!cnt || !b.dataset.stage) return;
+        cnt.textContent = sampledOnly ? (perStage[b.dataset.stage] || 0) : cnt.dataset.all;
+      });
       document.getElementById("gl-shown").textContent = shown + " shown";
     }
+    function paintProgress(prog) {
+      if (!prog) return;
+      Object.entries(prog).forEach(([k, v]) => {
+        const row = document.querySelector(`.gs-table tr[data-stage="${k}"]`); if (!row) return;
+        row.querySelector(".gs-prog").textContent = `${v.labelled_in_sample} / ${v.target}`;
+        row.querySelector(".gs-frac").textContent = v.frac != null ? Math.round(100 * v.frac) + "%" : "—";
+      });
+    }
+    document.getElementById("only-sampled").onchange = applyFilter;
+    document.getElementById("gs-save").onclick = async () => {
+      const targets = {};
+      document.querySelectorAll(".gs-target").forEach(i => { targets[i.dataset.stage] = parseInt(i.value || "0", 10); });
+      const note = document.getElementById("gs-note"); note.textContent = "Saving…";
+      try {
+        const r = await fetch(`/api/categories/${CID}/gold/sample`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ run: RUN, targets })
+        });
+        const j = await r.json();
+        if (!r.ok || j.error) throw new Error(j.error || ("HTTP " + r.status));
+        const sampled = new Set(Object.values(j.sampled).flat());
+        document.querySelectorAll(".gl-card").forEach(c => {
+          c.dataset.sampled = sampled.has(c.dataset.url) ? "1" : "0";
+          const badge = c.querySelector(".samp");
+          if (sampled.has(c.dataset.url) && !badge) c.querySelector(".gc-head").insertAdjacentHTML("beforeend", '<span class="samp">sampled</span>');
+          if (!sampled.has(c.dataset.url) && badge) badge.remove();
+        });
+        document.getElementById("gs-total").textContent = j.sample_total;
+        paintProgress(j.progress); applyFilter();
+        note.textContent = "Saved. The picks are fixed by seed; raising a target keeps the pages already picked.";
+      } catch (e) { note.textContent = "Couldn't save: " + (e.message || e); }
+    };
     document.querySelectorAll(".fbtn").forEach(b => b.onclick = () => {
       stage = b.dataset.stage; document.querySelectorAll(".fbtn").forEach(x => x.classList.toggle("on", x === b)); applyFilter();
     });

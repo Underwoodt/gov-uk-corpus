@@ -2697,6 +2697,32 @@ async def api_performance_diff_explain(request: Request, cid: int):
 # the verdict becomes a gold label (in / out / borderline) in category_gold_labels, the ground
 # truth the benchmark (govuk_corpus.bench) scores against. Partial sets are fine.
 
+def _gold_targets(conn, cid: int, run_id: str, stage_counts: dict) -> dict:
+    """Per-stage sampling targets for (category, run): the saved ones, else the defaults
+    (whole stage when it is small, otherwise gold.SAMPLE_DEFAULT_TARGET)."""
+    raw = settings.get_setting(conn, f"gold_sample_{cid}_{run_id}", "") if run_id else ""
+    targets = gold.default_targets(stage_counts)
+    if raw:
+        try:
+            saved = json.loads(raw)
+            for k, v in (saved.get("targets") or {}).items():
+                if k in stage_counts and v is not None:
+                    targets[k] = max(0, min(int(v), stage_counts[k]))
+        except (ValueError, TypeError):
+            pass
+    return targets
+
+
+def _gold_pages_sampled(conn, category, run_id: str):
+    """(pages, selection, targets, stage_counts) for a run with the sampling applied."""
+    pages = gold.run_pages(conn, category, run_id)
+    stage_counts = {k: sum(1 for p in pages if p["stage"] == k) for k in gold.STAGES}
+    targets = _gold_targets(conn, int(category["id"]), run_id, stage_counts)
+    selection = gold.sample_selection(pages, targets)
+    gold.apply_sampling(pages, selection)
+    return pages, selection, targets, stage_counts
+
+
 @app.get("/categories/{cid}/gold", response_class=HTMLResponse)
 def gold_page(request: Request, cid: int, run: str = ""):
     if not authed(request):
@@ -2713,13 +2739,18 @@ def gold_page(request: Request, cid: int, run: str = ""):
             incl = None
         excl_id = evaluate.latest_exclusion_run(conn, head) if incl else None
         excl = evaluate.get_run(conn, excl_id) if excl_id else None
-        pages = gold.run_pages(conn, category, head) if incl else []
+        if incl:
+            pages, selection, targets, stage_counts = _gold_pages_sampled(conn, category, head)
+            progress = gold.sample_progress(pages, selection)
+        else:
+            pages, selection, targets, stage_counts, progress = [], {}, {}, {}, {}
         # Inclusion runs (chain heads) of this category, for the run picker.
         heads = [r for r in evaluate.list_runs(conn, cid) if not r.get("source_run_id")]
         st = gold.status(conn, cid)
-        stage_counts = {k: sum(1 for p in pages if p["stage"] == k) for k in gold.STAGES}
         ctxd = ctx(conn, request, category=category, run=incl, excl=excl, pages=pages, heads=heads,
                    stages=gold.STAGES, stage_counts=stage_counts, gold_status=st,
+                   targets=targets, progress=progress,
+                   sample_total=sum(s["target"] for s in selection.values()),
                    labelled_here=sum(1 for p in pages if p["label"]))
         return templates.TemplateResponse("gold_labels.html", ctxd)
     finally:
@@ -2743,18 +2774,54 @@ async def api_gold_label(request: Request, cid: int):
         run_row = evaluate.get_run(conn, run_id)
         if not category or not run_row or str(run_row.get("category_id")) != str(cid):
             return JSONResponse({"error": "not found"}, status_code=404)
-        page = next((p for p in gold.run_pages(conn, category, run_id) if p["url"] == url), None)
+        pages, selection, _t, _c = _gold_pages_sampled(conn, category, run_id)
+        page = next((p for p in pages if p["url"] == url), None)
         if not page:
             return JSONResponse({"error": "that page is not in this run"}, status_code=404)
         cu = current_user(request)
         who = (cu.get("email") if cu else None) or "app"
         try:
-            label = gold.save_verdict(conn, category, page, verdict, rationale, who)
+            label = gold.save_verdict(conn, category, page, verdict, rationale, who, sample_run_id=run_id)
         except ValueError as e:
             return JSONResponse({"error": str(e)}, status_code=400)
+        page["label"] = label or ""
         st = gold.status(conn, cid)
         return JSONResponse({"ok": True, "label": label, "counts": st["counts"], "labelled": st["labelled"],
-                            "forwarded": st["forwarded"], "gold_sha": st["gold_sha"]})
+                            "forwarded": st["forwarded"], "gold_sha": st["gold_sha"],
+                            "progress": gold.sample_progress(pages, selection)})
+    finally:
+        conn.close()
+
+
+@app.post("/api/categories/{cid}/gold/sample")
+async def api_gold_sample(request: Request, cid: int):
+    """Save the per-stage sampling targets for a run (how many pages of each stage make up the
+    minimum gold set). Returns the resulting selection so the page can repaint."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    body = await request.json()
+    run_id = str(body.get("run") or "")
+    targets_in = body.get("targets") or {}
+    conn = connect()
+    try:
+        category = cat.get_category(conn, cid)
+        run_row = evaluate.get_run(conn, run_id) if run_id else None
+        if not category or not run_row or str(run_row.get("category_id")) != str(cid):
+            return JSONResponse({"error": "not found"}, status_code=404)
+        clean = {}
+        for k, v in targets_in.items():
+            if k in gold.STAGES:
+                try:
+                    clean[k] = max(0, int(v))
+                except (TypeError, ValueError):
+                    return JSONResponse({"error": f"bad target for {k}"}, status_code=400)
+        settings.set_setting(conn, f"gold_sample_{cid}_{run_id}",
+                             json.dumps({"targets": clean, "seed": gold.DEFAULT_SEED, "updated_at": db.now_iso()}))
+        pages, selection, targets, _c = _gold_pages_sampled(conn, category, run_id)
+        return JSONResponse({"ok": True, "targets": targets,
+                            "sampled": {s: sorted(v["urls"]) for s, v in selection.items()},
+                            "progress": gold.sample_progress(pages, selection),
+                            "sample_total": sum(s["target"] for s in selection.values())})
     finally:
         conn.close()
 

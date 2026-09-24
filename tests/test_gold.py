@@ -394,3 +394,64 @@ class TestGoldRoutes(unittest.TestCase):
         self.assertIn("it is slurry", r.text)                     # the label is pre-filled in the sheet
         r = c.get(f"/categories/{self.cid}/gold")
         self.assertIn("by app", r.text)
+
+
+class TestSampling(unittest.TestCase):
+    def _pages(self):
+        return ([{"url": f"https://www.gov.uk/d{i}", "stage": "p1_drop", "label": ""} for i in range(60)]
+                + [{"url": f"https://www.gov.uk/k{i}", "stage": "kept", "label": ""} for i in range(10)]
+                + [{"url": "https://www.gov.uk/u", "stage": "p1_unparsed", "label": ""}])
+
+    def test_defaults_full_for_small_stages(self):
+        self.assertEqual(gold.default_targets({"p1_drop": 60, "kept": 10, "p2_drop": 0}), {"p1_drop": 40, "kept": 10})
+
+    def test_selection_is_seeded_incremental_and_uniform(self):
+        pages = self._pages()
+        a = gold.sample_selection(pages, {"p1_drop": 20, "kept": 10})
+        b = gold.sample_selection(list(reversed(pages)), {"p1_drop": 20, "kept": 10})
+        self.assertEqual(a["p1_drop"]["urls"], b["p1_drop"]["urls"])          # order of input irrelevant
+        self.assertEqual((a["p1_drop"]["n"], a["p1_drop"]["target"]), (60, 20))
+        self.assertAlmostEqual(a["p1_drop"]["frac"], 1 / 3)
+        self.assertEqual(a["kept"]["frac"], 1.0)
+        bigger = gold.sample_selection(pages, {"p1_drop": 30})
+        self.assertTrue(a["p1_drop"]["urls"] <= bigger["p1_drop"]["urls"])     # raising only adds
+        self.assertNotEqual(a["p1_drop"]["urls"], gold.sample_selection(pages, {"p1_drop": 20}, seed=7)["p1_drop"]["urls"])
+        self.assertEqual(gold.sample_selection(pages, {"p1_drop": 999})["p1_drop"]["target"], 60)   # clamped
+        self.assertEqual(a["p1_unparsed"]["target"], 1)                          # no target -> whole stage
+        gold.apply_sampling(pages, a)
+        self.assertEqual(sum(1 for p in pages if p["sampled"]), 31)
+        d = next(p for p in pages if p["sampled"] and p["stage"] == "p1_drop")
+        self.assertAlmostEqual(d["sample_frac"], 1 / 3)
+        pages[0]["label"] = "out"
+        prog = gold.sample_progress(pages, a)
+        self.assertEqual(prog["p1_drop"]["target"], 20)
+        self.assertEqual(prog["p1_drop"]["labelled_total"], 1)
+
+    def test_weight_of(self):
+        self.assertEqual(gold.weight_of({"sample_frac": 0.25}), 4.0)
+        self.assertEqual(gold.weight_of({"sample_frac": None}), 1.0)
+        self.assertEqual(gold.weight_of({}), 1.0)
+
+
+class TestSampledVerdict(GoldBase):
+    def test_save_verdict_stamps_sampling(self):
+        p1 = evaluate.create_run(self.conn, CID, "m", "anthropic")
+        for slug, keep in (("p0", 0), ("p1", 0), ("p2", 0), ("p3", 1)):
+            evaluate.save_page(self.conn, p1, CID, f"https://www.gov.uk/{slug}",
+                               {"keep": keep, "score": 0.8 if keep else 0.0, "reason": "r"}, 5)
+        cat_ = self._category()
+        pages = gold.run_pages(self.conn, cat_, p1)
+        sel = gold.sample_selection(pages, {"p1_drop": 2, "kept": 1})
+        gold.apply_sampling(pages, sel)
+        sampled_drop = next(p for p in pages if p["sampled"] and p["stage"] == "p1_drop")
+        unsampled_drop = next(p for p in pages if not p["sampled"] and p["stage"] == "p1_drop")
+        gold.save_verdict(self.conn, cat_, sampled_drop, "wrong", "should be in", "t@x", sample_run_id=p1)
+        gold.save_verdict(self.conn, cat_, unsampled_drop, "correct", "fine", "t@x", sample_run_id=p1)
+        got = {r["url"]: r for r in gold.load_gold(self.conn, CID)}
+        s = got[sampled_drop["url"]]
+        self.assertEqual((s["sample_run_id"], s["sample_stage"]), (p1, "p1_drop"))
+        self.assertAlmostEqual(s["sample_frac"], 2 / 3)
+        self.assertEqual(gold.weight_of(s), 1.5)
+        u = got[unsampled_drop["url"]]
+        self.assertIsNone(u["sample_frac"])
+        self.assertEqual(gold.weight_of(u), 1.0)

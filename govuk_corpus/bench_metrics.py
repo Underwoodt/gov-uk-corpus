@@ -61,6 +61,34 @@ def _div(a: float, b: float) -> Optional[float]:
     return (a / b) if b else None
 
 
+def confusion_weighted(triples: Iterable[Tuple[Optional[bool], Optional[int], float]]) -> Dict[str, float]:
+    """Like `confusion` but each (gold, verdict, weight) triple adds `weight` to its cell — the
+    inverse-probability estimate when pages were sampled at different rates per stage (a page
+    sampled at 1/3 stands for three). `n` is the weighted population, `pages` the raw count."""
+    c = {"tp": 0.0, "fp": 0.0, "fn": 0.0, "tn": 0.0, "n": 0.0, "unparseable": 0.0, "pages": 0}
+    for gold, v, w in triples:
+        if gold is None:
+            continue
+        w = float(w or 1.0)
+        c["n"] += w
+        c["pages"] += 1
+        if v is None:
+            c["unparseable"] += w
+        keep = v == 1
+        key = "tp" if (gold and keep) else "fn" if gold else "fp" if keep else "tn"
+        c[key] += w
+    return c
+
+
+def phase_metrics_weighted(gold: Dict[str, str], verdicts: Dict[str, Optional[int]],
+                           weights: Dict[str, float], bound: str = "D") -> Dict[str, Optional[float]]:
+    trip = [(resolve_gold(lbl, bound), verdicts.get(u), weights.get(u, 1.0)) for u, lbl in gold.items()]
+    c = confusion_weighted(trip)
+    r = rates({k: c[k] for k in ("tp", "fp", "fn", "tn", "n", "unparseable")})
+    r["pages"] = c["pages"]
+    return r
+
+
 def rates(c: Dict[str, int]) -> Dict[str, Optional[float]]:
     p = _div(c["tp"], c["tp"] + c["fp"])
     r = _div(c["tp"], c["tp"] + c["fn"])

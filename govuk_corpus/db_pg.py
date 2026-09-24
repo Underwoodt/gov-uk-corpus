@@ -67,6 +67,10 @@ def init_db(conn) -> None:
     conn.execute("ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS heartbeat_at text")
     # A JSON snapshot of the prompt inputs a run used, so its prompts are exactly reproducible.
     conn.execute("ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS prompt_spec text")
+    # Sampling provenance on gold labels (guc-0029 stage-stratified picks).
+    conn.execute("ALTER TABLE category_gold_labels ADD COLUMN IF NOT EXISTS sample_run_id text")
+    conn.execute("ALTER TABLE category_gold_labels ADD COLUMN IF NOT EXISTS sample_stage text")
+    conn.execute("ALTER TABLE category_gold_labels ADD COLUMN IF NOT EXISTS sample_frac double precision")
     # GOV.UK Search view_count (~14-day pageviews) + the date it was collected.
     conn.execute("ALTER TABLE content ADD COLUMN IF NOT EXISTS view_count integer")
     conn.execute("ALTER TABLE content ADD COLUMN IF NOT EXISTS view_count_updated text")

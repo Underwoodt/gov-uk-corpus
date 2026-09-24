@@ -185,6 +185,26 @@ class TestEstimateAndReport(BenchBase):
         self.assertEqual(s["paired"][0]["recall_diff_b_minus_a"], 0.0)
         self.assertFalse(s["H1"])
         self.assertEqual(s["template_hash_mismatch"], [])
+        self.assertFalse(s["weighted"])
+        self.assertEqual(d1["recall"], h["phase1"]["D"]["micro_weighted"]["recall"])   # no sampling -> same
+
+    def test_report_weights_sampled_labels(self):
+        # p2 (gold out, model drops it) was sampled at 1/2 -> it stands for two pages in the weighted figures.
+        self.conn.execute("UPDATE category_gold_labels SET sample_frac=0.5, sample_stage='p1_drop' WHERE url LIKE '%/p2'")
+        self.conn.commit()
+        bench.run(self.conn, CID, "haiku", repeats=1, dry_run=True, log=self.log.append)
+        with tempfile.TemporaryDirectory() as d:
+            s = bench.report(self.conn, CID, d, log=self.log.append)
+            with open(os.path.join(d, "results.md"), encoding="utf-8") as fh:
+                md = fh.read()
+        self.assertTrue(s["weighted"])
+        self.assertEqual(s["sampling"], [("p1_drop", 0.5)])
+        h = s["arms"]["haiku"]["phase1"]["D"]
+        self.assertEqual(h["micro"]["tn"], 2)
+        self.assertEqual(h["micro_weighted"]["tn"], 3.0)         # p2 counted twice
+        self.assertEqual(h["micro_weighted"]["pages"] if "pages" in h["micro_weighted"] else 4, 4)
+        self.assertIn("(weighted)", md)
+        self.assertIn("inverse-probability", md)
 
 
 if __name__ == "__main__":

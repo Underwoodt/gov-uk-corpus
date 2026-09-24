@@ -41,6 +41,17 @@ invalidates the run.
   is a review aid, not a blind label; this is recorded as a limitation). Seed lists
   (`should_include_urls` / `should_exclude_urls`) are shown as `seed_label` but never written as
   labels. Import validates the whole sheet (`gold import`) and stamps `content_hash_at_label`.
+- **Stage-stratified sampling (in-app labelling, guc-0029):** the labeller may label a
+  *minimum set* rather than every page: per pipeline stage of one reference run (dropped at
+  Phase 1 / dropped at Phase 2 / kept to the end) a target number of pages is picked in a fixed
+  seeded order (uniform within the stage, blind to the seed lists; the same pages on every
+  visit; raising a target only adds). Defaults: a stage of ≤ 25 pages is labelled in full,
+  otherwise 40. The sampling fraction (target / stage size), the stage and the reference run
+  are stored on each label. Because stages are sampled at different rates, the raw figures
+  over the labelled pages are biased (recall is overstated when drops are under-sampled); the
+  report therefore also gives **inverse-probability weighted** figures (each label counts
+  1 / fraction) and names the fractions used. Labels imported from the CSV sheet carry no
+  fraction (weight 1). Bootstrap intervals and paired tests are computed on the raw sample.
 - **Exclusions at analysis:** pages whose `content_hash` at evaluation differs from
   `content_hash_at_label` (drift) and pages withdrawn since labelling are dropped from accuracy
   metrics and listed.
