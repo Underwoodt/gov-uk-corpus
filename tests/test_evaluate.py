@@ -263,6 +263,14 @@ class TestExclusion(unittest.TestCase):
             {"inclusion": "x", "name_upper": "SLURRY"}, {})
         self.assertEqual(out, "A x B (none) C SLURRY")
 
+    def test_template_fingerprint_identifies_prompt_text(self):
+        a = evaluate.template_fingerprint("x {{BODY}}")
+        self.assertEqual(a, evaluate.template_fingerprint("x {{BODY}}"))    # deterministic
+        self.assertEqual(len(a), 8)
+        self.assertNotEqual(a, evaluate.template_fingerprint("y {{BODY}}"))  # any text change -> new hash
+        self.assertEqual(evaluate.template_fingerprint(""), "")
+        self.assertEqual(evaluate.template_fingerprint(None), "")
+
     def test_exclusion_candidates_are_source_keeps_only(self):
         for i in range(3):
             self.conn.execute("INSERT INTO content (url, title, description, search_text) VALUES (?,?,?,?)",

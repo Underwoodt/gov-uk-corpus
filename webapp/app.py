@@ -2008,6 +2008,9 @@ def _prompt_spec_json(conn, cid: int, phase: str, trial=None) -> str:
     return json.dumps({
         "template": template,
         "template_version": template_version,
+        # Content fingerprint of the template text: same hash <=> same prompt. The git SHA above
+        # changes on ANY commit, so only this tells you whether the prompt itself changed.
+        "template_hash": evaluate.template_fingerprint(template),
         "inclusion_context": c.get("inclusion_context") or "",
         "exclusion_context": c.get("exclusion_context") or "",
         "name": (c.get("description") or "").strip() or cat.prettify(c.get("slug")) or "the topic",
@@ -3561,6 +3564,9 @@ def run_detail_page(request: Request, cid: int, run_id: str):
             "model": rr.get("actual_model") or rr.get("model"),
             "prompt_variant": tr["prompt_variant"], "concurrency": tr["concurrency"],
             "caching": tr["caching"], "template_version": spec.get("template_version"),
+            # Prompt identity: the stamped fingerprint, or one computed from the stored template
+            # for runs stamped before the field existed (compute-on-read — no backfill needed).
+            "template_hash": spec.get("template_hash") or evaluate.template_fingerprint(spec.get("template")),
             "body_limit": spec.get("body_limit"), "stamped": bool(spec)})
     # Run lifecycle state for the action button: fresh (never run) | partial (started, unfinished) | complete.
     started = (totals.get("pages") or 0) > 0

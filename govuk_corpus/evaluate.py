@@ -9,6 +9,7 @@ app makes the API calls and drives runs.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -259,6 +260,15 @@ def render_phase_prompt(fields: Dict, template: str, spec: Dict, page: Dict) -> 
     if any(t in template for t in _LEGACY_TOKENS):
         values.update(_legacy_composites(values, spec, page))
     return _fill(template, values)
+
+
+def template_fingerprint(text: Optional[str]) -> str:
+    """Short content hash (8 hex chars) of a prompt template: same fingerprint <=> same prompt
+    text. Stamped on each run beside the git SHA — which changes on ANY commit, so it can't tell
+    you whether the prompt itself changed; this can. '' for an empty/missing template."""
+    if not text:
+        return ""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:8]
 
 
 def build_prompt(inclusion: str, exclusion: str, title: str, description: str,
@@ -738,6 +748,9 @@ def list_runs(conn, category_id: int) -> List[dict]:
                               "concurrency": int(s.get("concurrency") or 1),
                               "caching": bool(s.get("caching")),
                               "template_version": s.get("template_version"),
+                              # Prompt identity: the stamped fingerprint, or one computed from the
+                              # stored template for runs stamped before the field existed.
+                              "template_hash": s.get("template_hash") or template_fingerprint(s.get("template")),
                               "body_limit": s.get("body_limit")}
             except (ValueError, TypeError):
                 pass

@@ -130,7 +130,9 @@
         <tr data-metric="cfg-variant"><td>Prompt variant <span class="metric-i" tabindex="0" title="Prompt build used: current (today's wording) or cached (reordered, cache-enabled). Stamped at run creation." style="cursor:help;color:var(--link,#1d70b8);font-weight:700;font-size:13px;">&#9432;</span></td><td></td><td></td><td></td></tr>
         <tr data-metric="cfg-concurrency"><td>Concurrency <span class="metric-i" tabindex="0" title="How many pages were sent to the model at once (1 = sequential). Stamped at run creation." style="cursor:help;color:var(--link,#1d70b8);font-weight:700;font-size:13px;">&#9432;</span></td><td></td><td></td><td></td></tr>
         <tr data-metric="cfg-caching"><td>Caching <span class="metric-i" tabindex="0" title="Whether a cache breakpoint was set on the stable prompt prefix. Stamped at run creation." style="cursor:help;color:var(--link,#1d70b8);font-weight:700;font-size:13px;">&#9432;</span></td><td></td><td></td><td></td></tr>
-        <tr data-metric="cfg-version"><td>Prompt version <span class="metric-i" tabindex="0" title="Version of the prompt template the run was stamped with." style="cursor:help;color:var(--link,#1d70b8);font-weight:700;font-size:13px;">&#9432;</span></td><td></td><td></td><td></td></tr>
+        <tr data-metric="cfg-fp-p1"><td>Prompt fingerprint – Phase 1 <span class="metric-i" tabindex="0" title="Hash of the Phase 1 (inclusion) prompt template text the run was stamped with. The same fingerprint means the same prompt. Shown in red when the compared runs used different prompt text." style="cursor:help;color:var(--link,#1d70b8);font-weight:700;font-size:13px;">&#9432;</span></td><td class="mono"></td><td class="mono"></td><td class="mono"></td></tr>
+        <tr data-metric="cfg-fp-p2"><td>Prompt fingerprint – Phase 2 <span class="metric-i" tabindex="0" title="Hash of the Phase 2 (exclusion) prompt template text the run was stamped with. The same fingerprint means the same prompt. Shown in red when the compared runs used different prompt text." style="cursor:help;color:var(--link,#1d70b8);font-weight:700;font-size:13px;">&#9432;</span></td><td class="mono"></td><td class="mono"></td><td class="mono"></td></tr>
+        <tr data-metric="cfg-version"><td>Code version (git) <span class="metric-i" tabindex="0" title="Git commit of the code that created the run. It changes on ANY commit, so a different value does not by itself mean the prompt changed — compare the prompt fingerprints for that." style="cursor:help;color:var(--link,#1d70b8);font-weight:700;font-size:13px;">&#9432;</span></td><td class="mono"></td><td class="mono"></td><td class="mono"></td></tr>
         <tr data-metric="cfg-bodylimit"><td>Body limit (chars) <span class="metric-i" tabindex="0" title="Max characters of page body sent to the model; longer bodies are trimmed head+tail." style="cursor:help;color:var(--link,#1d70b8);font-weight:700;font-size:13px;">&#9432;</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
       </tbody>
     </table>
@@ -161,6 +163,22 @@
       return { r, incl, excl };
     }
 
+    // Flag when the compared runs used DIFFERENT prompt text for a phase. The fingerprint is a
+    // hash of the stamped template: same hash <=> same prompt. The git SHA alone can't tell you
+    // this — it changes on any commit — so this is the check that matters for A/B comparisons.
+    function flagPromptDiff() {
+      for (const m of ["cfg-fp-p1", "cfg-fp-p2"]) {
+        const cells = [...document.querySelectorAll(`#perf-table tr[data-metric="${m}"] td:nth-child(n+2)`)];
+        const vals = cells.map(c => c.textContent.trim()).filter(v => v && v !== "—");
+        const differ = new Set(vals).size > 1;
+        cells.forEach(c => {
+          c.style.color = differ ? "var(--red,#d4351c)" : "";
+          c.style.fontWeight = differ ? "700" : "";
+          c.title = differ ? "The compared runs used different prompt text for this phase" : "";
+        });
+      }
+    }
+
     // Each column is a CHAIN: every detail metric shows the total, then Phase 1 / Phase 2.
     function renderColumn(col) {
       const set = (m, v) => { const c = cell(m, col); if (c) c.textContent = v; };
@@ -171,7 +189,7 @@
         "misstokens","misstokens-p1","misstokens-p2","outtokens","outtokens-p1","outtokens-p2",
         "totaltime","totaltime-p1","totaltime-p2","elapsed","elapsed-p1","elapsed-p2",
         "keep","keep-p1","keep-p2","drop","drop-p1","drop-p2",
-        "cfg-variant","cfg-concurrency","cfg-caching","cfg-version","cfg-bodylimit"];
+        "cfg-variant","cfg-concurrency","cfg-caching","cfg-fp-p1","cfg-fp-p2","cfg-version","cfg-bodylimit"];
       const ch = chainFor(col);
       if (!ch) { ALL.forEach(m => set(m, "—")); return; }
       const { r, incl, excl } = ch;
@@ -186,6 +204,12 @@
       set("cfg-concurrency", (tr.concurrency || 1) + "×");
       set("cfg-caching", tr.caching ? "on" : "off");
       set("cfg-version", (tr.template_version != null) ? tr.template_version : "—");
+      // Per-phase prompt fingerprint (hash of the stamped template text) — the reliable
+      // "same prompt?" signal; the git version above changes on any commit.
+      const fpOf = x => (x && x.trial && x.trial.template_hash) ? x.trial.template_hash : "—";
+      set("cfg-fp-p1", fpOf(incl));
+      set("cfg-fp-p2", fpOf(excl));
+      flagPromptDiff();
       set("cfg-bodylimit", tr.body_limit ? Number(tr.body_limit).toLocaleString() : "—");
 
       const modelOf = x => x ? `${x.provider || ""} / ${x.actual_model || x.model || ""}` : "—";

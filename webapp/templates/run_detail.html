@@ -232,7 +232,10 @@
     <table style="font-size:14px;">
       <thead><tr>
         <th>Phase</th><th>Supplier / model</th><th>Prompt variant</th>
-        <th class="num">Concurrency</th><th>Caching</th><th>Prompt version</th><th class="num">Body limit</th>
+        <th class="num">Concurrency</th><th>Caching</th>
+        <th title="Fingerprint (hash) of the prompt template text this phase ran with — the same fingerprint means the same prompt">Prompt fingerprint</th>
+        <th title="Git commit of the code that created the run — it changes on any commit, so by itself it does not mean the prompt changed">Code (git)</th>
+        <th class="num">Body limit</th>
       </tr></thead>
       <tbody>
         {% for rc in run_configs %}
@@ -242,7 +245,8 @@
           <td>{{ rc.prompt_variant }}</td>
           <td class="num">{{ rc.concurrency }}×</td>
           <td>{{ 'on' if rc.caching else 'off' }}</td>
-          <td>{% if rc.template_version is not none %}{{ rc.template_version }}{% else %}—{% endif %}{% if not rc.stamped %} <span class="secondary">(legacy)</span>{% endif %}</td>
+          <td class="mono">{% if rc.template_hash %}{{ rc.template_hash }}{% else %}—{% endif %}{% if not rc.stamped %} <span class="secondary" title="Run predates prompt stamping — its exact prompt text is not recorded">(legacy)</span>{% endif %}</td>
+          <td class="mono">{% if rc.template_version is not none %}{{ rc.template_version }}{% else %}—{% endif %}</td>
           <td class="num">{{ '{:,}'.format(rc.body_limit) if rc.body_limit else '—' }}</td>
         </tr>
         {% endfor %}
