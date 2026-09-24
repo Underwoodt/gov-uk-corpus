@@ -115,17 +115,16 @@
       </div>
       <div class="table-wrap">
         <table class="gc-table">
-          <thead><tr><th>Phase 1 · Inclusion</th><th class="rsn-col">Reason</th><th>Phase 2 · Exclusion</th><th class="rsn-col">Reason</th></tr></thead>
+          <thead><tr><th>Phase 1 · Inclusion</th>
+            <th class="rsn-col">{% if p.p1.keep == 1 %}Kept in Phase 1 because{% elif p.p1.keep == 0 %}Dropped at Phase 1 because{% else %}Reason{% endif %}</th>
+            <th>Phase 2 · Exclusion</th>
+            <th class="rsn-col">{% if p.p2 and p.p2.keep == 1 %}Kept in shortlist because{% elif p.p2 and p.p2.keep == 0 %}Dropped at Phase 2 because{% else %}Reason{% endif %}</th></tr></thead>
           <tbody><tr>
             <td>{{ chip(p.p1.keep) }}{% if p.p1.score is not none %}<span class="score">{{ '%.2f'|format(p.p1.score|float) }}</span>{% endif %}
               {% if p.p1.primary_topic %}<div class="topic" style="margin-top:4px;">Topic: {{ p.p1.primary_topic }}</div>{% endif %}</td>
-            <td class="rsn-col"><div class="rsn">
-              {%- if p.p1.keep == 1 %}<span class="rsn-lead">Kept in Phase 1 because</span> {% elif p.p1.keep == 0 %}<span class="rsn-lead">Dropped at Phase 1 because</span> {% endif -%}
-              {{ p.p1.reason or '(no reason recorded)' }}</div></td>
+            <td class="rsn-col"><div class="rsn">{{ p.p1.reason or '(no reason recorded)' }}</div></td>
             <td>{% if p.p2 %}{{ chip(p.p2.keep) }}{% elif p.p1.keep == 1 and not p.has_p2_run %}<span class="muted-sm">no Phase 2 run</span>{% elif p.p1.keep == 1 %}<span class="muted-sm">not reached yet</span>{% else %}<span class="muted-sm">not reached — dropped at Phase 1</span>{% endif %}</td>
-            <td class="rsn-col">{% if p.p2 %}<div class="rsn">
-              {%- if p.p2.keep == 1 %}<span class="rsn-lead">Kept in shortlist because</span> {% elif p.p2.keep == 0 %}<span class="rsn-lead">Dropped at Phase 2 because</span> {% endif -%}
-              {{ p.p2.reason or '(no reason recorded)' }}</div>{% endif %}</td>
+            <td class="rsn-col">{% if p.p2 %}<div class="rsn">{{ p.p2.reason or '(no reason recorded)' }}</div>{% endif %}</td>
           </tr></tbody>
         </table>
       </div>
@@ -196,7 +195,6 @@
     .score { margin-left:6px; font-size:12px; font-weight:600; color:var(--muted); font-variant-numeric:tabular-nums; }
     .muted-sm { color:var(--muted); font-size:13px; }
     .topic { color:var(--blue,#1d70b8); font-size:13px; }
-    .rsn-lead { font-weight:700; color:var(--muted); }
     .rate { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:10px; border-top:1px dashed var(--border); padding-top:10px; }
     .rate-q { font-size:13px; font-weight:700; color:var(--muted); }
     .rate-opts { display:inline-flex; border:1px solid var(--border-mid); border-radius:999px; overflow:hidden; }
