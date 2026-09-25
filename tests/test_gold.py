@@ -254,7 +254,8 @@ class TestRunLabelling(GoldBase):
 
     def _chain(self):
         p1 = evaluate.create_run(self.conn, CID, "m", "anthropic")
-        evaluate.save_page(self.conn, p1, CID, "https://www.gov.uk/p0", {"keep": 1, "score": 0.9, "reason": "core"}, 5)
+        evaluate.save_page(self.conn, p1, CID, "https://www.gov.uk/p0", {"keep": 1, "score": 0.9, "reason": "core",
+                           "evidence": '["tax on estates", "40% rate"]', "where_hit": '["title", "body"]'}, 5)
         evaluate.save_page(self.conn, p1, CID, "https://www.gov.uk/p1", {"keep": 1, "score": 0.4, "reason": "some"}, 5)
         evaluate.save_page(self.conn, p1, CID, "https://www.gov.uk/p2", {"keep": 0, "score": 0.0, "reason": "no"}, 5)
         evaluate.save_page(self.conn, p1, CID, "https://www.gov.uk/p3", None, 5)
@@ -306,6 +307,9 @@ class TestRunLabelling(GoldBase):
         self.assertEqual(sorted(pages), ["https://www.gov.uk/p0", "https://www.gov.uk/p1",
                                          "https://www.gov.uk/p2", "https://www.gov.uk/p3"])
         self.assertEqual(pages["https://www.gov.uk/p0"]["stage"], "kept")
+        self.assertEqual(pages["https://www.gov.uk/p0"]["p1"]["evidence"], ["tax on estates", "40% rate"])
+        self.assertEqual(pages["https://www.gov.uk/p0"]["p1"]["where_hit"], ["title", "body"])
+        self.assertEqual(pages["https://www.gov.uk/p1"]["p1"]["evidence"], [])
         self.assertEqual(pages["https://www.gov.uk/p1"]["stage"], "p2_drop")
         self.assertEqual(pages["https://www.gov.uk/p1"]["p2"]["reason"], "homonym")
         self.assertEqual(pages["https://www.gov.uk/p2"]["stage"], "p1_drop")

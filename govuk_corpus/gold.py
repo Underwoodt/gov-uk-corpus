@@ -367,6 +367,17 @@ def verdict_from_label(stage: Optional[str], label: Optional[str]) -> Optional[s
     return "correct" if (label == "in") == fk else "wrong"
 
 
+def _json_list(raw) -> List[str]:
+    """A stored JSON list (evidence / where_hit) as a list of non-empty strings."""
+    if not raw:
+        return []
+    try:
+        v = json.loads(raw) if isinstance(raw, str) else raw
+    except (ValueError, TypeError):
+        return []
+    return [str(x).strip() for x in v if str(x).strip()] if isinstance(v, list) else []
+
+
 def run_pages(conn, category: Dict, head_run_id: str) -> List[dict]:
     """Every page the inclusion run `head_run_id` evaluated, with its Phase-1 / Phase-2 rows,
     the stage it left at, the seed hint and any existing gold label."""
@@ -401,7 +412,10 @@ def run_pages(conn, category: Dict, head_run_id: str) -> List[dict]:
             "p1": {"keep": a.get("keep"), "score": a.get("score"), "reason": a.get("reason") or "",
                    "confidence": evaluate.confidence_label(a.get("score")),
                    "band": score_band(a.get("score")),
-                   "primary_topic": a.get("primary_topic") or ""},
+                   "primary_topic": a.get("primary_topic") or "",
+                   # The verbatim quotes the model gave as grounding, and where it said they were.
+                   "evidence": _json_list(a.get("evidence")),
+                   "where_hit": _json_list(a.get("where_hit"))},
             "p2": ({"keep": b.get("keep"), "reason": b.get("reason") or ""} if b else None),
             "has_p2_run": bool(excl_id),
             "seed_label": seeds.get(url, ""),

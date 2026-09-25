@@ -122,27 +122,32 @@
         <div class="gc-title">
           <a href="{{ p.url }}" target="_blank" rel="noopener">{{ p.title or p.url }}</a>
           <div class="gc-url mono">{{ p.url }}</div>
-          <div class="gc-kw" title="Keywords matched: the category keywords that put this page in the corpus shortlist">
-            <span class="gc-kw-lbl">Keywords matched</span>
-            {% if p.matched_keywords %}<span class="kw-hits">{% for k in p.matched_keywords %}<span class="kw-hit kw-corpus">{{ k }}</span>{% endfor %}</span>
+          <div class="gc-kw">
+            {% if p.p1.primary_topic %}<span class="topic model-only" title="What the model said the page is mainly about">Topic: {{ p.p1.primary_topic }}</span>
+            <span class="gc-kw-lbl model-only" style="margin-left:10px;">Keywords matched</span>
+            {% else %}<span class="gc-kw-lbl">Keywords matched</span>{% endif %}
+            {% if p.matched_keywords %}<span class="kw-hits" title="The category keywords that put this page in the corpus shortlist">{% for k in p.matched_keywords %}<span class="kw-hit kw-corpus">{{ k }}</span>{% endfor %}</span>
             {% else %}<span class="kw-none">{{ 'none — GOV.UK Search only' if p.source == 'search' else '—' }}</span>{% endif %}
-            <span class="gc-kw-lbl" style="margin-left:10px;">Document type</span>
-            <span class="kw-hit kw-dt" title="content.document_type">{{ p.raw_document_type or '—' }}</span>
-            {% if p.parent_document_type %}<span class="gc-kw-lbl">Parent</span>
-            <span class="kw-hit kw-dt-parent" title="Parent publication's document type (used as the effective type for html_publication pages)">{{ p.parent_document_type }}</span>{% endif %}
           </div>
         </div>
-        {% if p.sampled %}<span class="samp" title="In the sampled minimum for this stage">sampled</span>{% endif %}
+        <div class="gc-side">
+          <span class="kw-hit kw-dt" title="content.document_type">{{ p.raw_document_type or '—' }}</span>
+          {% if p.parent_document_type %}<span class="kw-hit kw-dt-parent" title="Parent publication's document type (used as the effective type for html_publication pages)">parent: {{ p.parent_document_type }}</span>{% endif %}
+          {% if p.sampled %}<span class="samp" title="In the sampled minimum for this stage">sampled</span>{% endif %}
+        </div>
       </div>
       <div class="table-wrap">
         <table class="gc-table">
-          <thead><tr><th>Phase 1 · Inclusion</th>
+          <thead><tr><th class="ev-col">Evidence quotes</th>
+            <th>Phase 1 · Inclusion</th>
             <th class="rsn-col">{% if p.p1.keep == 1 %}<span class="kd keep">Kept in Phase 1 because</span>{% elif p.p1.keep == 0 %}<span class="kd drop">Dropped at Phase 1 because</span>{% else %}Reason{% endif %}</th>
             <th></th>
             <th class="rsn-col">{% if p.p2 and p.p2.keep == 1 %}<span class="kd keep">Kept in shortlist because</span>{% elif p.p2 and p.p2.keep == 0 %}<span class="kd drop">Dropped at Phase 2 because</span>{% endif %}</th></tr></thead>
           <tbody><tr>
-            <td>{% if p.p1.keep is none %}{{ chip(None) }}{% endif %}{% if p.p1.score is not none %}<span class="sc band-{{ p.p1.band|replace('.', '_') }}" title="Score = how much of the page is about the topic (coverage)"><b>{{ '%.2f'|format(p.p1.score|float) }}</b> · {{ p.p1.confidence }}</span>{% endif %}
-              {% if p.p1.primary_topic %}<div class="topic" style="margin-top:4px;">Topic: {{ p.p1.primary_topic }}</div>{% endif %}</td>
+            <td class="ev-col">{% if p.p1.evidence %}<ul class="ev">{% for q in p.p1.evidence %}<li>“{{ q }}”</li>{% endfor %}</ul>
+              {% if p.p1.where_hit %}<div class="muted-sm">found in: {{ p.p1.where_hit|join(', ') }}</div>{% endif %}
+              {% elif p.p1.keep == 1 %}<span class="kw-none">none given</span>{% else %}<span class="kw-none">—</span>{% endif %}</td>
+            <td>{% if p.p1.keep is none %}{{ chip(None) }}{% endif %}{% if p.p1.score is not none %}<span class="sc band-{{ p.p1.band|replace('.', '_') }}" title="Score = how much of the page is about the topic (coverage)"><b>{{ '%.2f'|format(p.p1.score|float) }}</b> · {{ p.p1.confidence }}</span>{% endif %}</td>
             <td class="rsn-col"><div class="rsn">{{ p.p1.reason or '(no reason recorded)' }}</div></td>
             <td>{% if p.p2 %}{% if p.p2.keep is none %}{{ chip(None) }}{% endif %}{% elif p.p1.keep == 1 and not p.has_p2_run %}<span class="muted-sm">no Phase 2 run</span>{% elif p.p1.keep == 1 %}<span class="muted-sm">not reached yet</span>{% else %}<span class="muted-sm">not reached — dropped at Phase 1</span>{% endif %}</td>
             <td class="rsn-col">{% if p.p2 %}<div class="rsn">{{ p.p2.reason or '(no reason recorded)' }}</div>{% endif %}</td>
@@ -211,7 +216,7 @@
     .gc-table { font-size:14px; width:100%; } .gc-table th, .gc-table td { vertical-align:top; text-align:left; padding:6px 10px; }
     .gc-table thead th { font-size:11px; text-transform:uppercase; letter-spacing:.02em; color:var(--muted); font-weight:700; border-bottom:1px solid var(--border); }
     .gc-table thead th .kd { text-transform:none; letter-spacing:0; font-size:12px; }
-    .rsn-col { min-width:200px; width:34%; } .rsn { max-height:120px; overflow:auto; line-height:1.4; }
+    .rsn-col { min-width:200px; width:28%; } .rsn { max-height:120px; overflow:auto; line-height:1.4; }
     .kd { display:inline-block; font-size:12px; font-weight:700; padding:2px 9px; border-radius:999px; }
     .kd.keep { background:#d9f2e4; color:var(--green-dark); } .kd.drop { background:#fbe0db; color:#a5200f; } .kd.none { background:var(--surface-3); color:var(--muted); }
     .score { margin-left:6px; font-size:12px; font-weight:600; color:var(--muted); font-variant-numeric:tabular-nums; }
@@ -222,6 +227,10 @@
     .sc.band-0_7-1_0 { background:#d9f2e4; color:var(--green-dark); } /* Major focus */
     .muted-sm { color:var(--muted); font-size:13px; }
     .topic { color:var(--blue,#1d70b8); font-size:13px; }
+    .gc-side { display:inline-flex; gap:6px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
+    .ev-col { min-width:180px; width:22%; }
+    .ev { margin:0; padding-left:16px; font-size:13px; line-height:1.4; max-height:150px; overflow:auto; }
+    .ev li { margin:0 0 3px; }
     .rate { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:10px; border-top:1px dashed var(--border); padding-top:10px; }
     .rate-q { font-size:13px; font-weight:700; color:var(--muted); }
     .rate-opts { display:inline-flex; border:1px solid var(--border-mid); border-radius:999px; overflow:hidden; }
