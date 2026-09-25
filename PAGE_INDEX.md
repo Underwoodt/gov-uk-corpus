@@ -48,7 +48,6 @@ we can pin the report to an exact page.
 | guc-0004 | Shortlist (pages list) | `audit_shortlist.html` | `GET /categories/{id}/shortlist` | Active |
 | guc-0004c | AI Pipeline (promoted from a Shortlist sub-tab to its own page) | `ai_pipeline_page.html` | `GET /categories/{id}/ai-pipeline` | Active |
 | guc-0004b | GDS Compliance (promoted from a Shortlist sub-tab to its own page) | `gds_compliance_page.html` | `GET /categories/{id}/gds-compliance` | Active |
-| guc-0005 | Run performance | `performance.html` | `GET /categories/{id}/performance` | Active |
 | guc-0006 | Run detail | `run_detail.html` | `GET /categories/{id}/runs/{run_id}` | Active |
 | guc-0007 | Shortlist results table | `results_table.html` | `GET /categories/{id}/results` | Active |
 | guc-0008 | Download shortlist | `download.html` | `GET /categories/{id}/download` | Active |
@@ -88,6 +87,7 @@ letter (e.g. `guc-0003b1`); the nested pane's id is what shows in the corner.
 | guc-0003d | Hybrid Search (advanced+ only) | Preview and run (`guc-0003`) |
 | guc-0004c1 | Active Run | AI Pipeline (`guc-0004c`) |
 | guc-0004c2 | Run History | AI Pipeline (`guc-0004c`) |
+| guc-0004c3 | Run performance (`performance.html`, `GET /categories/{id}/performance`; was top-level `guc-0005`) | AI Pipeline (`guc-0004c`) |
 | guc-0016a | Your details | Profile (`guc-0016`) |
 | guc-0016b | Interface complexity | Profile (`guc-0016`) |
 | guc-0018a | Should be in | URL check (`guc-0018`) |
@@ -97,6 +97,7 @@ letter (e.g. `guc-0003b1`); the nested pane's id is what shows in the corner.
 ## Retired IDs
 
 | ID | Page | Retired | Note |
+| guc-0005 | Run performance | 2026-09-25 | Moved under AI Pipeline as the third sub-tab (`guc-0004c3`); same route and template. |
 |----|------|---------|------|
 | guc-0009 | Audit dashboard | 2026-09-16 | Merged into the Audit Results page as the Dashboard sub-tab (`guc-0004b`). |
 

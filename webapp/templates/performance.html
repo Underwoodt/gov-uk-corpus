@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block page_id %}guc-0005{% endblock %}
+{% block page_id %}guc-0004c3{% endblock %}
 {% block title %}{{ category.display_name }} — run performance{% endblock %}
 {% block content %}
 
@@ -9,14 +9,19 @@
   <div class="tabs">
     <a href="{{ url_for('edit_category_page', cid=category.id) }}">Filter Parameters</a>
     <a href="{{ url_for('shortlist_page', cid=category.id) }}">Shortlist</a>
-    <a href="{{ url_for('ai_pipeline_page', cid=category.id) }}">AI Pipeline</a>
+    <span class="current">AI Pipeline</span>
     <a href="{{ url_for('gds_compliance_page', cid=category.id) }}">GDS Compliance</a>
     <a href="{{ url_for('preview_category_page', cid=category.id) }}">Explainability</a>
-    <span class="current">Run performance</span>
     <a href="{{ url_for('url_check_page', cid=category.id) }}">URL check</a>
   </div>
 
   <div class="tabpanel">
+    {# Nested tabs of the AI Pipeline page: Active Run / Run History live there; this page is the third. #}
+    <div class="tabs" role="tablist" style="margin-bottom:20px;">
+      <a href="{{ url_for('ai_pipeline_page', cid=category.id) }}" data-tabid="guc-0004c1" role="tab">Active Run</a>
+      <a href="{{ url_for('ai_pipeline_page', cid=category.id) }}#history" data-tabid="guc-0004c2" role="tab" data-level="advanced">Run History</a>
+      <span class="current" data-tabid="guc-0004c3">Run performance</span>
+    </div>
     <h2>Compare runs</h2>
     <p class="hint" style="margin-top:-20px;">Pick up to three runs to compare. Each column is a full run
       (Phase 1 – Inclusion → Phase 2 – Exclusion); every figure shows the total and the per-phase split.
