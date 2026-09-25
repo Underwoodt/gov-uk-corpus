@@ -46,7 +46,7 @@ we can pin the report to an exact page.
 | guc-0002 | Category definition (create / edit) | `form.html` | `GET /categories/new`, `GET/POST /categories/{id}/edit`, `POST /categories/new` | Active |
 | guc-0003 | Preview and run | `preview.html` | `GET /categories/{id}` | Active |
 | guc-0004 | Shortlist (pages list) | `audit_shortlist.html` | `GET /categories/{id}/shortlist` | Active |
-| guc-0004c | AI Pipeline (promoted from a Shortlist sub-tab to its own page) | `ai_pipeline_page.html` | `GET /categories/{id}/ai-pipeline` | Active |
+| guc-0004c | Filter pipeline run (was “AI Pipeline”; promoted from a Shortlist sub-tab to its own page) | `ai_pipeline_page.html` | `GET /categories/{id}/ai-pipeline` | Active |
 | guc-0004b | GDS Compliance (promoted from a Shortlist sub-tab to its own page) | `gds_compliance_page.html` | `GET /categories/{id}/gds-compliance` | Active |
 | guc-0006 | Run detail | `run_detail.html` | `GET /categories/{id}/runs/{run_id}` | Active |
 | guc-0007 | Shortlist results table | `results_table.html` | `GET /categories/{id}/results` | Active |
@@ -85,9 +85,9 @@ letter (e.g. `guc-0003b1`); the nested pane's id is what shows in the corner.
 |----|---------|------|
 | guc-0003a | Keyword Matching | Preview and run (`guc-0003`) |
 | guc-0003d | Hybrid Search (advanced+ only) | Preview and run (`guc-0003`) |
-| guc-0004c1 | Active Run | AI Pipeline (`guc-0004c`) |
-| guc-0004c2 | Run History | AI Pipeline (`guc-0004c`) |
-| guc-0004c3 | Run performance (`performance.html`, `GET /categories/{id}/performance`; was top-level `guc-0005`) | AI Pipeline (`guc-0004c`) |
+| guc-0004c1 | Active Run (default) | Filter pipeline run (`guc-0004c`) |
+| guc-0004c2 | Run History | Filter pipeline run (`guc-0004c`) |
+| guc-0004c3 | Run performance (`performance.html`, `GET /categories/{id}/performance`; was top-level `guc-0005`) | Filter pipeline run (`guc-0004c`) |
 | guc-0016a | Your details | Profile (`guc-0016`) |
 | guc-0016b | Interface complexity | Profile (`guc-0016`) |
 | guc-0018a | Should be in | URL check (`guc-0018`) |

@@ -11,7 +11,7 @@
   </ul>
   {% endmacro %}
 
-  <a class="back" href="{{ url_for('ai_pipeline_page', cid=category.id) }}">‹ Back to AI Pipeline</a>
+  <a class="back" href="{{ url_for('ai_pipeline_page', cid=category.id) }}">‹ Back to Filter pipeline run</a>
   <a class="back" style="margin-left:18px;" href="{{ url_for('gold_page', cid=category.id) }}?run={{ (chain[0].run_id if chain else run.run_id) }}">Label gold from this run ›</a>
 
   <h1 id="run-title" style="margin:18px 0 4px;">Run Details for {{ run.name or run.run_id }}</h1>

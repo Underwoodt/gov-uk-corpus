@@ -272,12 +272,10 @@
       CID = cid;
       hooks = options || {};
       wireOnce();
-      let start = "active";
-      try { start = localStorage.getItem("ai-pipeline-subtab2-" + CID) || "active"; } catch (e) {}
-      // A #active / #history hash (e.g. from the Run performance sub-tab bar) wins over the memory.
+      // Active Run is always the default; only an explicit #history hash (e.g. from the Run
+      // performance sub-tab bar) opens Run History on load.
       const hash = (location.hash || "").replace("#", "");
-      if (["active", "history"].includes(hash)) start = hash;
-      showNested(["active", "history"].includes(start) ? start : "active");
+      showNested(hash === "history" ? "history" : "active");
       loadRuns();
       // Resume showing progress if a background run is already going.
       (async () => {

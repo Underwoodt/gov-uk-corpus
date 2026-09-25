@@ -2,7 +2,7 @@
 {% from "_sql.html" import sql_panel %}
 {% set page_ref = "guc-0004c" %}
 {% block page_id %}{{ page_ref }}{% endblock %}
-{% block title %}{{ category.display_name }} — AI Pipeline{% endblock %}
+{% block title %}{{ category.display_name }} — Filter pipeline run{% endblock %}
 {% block content %}
   <style>
     /* Selection funnel: Sankey and table side by side, stacking when narrow. */
@@ -22,7 +22,7 @@
   <div class="tabs">
     <a href="{{ url_for('edit_category_page', cid=category.id) }}">Filter Parameters</a>
     <a href="{{ url_for('shortlist_page', cid=category.id) }}">Shortlist</a>
-    <span class="current">AI Pipeline</span>
+    <span class="current">Filter pipeline run</span>
     <a href="{{ url_for('gds_compliance_page', cid=category.id) }}">GDS Compliance</a>
     <a href="{{ url_for('preview_category_page', cid=category.id) }}">Explainability</a>
     <a href="{{ url_for('url_check_page', cid=category.id) }}">URL check</a>
