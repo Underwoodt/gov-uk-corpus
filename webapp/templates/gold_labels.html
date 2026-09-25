@@ -105,19 +105,6 @@
     <span class="muted-sm" id="gl-shown"></span>
   </div>
 
-  {% if wizard %}
-  <div class="card wiz-nav" id="wiz-nav">
-    <button type="button" class="btn secondary-btn" id="wiz-prev">‹ Prev</button>
-    <div class="wiz-mid">
-      <div class="wiz-text"><b id="wiz-done">–</b> of <b id="wiz-total">–</b> labelled by you in the current filter · page <span id="wiz-pos">–</span></div>
-      <div class="wiz-bar"><div class="wiz-fill" id="wiz-fill" style="width:0%"></div></div>
-      <div class="muted-sm" id="wiz-note">The bar is your labelling progress; the page number is just where you are. Save &amp; Next saves this page's vote and moves on; Prev / Next also save anything you changed. ← / → keys work too.</div>
-    </div>
-    <button type="button" class="btn secondary-btn" id="wiz-next">Next ›</button>
-    <button type="button" class="btn" id="wiz-savenext" title="Save your vote on this page and go to the next one (Enter in the reason box does the same)">Save &amp; Next ›</button>
-    <button type="button" class="btn secondary-btn" id="wiz-jump" title="Go to the first page in the current filter that you have not labelled">First unlabelled</button>
-  </div>
-  {% endif %}
   <div class="blind-banner" id="blind-banner" hidden>
     <strong>Blind mode is on.</strong> The pipeline's verdicts, reasons, scores, topic and the stage filters are hidden; only its evidence quotes are shown. You label in / out / borderline directly.
     <button type="button" class="btn secondary-btn" id="blind-off" style="padding:4px 10px;font-size:13px;margin-left:10px;">Show the model's verdicts</button>
@@ -198,6 +185,19 @@
     </div>
   {% endfor %}
   </div>
+  {% if wizard %}
+  <div class="card wiz-nav" id="wiz-nav">
+    <button type="button" class="btn secondary-btn" id="wiz-prev">‹ Prev</button>
+    <div class="wiz-mid">
+      <div class="wiz-text"><b id="wiz-done">–</b> of <b id="wiz-total">–</b> labelled by you in the current filter · page <span id="wiz-pos">–</span></div>
+      <div class="wiz-bar"><div class="wiz-fill" id="wiz-fill" style="width:0%"></div></div>
+      <div class="muted-sm" id="wiz-note">The bar is your labelling progress; the page number is just where you are. Save &amp; Next saves this page's vote and moves on; Prev / Next also save anything you changed. ← / → keys work too.</div>
+    </div>
+    <button type="button" class="btn secondary-btn" id="wiz-next">Next ›</button>
+    <button type="button" class="btn" id="wiz-savenext" title="Save your vote on this page and go to the next one (Enter in the reason box does the same)">Save &amp; Next ›</button>
+    <button type="button" class="btn secondary-btn" id="wiz-jump" title="Go to the first page in the current filter that you have not labelled">First unlabelled</button>
+  </div>
+  {% endif %}
   </div>{# /evaluate #}
   {% endif %}
 
@@ -278,7 +278,7 @@
     .gs-actions { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:10px; }
     .samp { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; padding:3px 8px; border-radius:999px; background:#e8f1fb; color:#1d4e89; margin-left:6px; }
     .gl-card[data-sampled="0"] .stage { opacity:.7; }
-    .wiz-nav { display:flex; gap:14px; align-items:center; padding:12px 16px; margin-bottom:12px; position:sticky; top:0; z-index:5; }
+    .wiz-nav { display:flex; gap:14px; align-items:center; padding:12px 16px; margin-top:12px; position:sticky; bottom:0; z-index:5; box-shadow:0 -2px 8px rgba(0,0,0,.06); }
     .wiz-mid { flex:1; min-width:200px; }
     .wiz-text { font-size:14px; }
     .wiz-bar { height:8px; background:var(--surface-3); border-radius:999px; overflow:hidden; margin:6px 0 4px; }
