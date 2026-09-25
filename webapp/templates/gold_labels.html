@@ -125,8 +125,7 @@
       </details>
       <div class="gc-head">
         <div class="gc-title">
-          <a href="{{ p.url }}" target="_blank" rel="noopener">{{ p.title or p.url }}</a>
-          <div class="gc-url mono">{{ p.url }}</div>
+          <a href="{{ p.url }}" target="_blank" rel="noopener" title="{{ p.url }}">{{ p.title or p.url }}</a>
           <div class="gc-kw">
             {% if p.p1.primary_topic %}<span class="topic model-only" title="What the model said the page is mainly about">Topic: {{ p.p1.primary_topic }}</span>
             <span class="gc-kw-lbl model-only" style="margin-left:10px;">Keywords matched</span>
