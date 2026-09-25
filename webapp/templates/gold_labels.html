@@ -174,8 +174,8 @@
         </div>
         {% if p.final_keep is none %}<span class="muted-sm model-only">No outcome to judge (the reply could not be parsed) — switch to blind labelling to label it directly.</span>{% endif %}
         <input type="text" class="rate-reason" placeholder="one-line reason (required)" value="" maxlength="300">
-        <button type="button" class="btn rate-save">Save</button>
-        <button type="button" class="btn secondary-btn rate-clear" hidden>Clear my vote</button>
+        {% if not wizard %}<button type="button" class="btn rate-save">Save</button>
+        <button type="button" class="btn secondary-btn rate-clear" hidden>Clear my vote</button>{% endif %}
         <span class="rate-out"></span>
         <div class="votes" data-agreement="{{ p.agreement or '' }}" data-consensus="{{ p.label }}"></div>
         {% if p.seed_label %}<span class="seed" title="From the category's URL-check lists — a hint, not a label">seed: {{ 'should be in' if p.seed_label == 'should_include' else 'should be out' }}</span>{% endif %}
@@ -352,7 +352,7 @@
       wrap.dataset.verdict = mine ? myVerdict(wrap, mine.label) : "";
       const reason = wrap.querySelector(".rate-reason");
       if (mine && document.activeElement !== reason) reason.value = mine.rationale || "";
-      wrap.querySelector(".rate-clear").hidden = !mine;
+      const clrBtn = wrap.querySelector(".rate-clear"); if (clrBtn) clrBtn.hidden = !mine;
       card.dataset.labelled = mine ? "1" : "0";
       paint(card);
       let html = "";
@@ -431,7 +431,7 @@
         else wrap.querySelector(".rate-reason").focus();
       });
       const saveBtn = card.querySelector(".rate-save");
-      saveBtn.onclick = () => {
+      if (saveBtn) saveBtn.onclick = () => {
         const o = card.querySelector(".rate-out");
         if (blindBox.checked) {
           const l = wrap.dataset.mylabel;
@@ -444,8 +444,8 @@
         }
       };
       const inp = card.querySelector(".rate-reason");
-      inp.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); if (WIZARD) wizSaveNext(); else saveBtn.click(); } });
-      card.querySelector(".rate-clear").onclick = () => save(card, {});
+      inp.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); if (WIZARD) wizSaveNext(); else if (saveBtn) saveBtn.click(); } });
+      const clr = card.querySelector(".rate-clear"); if (clr) clr.onclick = () => save(card, {});
     });
 
     // ---- filters: stage · sampled minimum · unlabelled only · text ----
