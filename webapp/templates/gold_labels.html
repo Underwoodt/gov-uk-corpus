@@ -146,7 +146,8 @@
           <tbody><tr>
             <td class="ev-col">{% if p.p1.evidence %}<ul class="ev">{% for q in p.p1.evidence %}<li>“{{ q }}”</li>{% endfor %}</ul>
               {% if p.p1.where_hit %}<div class="muted-sm">found in: {{ p.p1.where_hit|join(', ') }}</div>{% endif %}
-              {% else %}<span class="kw-none"><span class="model-only">{{ 'none given' if p.p1.keep == 1 else '—' }}</span><span class="blind-only" hidden>no quotes recorded</span></span>{% endif %}</td>
+              {% else %}<span class="kw-none model-only">{{ 'none given' if p.p1.keep == 1 else '—' }}</span>
+              <div class="rsn blind-only" hidden>{% if p.p1.reason %}<span class="muted-sm">No quotes; the run's reason:</span> {{ p.p1.reason }}{% else %}<span class="kw-none">no quotes or reason recorded</span>{% endif %}</div>{% endif %}</td>
             <td>{% if p.p1.keep is none %}{{ chip(None) }}{% endif %}{% if p.p1.score is not none %}<span class="sc band-{{ p.p1.band|replace('.', '_') }}" title="Score = how much of the page is about the topic (coverage)"><b>{{ '%.2f'|format(p.p1.score|float) }}</b> · {{ p.p1.confidence }}</span>{% endif %}</td>
             <td class="rsn-col"><div class="rsn">{{ p.p1.reason or '(no reason recorded)' }}</div></td>
             <td>{% if p.p2 %}{% if p.p2.keep is none %}{{ chip(None) }}{% endif %}{% elif p.p1.keep == 1 and not p.has_p2_run %}<span class="muted-sm">no Phase 2 run</span>{% elif p.p1.keep == 1 %}<span class="muted-sm">not reached yet</span>{% else %}<span class="muted-sm">not reached — dropped at Phase 1</span>{% endif %}</td>
@@ -276,6 +277,7 @@
     .blind-banner { background:#fff1cc; border:1px solid #f0d98a; color:#7a5a00; border-radius:var(--radius); padding:10px 14px; margin:0 0 12px; font-size:14px; display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
     body.blind .blind-only { display:inline-flex !important; }
     body.blind span.blind-only { display:inline !important; }
+    body.blind div.blind-only { display:block !important; }
   </style>
 
   <script>
