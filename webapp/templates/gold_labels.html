@@ -113,16 +113,15 @@
   {% for p in pages %}
     <div class="card gl-card" data-url="{{ p.url }}" data-stage="{{ p.stage or '' }}" data-labelled="{{ '1' if p.label else '0' }}"
          data-sampled="{{ '1' if p.sampled else '0' }}" data-hay="{{ (p.url ~ ' ' ~ p.title ~ ' ' ~ (p.matched_keywords|join(' ')) ~ ' ' ~ p.raw_document_type ~ ' ' ~ p.parent_document_type)|lower }}">
-      <details class="crit" {% if wizard %}open{% endif %}>
-        <summary>What was asked for <span class="muted-sm">— the shortlist definition's inclusion and exclusion criteria, the context for your judgement</span></summary>
+      {% if wizard %}<div class="crit">{% else %}<details class="crit"><summary>What was asked for</summary>{% endif %}
         <table class="crit-table">
-          <thead><tr><th>Inclusion criteria</th><th>Exclusion criteria</th></tr></thead>
+          <thead><tr><th>Inclusion criteria prompt</th><th>Exclusion criteria prompt</th></tr></thead>
           <tbody><tr>
             <td>{{ category.inclusion_context or '(none set)' }}</td>
             <td>{{ category.exclusion_context or '(none set)' }}</td>
           </tr></tbody>
         </table>
-      </details>
+      {% if wizard %}</div>{% else %}</details>{% endif %}
       <div class="gc-head">
         <div class="gc-title">
           <a href="{{ p.url }}" target="_blank" rel="noopener" title="{{ p.url }}">{{ p.title or p.url }}</a>
@@ -249,7 +248,8 @@
     .gc-side { display:inline-flex; gap:6px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
     .crit { margin:0 0 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface-2); padding:6px 10px; }
     .crit summary { cursor:pointer; font-size:13px; font-weight:700; }
-    .crit-table { width:100%; font-size:13px; margin-top:6px; border-collapse:collapse; }
+    .crit-table { width:100%; font-size:13px; margin-top:2px; border-collapse:collapse; }
+    details.crit .crit-table { margin-top:6px; }
     .crit-table th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.02em; color:var(--muted); padding:4px 10px 4px 0; border-bottom:1px solid var(--border); width:50%; }
     .crit-table td { vertical-align:top; padding:6px 10px 4px 0; white-space:pre-wrap; line-height:1.5; font-size:15px; font-style:italic; }
     .ev-col { min-width:180px; width:22%; }
