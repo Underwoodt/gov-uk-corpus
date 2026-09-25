@@ -105,10 +105,10 @@
     <span class="muted-sm" id="gl-shown"></span>
   </div>
 
-  <div class="blind-banner" id="blind-banner" hidden>
+  {% if not wizard %}<div class="blind-banner" id="blind-banner" hidden>
     <strong>Blind mode is on.</strong> The pipeline's verdicts, reasons, scores, topic and the stage filters are hidden; only its evidence quotes are shown. You label in / out / borderline directly.
     <button type="button" class="btn secondary-btn" id="blind-off" style="padding:4px 10px;font-size:13px;margin-left:10px;">Show the model's verdicts</button>
-  </div>
+  </div>{% endif %}
   <div id="gl-list">
   {% for p in pages %}
     <div class="card gl-card" data-url="{{ p.url }}" data-stage="{{ p.stage or '' }}" data-labelled="{{ '1' if p.label else '0' }}"
