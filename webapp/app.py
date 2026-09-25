@@ -3946,6 +3946,18 @@ _DOWNLOAD_SECTIONS = [
          "warning: the full page text — can make the download very large"),
         ("content", "Content (raw JSON)", False, False, "warning: may make the download very large"),
     ]),
+    ("Provenance", [
+        ("source", "Source / provenance", False, False, None),
+    ]),
+    ("Popularity", [
+        ("view_count", "View count", True, False,
+         "GOV.UK Search pageviews (~last 14 days); for attachment / guide-part sub-pages this is "
+         "the parent publication's count"),
+        ("view_count_source", "View count source", False, False,
+         "page = the page's own count · parent = inherited from the parent publication"),
+        ("view_count_updated", "View count collected", False, False,
+         "the date the view count was collected"),
+    ]),
     ("Matching & AI decision", [
         ("organisations", "Organisations", True, False, "all linked organisation slugs"),
         ("document_type", "Document type", True, False, None),
@@ -3980,11 +3992,6 @@ _DOWNLOAD_SECTIONS = [
     ("Ownership", [
         ("primary_org", "Primary publishing organisation", False, False, None),
     ]),
-    ("Freshness", [
-        ("first_published_at", "First published at", False, False, None),
-        ("public_updated_at", "Public updated at", False, False, None),
-        ("last_seen_at", "Last seen (crawl)", False, False, None),
-    ]),
     ("Quality attributes", [
         ("size", "Size", True, False, None),
         ("readability", "Readability score", False, False, None),
@@ -3992,17 +3999,10 @@ _DOWNLOAD_SECTIONS = [
         ("gds_findings", "GDS issues text", False, False, None),
         ("gds_stars", "GDS stars", False, False, None),
     ]),
-    ("Provenance", [
-        ("source", "Source / provenance", False, False, None),
-    ]),
-    ("Popularity", [
-        ("view_count", "View count", True, False,
-         "GOV.UK Search pageviews (~last 14 days); for attachment / guide-part sub-pages this is "
-         "the parent publication's count"),
-        ("view_count_source", "View count source", False, False,
-         "page = the page's own count · parent = inherited from the parent publication"),
-        ("view_count_updated", "View count collected", False, False,
-         "the date the view count was collected"),
+    ("Freshness", [
+        ("first_published_at", "First published at", False, False, None),
+        ("public_updated_at", "Public updated at", False, False, None),
+        ("last_seen_at", "Last seen (crawl)", False, False, None),
     ]),
 ]
 

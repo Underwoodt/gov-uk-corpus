@@ -24,6 +24,12 @@
     .lx-panel li { margin:2px 0; word-break:break-all; }
     .lx-ext { font-size:11px; color:var(--muted); background:var(--surface-2); padding:1px 5px; border-radius:3px; margin-left:6px; }
     tr.lx-row > td { background:var(--surface-2); }
+    /* Column picker: sections flow into balanced columns and never split across one. */
+    .col-picker { column-count:3; column-gap:36px; margin-top:10px; }
+    .col-picker > div { break-inside:avoid; -webkit-column-break-inside:avoid; page-break-inside:avoid; margin:0 0 16px; }
+    .col-picker .check { display:block; font-size:14px; line-height:1.7; }
+    @media (max-width:900px) { .col-picker { column-count:2; } }
+    @media (max-width:560px) { .col-picker { column-count:1; } }
   </style>
 
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Shortlists</a>
@@ -56,14 +62,14 @@
           title="Re-ask the model for pages whose reply couldn't be parsed (Unscored). Uses API credit.">↻ Retry unparsable</button>
         <span id="retry-status" class="secondary" data-level="advanced"></span>
       </div>
-      <details style="margin:6px 0 14px;max-width:760px;">
+      <details style="margin:6px 0 14px;max-width:960px;">
         <summary class="rolldown">Select Columns for Display or download</summary>
-        <div style="display:flex;flex-wrap:wrap;gap:8px 28px;margin-top:10px;">
+        <div class="col-picker">
           {% for section, section_fields in audit_sections %}
           <div>
-            <div class="secondary" style="font-weight:700;font-size:13px;margin-bottom:4px;">{{ section }}</div>
+            <div class="secondary" style="font-weight:700;font-size:13px;margin-bottom:6px;">{{ section }}</div>
             {% for key, label, default_on, disabled, warning in section_fields %}{% if key != 'content' %}
-            <label class="check" style="display:block;font-size:14px;"{% if warning %} title="{{ warning }}"{% endif %}>
+            <label class="check"{% if warning %} title="{{ warning }}"{% endif %}>
               <input type="checkbox" class="audit-col" value="{{ key }}" {{ 'checked' if (default_on and key != 'url') else '' }}> {{ label }}{% if warning %} <span class="secondary" style="font-size:12px;">⚠</span>{% endif %}
             </label>
             {% endif %}{% endfor %}
