@@ -16,21 +16,6 @@
     <input type="hidden" name="fields" value="url">     {# URL is always included #}
     <input type="hidden" name="fields" value="run_id">  {# so is the run id #}
 
-    {% if runs %}
-    <div class="field" style="max-width:640px;">
-      <label class="q">Runs <span class="secondary" style="font-weight:400;">— this shortlist's AI runs, newest first</span></label>
-      <p class="hint" style="margin:4px 0 10px;">Tick the runs to download. Each run's rows go into the same file, told apart by the Run ID column, so you can compare them side by side. Nothing ticked = the active run.</p>
-      <div class="col-picker">
-        <div>
-        {% for r in runs %}
-          <label class="check">
-            <input type="checkbox" name="run" value="{{ r.run_id }}" {{ 'checked' if r.run_id in runs_selected else '' }}> {{ r.label }}
-          </label>
-        {% endfor %}
-        </div>
-      </div>
-    </div>
-    {% endif %}
 
     {# Field selector — vary the columns to download here; pre-ticked from the passed-in
        selection (or the default set). URL is always on. #}
@@ -65,6 +50,22 @@
       <input id="filename" name="filename" type="text" value="{{ default_filename }}" style="width:100%;">
       <p class="hint" style="margin-top:6px;">The extension (.csv / .xlsx / .json) is added automatically.</p>
     </div>
+
+    {% if runs %}
+    <div class="field" style="max-width:640px;">
+      <label class="q">Runs <span class="secondary" style="font-weight:400;">— this shortlist's AI runs, newest first</span></label>
+      <p class="hint" style="margin:4px 0 10px;">Tick the runs to download. Each run's rows go into the same file, told apart by the Run ID column, so you can compare them side by side. Nothing ticked = the active run.</p>
+      <div class="col-picker">
+        <div>
+        {% for r in runs %}
+          <label class="check">
+            <input type="checkbox" name="run" value="{{ r.run_id }}" {{ 'checked' if r.run_id in runs_selected else '' }}> {{ r.label }}
+          </label>
+        {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
 
     <button class="btn" type="submit">Download</button>
   </form>
