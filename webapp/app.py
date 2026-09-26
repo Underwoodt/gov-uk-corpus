@@ -1253,11 +1253,26 @@ def preview_category_page(request: Request, cid: int):
         eval_max_docs=eval_max_docs, ai_cost=ai_cost, filters=filters))
 
 
+def _incl_run_options(conn, cid: int) -> list:
+    """The category's inclusion runs (chain heads) for the Run selector dropdowns, newest first:
+    [{run_id, label}]. Label is the run name + its date."""
+    out = []
+    for r in conn.execute(
+            f"SELECT run_id, name, started_at FROM evaluation_runs "
+            f"WHERE category_id = {shortlist._P} AND source_run_id IS NULL ORDER BY started_at DESC",
+            (cid,)).fetchall():
+        d = dict(r)
+        dt = (d.get("started_at") or "")[:10]
+        label = (d.get("name") or d["run_id"]) + (f" · {dt}" if dt else "")
+        out.append({"run_id": d["run_id"], "label": label})
+    return out
+
+
 @app.get("/categories/{cid}/shortlist", response_class=HTMLResponse)
-def shortlist_page(request: Request, cid: int, stage: str = "final"):
+def shortlist_page(request: Request, cid: int, stage: str = "final", run: str = ""):
     """Audit Results page — the shortlist pages list. `stage` pre-selects the shortlist
-    stage dropdown. Data loads from /api/categories/{cid}/audit-shortlist. (GDS Compliance
-    is now its own page — see gds_compliance_page.)"""
+    stage dropdown, `run` the Run dropdown. Data loads from /api/categories/{cid}/audit-shortlist.
+    (GDS Compliance is now its own page — see gds_compliance_page.)"""
     if not authed(request):
         return login_redirect(request)
     conn = connect()
@@ -1268,7 +1283,8 @@ def shortlist_page(request: Request, cid: int, stage: str = "final"):
     if stage not in _AUDIT_STAGE_KEYS:
         stage = "final"
     return templates.TemplateResponse("audit_shortlist.html", ctx(
-        conn, request, category=category, stage=stage,
+        conn, request, category=category, stage=stage, run=run,
+        runs=_incl_run_options(conn, cid),
         audit_stages=_AUDIT_STAGES, audit_sections=_DOWNLOAD_SECTIONS))
 
 
@@ -4359,7 +4375,7 @@ def _merge_extra(filters, q):
 @app.get("/api/categories/{cid}/audit-shortlist")
 def api_audit_shortlist(request: Request, cid: int, stage: str = "keyword",
                         limit: int = 50, offset: int = 0, q: str = "",
-                        fields: List[str] = Query(default=[])):
+                        fields: List[str] = Query(default=[]), run: str = ""):
     if not authed(request):
         return JSONResponse({"error": "auth"}, status_code=401)
     limit = max(1, min(limit, 200))
@@ -4369,9 +4385,12 @@ def api_audit_shortlist(request: Request, cid: int, stage: str = "keyword",
     if not category:
         conn.close()
         return JSONResponse({"error": "not found"}, status_code=404)
+    run_row = evaluate.get_run(conn, run) if run else None
+    if run and (not run_row or str(run_row.get("category_id")) != str(cid)):
+        run = ""
     if stage not in _AUDIT_STAGE_KEYS:
         stage = "keyword"
-    sq = _stage_query(conn, category, stage)
+    sq = _stage_query(conn, category, stage, run=run or None)
     if sq is None:
         conn.close()
         return JSONResponse({"stage": stage, "no_data": True, "rows": [], "keys": [], "total": 0,
@@ -4382,7 +4401,7 @@ def api_audit_shortlist(request: Request, cid: int, stage: str = "keyword",
     try:
         _keys, esql, eparams = shortlist.export_query(real_keys, limit=limit, offset=offset, **filters)
         rows = [dict(r) for r in conn.execute(esql, tuple(eparams)).fetchall()]
-        _enrich_audit_rows(conn, cid, rows, keys_wanted, stage=stage)   # kw + reasons + stage + decision
+        _enrich_audit_rows(conn, cid, rows, keys_wanted, stage=stage, run=run or None)   # kw + reasons + stage + decision
     except Exception as e:
         conn.close()
         return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=500)
@@ -4428,6 +4447,7 @@ def download_page(request: Request, cid: int, stage: str = "keyword",
         conn, request, category=category, total=total,
         stage=stage, stage_label=dict(_AUDIT_STAGES).get(stage, stage),
         run=run, run_name=(run_row.get("name") or run_row.get("run_id") if run_row else ""),
+        runs=_incl_run_options(conn, cid),
         preselect=preselect, default_filename=f"gov-uk-audit-shortlist-{_dl_stamp()}"))
     conn.close()
     return resp

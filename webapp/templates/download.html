@@ -16,6 +16,18 @@
     {% if run %}<input type="hidden" name="run" value="{{ run }}">{% endif %}
     {% for f in preselect %}<input type="hidden" name="fields" value="{{ f }}">{% endfor %}
 
+    {% if runs %}
+    <div class="field" style="max-width:440px;">
+      <label class="q" for="dl-run">Run</label>
+      <select id="dl-run" style="width:100%;"
+        onchange="(function(v){var p=new URLSearchParams(window.location.search); if(v){p.set('run',v);}else{p.delete('run');} window.location.search=p.toString();})(this.value)">
+        <option value="" {{ 'selected' if not run }}>Active run</option>
+        {% for r in runs %}<option value="{{ r.run_id }}" {{ 'selected' if r.run_id == run }}>{{ r.label }}</option>{% endfor %}
+      </select>
+      <p class="hint" style="margin-top:6px;">Which run's shortlist to download. Changing this reloads the page.</p>
+    </div>
+    {% endif %}
+
     <div class="field" style="max-width:440px;">
       <label class="q" for="format">Output type</label>
       <select id="format" name="format" style="width:100%;">
