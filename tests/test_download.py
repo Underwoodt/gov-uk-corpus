@@ -72,13 +72,29 @@ class TestDownloadRuns(unittest.TestCase):
         c = self._client()
         r = c.get(f"/categories/{self.cid}/download", params={"run": self.r1, "stage": "final"})
         self.assertEqual(r.status_code, 200)
-        self.assertIn('name="run" multiple', r.text)
-        self.assertIn(f'value="{self.r1}" selected', r.text)
-        self.assertNotIn(f'value="{self.r2}" selected', r.text)
+        self.assertNotIn("<select id=\"dl-run\"", r.text)                      # checkboxes, not a select
+        self.assertIn(f'name="run" value="{self.r1}" checked', r.text)
+        self.assertIn(f'name="run" value="{self.r2}" >', r.text)
         r = c.get(f"/categories/{self.cid}/download", params=[("run", self.r1), ("run", self.r2)])
-        self.assertIn(f'value="{self.r1}" selected', r.text)
-        self.assertIn(f'value="{self.r2}" selected', r.text)
+        self.assertIn(f'name="run" value="{self.r1}" checked', r.text)
+        self.assertIn(f'name="run" value="{self.r2}" checked', r.text)
         self.assertIn('value="run_id" checked disabled', r.text)        # Run ID always on, like URL
+
+    def test_picker_lists_only_this_categorys_runs(self):
+        conn = self.app.connect()
+        from govuk_corpus import categories as cat
+        other = cat.create_category(conn, {"slug": "other", "owner_email": "a@b.co", "description": "Other",
+                                           "dept_slugs": "environment-agency", "document_type_slugs": "guidance",
+                                           "keywords": "slurry", "inclusion_context": "slurry"})
+        foreign = evaluate.create_run(conn, other, "m", "anthropic")
+        conn.commit(); conn.close()
+        r = self._client().get(f"/categories/{self.cid}/download")
+        self.assertIn(f'value="{self.r1}"', r.text)
+        self.assertNotIn(foreign, r.text)                                        # another shortlist's run is not offered
+        # ...and cannot be smuggled in through the URL either
+        header, rows = self._csv(self._client().get(f"/categories/{self.cid}/export",
+                                                    params=[("stage", "final"), ("format", "csv"), ("run", foreign)]))
+        self.assertTrue(rows and all(row[1] == self.r2 for row in rows))         # falls back to this category's active run
 
     def test_export_always_carries_run_id(self):
         c = self._client()
