@@ -4556,6 +4556,144 @@ def export_category(request: Request, cid: int, format: str = "csv", stage: str 
                     headers={"Content-Disposition": f'attachment; filename="{name}.csv"'})
 
 
+# ---- Data Analysis (guc-0004c4) + the generalised review list (guc-0032) ------------------
+ANALYSIS_CONTEXTS = {
+    "phase1": "Inclusion Phase (Recall)",
+}
+_VERDICT_LABEL = {"keep": "Keep", "reject": "Reject", "all": "All"}
+_VERDICT_KEEP = {"keep": 1, "reject": 0}
+
+
+def _run_label(run_row: dict) -> str:
+    if not run_row:
+        return "—"
+    dt = (run_row.get("started_at") or "")[:19].replace("T", " ")
+    return f"{run_row.get('name') or run_row['run_id']} · {dt} · {run_row.get('actual_model') or run_row.get('model') or ''}".strip(" ·")
+
+
+def _own_run(conn, cid: int, run_id: str) -> Optional[dict]:
+    """The run row if it is an inclusion run of THIS category, else None."""
+    if not run_id:
+        return None
+    row = evaluate.get_run(conn, run_id)
+    if not row or str(row.get("category_id")) != str(cid) or row.get("source_run_id"):
+        return None
+    return row
+
+
+def _phase1_compare(conn, cid: int, baseline: str, comparison: str) -> dict:
+    """Phase-1 (inclusion) decisions of two runs over the pages BOTH evaluated."""
+    base = {r["url"]: r for r in evaluate.run_results(conn, baseline)}
+    comp = {r["url"]: r for r in evaluate.run_results(conn, comparison)}
+    shared = sorted(set(base) & set(comp))
+
+    def counts(m):
+        acc = sum(1 for u in shared if m[u].get("keep") == 1)
+        rej = sum(1 for u in shared if m[u].get("keep") == 0)
+        return {"accepted": acc, "rejected": rej, "unscored": len(shared) - acc - rej, "total": len(shared)}
+
+    diff = [u for u in shared if base[u].get("keep") != comp[u].get("keep")]
+    a2r = sum(1 for u in diff if base[u].get("keep") == 1 and comp[u].get("keep") == 0)
+    r2a = sum(1 for u in diff if base[u].get("keep") == 0 and comp[u].get("keep") == 1)
+    return {
+        "shared": len(shared), "only_baseline": len(set(base) - set(comp)), "only_comparison": len(set(comp) - set(base)),
+        "baseline": {"run_id": baseline, "label": _run_label(evaluate.get_run(conn, baseline)), **counts(base)},
+        "comparison": {"run_id": comparison, "label": _run_label(evaluate.get_run(conn, comparison)), **counts(comp)},
+        "differences": {"total": len(diff), "accepted_to_rejected": a2r, "rejected_to_accepted": r2a,
+                        "involving_unscored": len(diff) - a2r - r2a},
+    }
+
+
+@app.get("/categories/{cid}/analysis", response_class=HTMLResponse)
+def analysis_page(request: Request, cid: int):
+    """Data Analysis sub-tab: cards explaining the difference between a baseline run and a
+    comparison run. Pickers default to the two newest inclusion runs; ?baseline=&comparison= pre-select."""
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    category = cat.get_category(conn, cid)
+    if not category:
+        conn.close()
+        return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
+    category["display_name"] = cat.display_name(category)
+    resp = templates.TemplateResponse("analysis.html", ctx(conn, request, category=category))
+    conn.close()
+    return resp
+
+
+@app.get("/api/categories/{cid}/analysis/phase1")
+def api_analysis_phase1(request: Request, cid: int, baseline: str = "", comparison: str = ""):
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    conn = connect()
+    try:
+        if not (_own_run(conn, cid, baseline) and _own_run(conn, cid, comparison)):
+            return JSONResponse({"error": "Pick two inclusion runs of this shortlist."}, status_code=400)
+        return JSONResponse(_phase1_compare(conn, cid, baseline, comparison))
+    finally:
+        conn.close()
+
+
+@app.get("/categories/{cid}/analysis/list", response_class=HTMLResponse)
+def analysis_list_page(request: Request, cid: int, context: str = "phase1", run: str = "", verdict: str = "all",
+                       shared_with: str = "", baseline: str = "", comparison: str = ""):
+    """Generalised review list, opened from the analysis cards (and, later, from elsewhere).
+    Title = the context and the verdict, e.g. "Inclusion Phase (Recall) – Keep".
+      context=phase1      one run's Phase-1 decisions; verdict=keep|reject|all; shared_with=<run>
+                          restricts to pages that run also evaluated (what the cards count).
+      context=phase1_diff the pages two runs decided differently (baseline=&comparison=)."""
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    category = cat.get_category(conn, cid)
+    if not category:
+        conn.close()
+        return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
+    category["display_name"] = cat.display_name(category)
+    rows, runs_shown, note = [], [], ""
+    if context == "phase1_diff":
+        b, c = _own_run(conn, cid, baseline), _own_run(conn, cid, comparison)
+        title = f"{ANALYSIS_CONTEXTS['phase1']} – Differences"
+        if b and c:
+            base = {r["url"]: r for r in evaluate.run_results(conn, baseline)}
+            comp = {r["url"]: r for r in evaluate.run_results(conn, comparison)}
+            for u in sorted(set(base) & set(comp)):
+                if base[u].get("keep") != comp[u].get("keep"):
+                    rows.append({"url": u, "decisions": [base[u], comp[u]],
+                                 "reasons": [base[u].get("reason") or "", comp[u].get("reason") or ""]})
+            runs_shown = [{"role": "Baseline", "label": _run_label(b)}, {"role": "Comparison", "label": _run_label(c)}]
+            note = "pages both runs evaluated but decided differently"
+    else:
+        verdict = verdict if verdict in _VERDICT_LABEL else "all"
+        title = f"{ANALYSIS_CONTEXTS.get(context, ANALYSIS_CONTEXTS['phase1'])} – {_VERDICT_LABEL[verdict]}"
+        r = _own_run(conn, cid, run)
+        if r:
+            results = evaluate.run_results(conn, run, keep=_VERDICT_KEEP.get(verdict))
+            other = _own_run(conn, cid, shared_with)
+            if other:
+                shared = {x["url"] for x in evaluate.run_results(conn, shared_with)}
+                results = [x for x in results if x["url"] in shared]
+                note = f"only pages also evaluated by {_run_label(other)}"
+            rows = [{"url": x["url"], "decisions": [x], "reasons": [x.get("reason") or ""]} for x in results]
+            runs_shown = [{"role": "Run", "label": _run_label(r)}]
+        baseline, comparison = (run, shared_with)
+    # Titles from the corpus, in batches.
+    urls = [x["url"] for x in rows]
+    titles = {}
+    for i in range(0, len(urls), 500):
+        chunk = urls[i:i + 500]
+        ph = ",".join([shortlist._P] * len(chunk))
+        for t in conn.execute(f"SELECT url, title FROM content WHERE url IN ({ph})", tuple(chunk)).fetchall():
+            titles[t["url"]] = t["title"]
+    for x in rows:
+        x["title"] = titles.get(x["url"]) or ""
+    resp = templates.TemplateResponse("analysis_list.html", ctx(
+        conn, request, category=category, title=title, rows=rows, runs_shown=runs_shown, note=note,
+        baseline=baseline, comparison=comparison))
+    conn.close()
+    return resp
+
+
 # ---- funnel audit (per-page log) ----------------------------------------
 def _build_audit(cid: int, filters: dict) -> dict:
     conn = connect()

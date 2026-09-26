@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block page_id %}guc-0032{% endblock %}
+{% block title %}{{ title }} — {{ category.display_name }}{% endblock %}
+{% block content %}
+
+  <a class="back" href="{{ url_for('analysis_page', cid=category.id) }}?baseline={{ baseline or '' }}&amp;comparison={{ comparison or '' }}">‹ Data Analysis</a>
+
+  <h1 style="margin:18px 0 4px;">{{ title }}</h1>
+  <p class="secondary" style="margin:0 0 14px;">{{ category.display_name }}
+    (<span class="mono">{{ category.slug or '' }}</span>) ·
+    {% for r in runs_shown %}<strong>{{ r.role }}</strong>: {{ r.label }}{{ ' · ' if not loop.last }}{% endfor %}
+    · <span id="shown">{{ rows|length }}</span> of {{ rows|length }} pages{% if note %} · {{ note }}{% endif %}</p>
+
+  <div class="controls" style="margin:0 0 12px;align-items:center;gap:8px;">
+    <input id="search" type="search" placeholder="Filter by title, URL or reason…"
+      style="padding:8px 10px;border:2px solid var(--black);border-radius:6px;min-width:280px;font:inherit;">
+  </div>
+
+  {% if rows %}
+  <div class="table-wrap" style="overflow-x:auto;">
+    <table id="review" style="font-size:14px;">
+      <thead><tr>
+        <th>Page</th>
+        {% for r in runs_shown %}<th>{{ r.role }} decision</th><th>{{ r.role }} reason</th>{% endfor %}
+      </tr></thead>
+      <tbody>
+      {% for row in rows %}
+        <tr data-hay="{{ (row.url ~ ' ' ~ (row.title or '') ~ ' ' ~ (row.reasons | join(' ')))|lower }}">
+          <td style="min-width:260px;"><a href="{{ row.url }}">{{ row.title or row.url }}</a><div class="secondary mono" style="font-size:12px;word-break:break-all;">{{ row.url }}</div></td>
+          {% for d in row.decisions %}
+          <td style="white-space:nowrap;"><span class="kd {{ 'keep' if d.keep == 1 else ('drop' if d.keep == 0 else 'none') }}">{{ 'Keep' if d.keep == 1 else ('Reject' if d.keep == 0 else 'Unscored') }}</span>{% if d.score is not none %} <span class="secondary" style="font-size:12px;">{{ '%.2f'|format(d.score|float) }}</span>{% endif %}</td>
+          <td style="min-width:240px;max-width:520px;">{{ d.reason or '' }}</td>
+          {% endfor %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="secondary">No pages match this view.</p>
+  {% endif %}
+
+  <style>
+    .kd { display:inline-block; font-size:12px; font-weight:700; padding:2px 9px; border-radius:999px; }
+    .kd.keep { background:#d9f2e4; color:var(--green-dark,#00703c); } .kd.drop { background:#fbe0db; color:#a5200f; } .kd.none { background:var(--surface-3); color:var(--muted); }
+  </style>
+  <script>
+    (function () {
+      const rows = [...document.querySelectorAll("#review tbody tr")], shown = document.getElementById("shown");
+      document.getElementById("search").addEventListener("input", e => {
+        const q = e.target.value.trim().toLowerCase(); let n = 0;
+        rows.forEach(tr => { const ok = !q || tr.dataset.hay.includes(q); tr.hidden = !ok; if (ok) n++; });
+        shown.textContent = n;
+      });
+    })();
+  </script>
+{% endblock %}

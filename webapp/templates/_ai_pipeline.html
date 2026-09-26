@@ -16,6 +16,7 @@
     <a href="#" class="subtab2 current" data-subtab2="active" data-tabid="{{ ai_ref }}1" role="tab">Active Run</a>
     <a href="#" class="subtab2" data-subtab2="history" data-tabid="{{ ai_ref }}2" role="tab" data-level="advanced">Run History</a>
     {% if ai_ref == "guc-0004c" %}<a href="{{ url_for('performance_page', cid=category.id) }}" data-tabid="{{ ai_ref }}3" role="tab" data-level="advanced">Run performance</a>{% endif %}
+    {% if ai_ref == "guc-0004c" %}<a href="{{ url_for('analysis_page', cid=category.id) }}" data-tabid="{{ ai_ref }}4" role="tab" data-level="advanced">Data Analysis</a>{% endif %}
   </div>
 
   <div id="tab2-active" class="subpanel2" role="tabpanel">

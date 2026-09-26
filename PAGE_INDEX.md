@@ -18,7 +18,7 @@ we can pin the report to an exact page.
 
 ## Next free serial
 
-**`guc-0032`** ← assign this to the next new page, then increment this line. (guc-0023 is free; 0024–0026 used by the password-reset pages; 0027 = GOV.UK Search additions; 0028 = Run performance diff; 0029 = Gold labels; 0030 = Gold agreement; 0031 = Gold labels wizard.)
+**`guc-0033`** ← assign this to the next new page, then increment this line. (guc-0023 is free; 0024–0026 used by the password-reset pages; 0027 = GOV.UK Search additions; 0028 = Run performance diff; 0029 = Gold labels; 0030 = Gold agreement; 0031 = Gold labels wizard; 0032 = Analysis review list.)
 
 ## How it's wired (so the rule is automatic)
 
@@ -72,6 +72,7 @@ we can pin the report to an exact page.
 | guc-0029 | Gold labels (rate a run's outcomes page by page → benchmark ground truth; multi-labeller, blind mode, stage sampling) | `gold_labels.html` | `GET /categories/{id}/gold?run=`, `POST /api/categories/{id}/gold`, `POST /api/categories/{id}/gold/sample`, `GET /categories/{id}/gold/sheet.csv` | Active |
 | guc-0030 | Gold agreement (inter-labeller κ, disagreements, adjudication) | `gold_agreement.html` | `GET /categories/{id}/gold/agreement`, `POST /api/categories/{id}/gold/adjudicate` | Active |
 | guc-0031 | Gold labels wizard (one page at a time, Prev / Next save) | `gold_labels.html` (wizard mode) | `GET /categories/{id}/gold/wizard?run=` | Active |
+| guc-0032 | Analysis review list (generalised page list opened from the Data Analysis cards; title = context – verdict, e.g. “Inclusion Phase (Recall) – Keep”) | `analysis_list.html` | `GET /categories/{id}/analysis/list?context=&run=&verdict=` | Active |
 
 ## Sub-tab IDs
 
@@ -88,6 +89,7 @@ letter (e.g. `guc-0003b1`); the nested pane's id is what shows in the corner.
 | guc-0004c1 | Active Run (default) | Filter pipeline run (`guc-0004c`) |
 | guc-0004c2 | Run History | Filter pipeline run (`guc-0004c`) |
 | guc-0004c3 | Run performance (`performance.html`, `GET /categories/{id}/performance`; was top-level `guc-0005`) | Filter pipeline run (`guc-0004c`) |
+| guc-0004c4 | Data Analysis (`analysis.html`, `GET /categories/{id}/analysis`) — cards explaining the difference between a baseline and a comparison run | Filter pipeline run (`guc-0004c`) |
 | guc-0016a | Your details | Profile (`guc-0016`) |
 | guc-0016b | Interface complexity | Profile (`guc-0016`) |
 | guc-0018a | Should be in | URL check (`guc-0018`) |

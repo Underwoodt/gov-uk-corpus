@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block page_id %}guc-0004c4{% endblock %}
+{% block title %}{{ category.display_name }} — data analysis{% endblock %}
+{% block content %}
+
+  <a class="back" href="{{ url_for('list_categories_page') }}">‹ Shortlists</a>
+  <h1 style="margin:20px 0 20px;">{{ category.display_name }}</h1>
+
+  <div class="tabs">
+    <a href="{{ url_for('edit_category_page', cid=category.id) }}">Filter Parameters</a>
+    <a href="{{ url_for('shortlist_page', cid=category.id) }}">Shortlist</a>
+    <span class="current">Filter pipeline run</span>
+    <a href="{{ url_for('gds_compliance_page', cid=category.id) }}">GDS Compliance</a>
+    <a href="{{ url_for('preview_category_page', cid=category.id) }}">Explainability</a>
+    <a href="{{ url_for('url_check_page', cid=category.id) }}">URL check</a>
+  </div>
+
+  <div class="tabpanel">
+    <div class="tabs" role="tablist" style="margin-bottom:20px;">
+      <a href="{{ url_for('ai_pipeline_page', cid=category.id) }}" data-tabid="guc-0004c1" role="tab">Active Run</a>
+      <a href="{{ url_for('ai_pipeline_page', cid=category.id) }}#history" data-tabid="guc-0004c2" role="tab" data-level="advanced">Run History</a>
+      <a href="{{ url_for('performance_page', cid=category.id) }}" data-tabid="guc-0004c3" role="tab" data-level="advanced">Run performance</a>
+      <span class="current" data-tabid="guc-0004c4">Data Analysis</span>
+    </div>
+    <h2>Explain the difference between two runs</h2>
+    <p class="hint" style="margin-top:-20px;max-width:720px;">The <strong>baseline</strong> is the run you are comparing against; the
+      <strong>comparison</strong> is the run whose differences you want explained. Each card looks at one part of the pipeline.
+      Only pages present in <em>both</em> runs are compared, because a page in one run but not the other reflects a change
+      in the underlying data, not a change in the decisions.</p>
+
+    <div class="controls" id="run-pickers">
+      <label>Baseline <select id="pick-base" class="run-pick"></select></label>
+      <label>Comparison <select id="pick-comp" class="run-pick"></select></label>
+    </div>
+    <p id="an-empty" class="secondary" hidden>Fewer than two runs yet — evaluate the shortlist on the
+      <a href="{{ url_for('preview_category_page', cid=category.id) }}">Explainability</a> tab first.</p>
+
+    {# Card 1: Phase 1 (inclusion) decisions on the shared pages. #}
+    <div class="card" id="card-phase1" style="max-width:860px;padding:18px 22px;margin-top:8px;">
+      <h3 style="margin:0 0 4px;">Phase 1 – Inclusion (Recall): accepted vs rejected</h3>
+      <p class="secondary" style="margin:0 0 12px;">How each run decided the <strong id="p1-shared">…</strong> pages both runs evaluated.
+        <span id="p1-only" class="secondary"></span></p>
+      <div class="table-wrap">
+        <table id="p1-table" style="font-size:15px;">
+          <thead><tr><th>Run</th><th class="num">Accepted</th><th class="num">Rejected</th><th class="num">Unscored</th><th class="num">Total</th></tr></thead>
+          <tbody>
+            <tr id="p1-base"><td></td><td class="num"></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+            <tr id="p1-comp"><td></td><td class="num"></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="margin:14px 0 0;font-size:15px;">
+        <strong id="p1-diff">…</strong> <span id="p1-diff-text">pages decided differently</span>
+        <span class="secondary" id="p1-diff-split"></span>
+        · <a id="p1-diff-link" href="#">Review the exceptions</a>
+      </p>
+    </div>
+  </div>
+
+  <script>
+    const CID = {{ category.id }};
+    const LIST = "{{ url_for('analysis_list_page', cid=category.id) }}";
+    let RUNS = [], byId = {};
+    function fmtDate(s) { return s ? String(s).slice(0, 19).replace("T", " ") : "—"; }
+    const fmtInt = n => Number(n || 0).toLocaleString();
+    function listUrl(params) { return LIST + "?" + new URLSearchParams(params).toString(); }
+    function cellLink(td, n, params) {
+      td.textContent = "";
+      const a = document.createElement("a"); a.href = listUrl(params); a.textContent = fmtInt(n); td.appendChild(a);
+    }
+    function rowFor(id, label, c, run, other) {
+      const tr = document.getElementById(id), tds = tr.querySelectorAll("td");
+      tds[0].textContent = label;
+      const base = { context: "phase1", run, shared_with: other };
+      cellLink(tds[1], c.accepted, { ...base, verdict: "keep" });
+      cellLink(tds[2], c.rejected, { ...base, verdict: "reject" });
+      tds[3].textContent = fmtInt(c.unscored);
+      cellLink(tds[4], c.total, { ...base, verdict: "all" });
+    }
+    async function render() {
+      const base = document.getElementById("pick-base").value, comp = document.getElementById("pick-comp").value;
+      if (!base || !comp) return;
+      const j = await (await fetch(`/api/categories/${CID}/analysis/phase1?baseline=${encodeURIComponent(base)}&comparison=${encodeURIComponent(comp)}`)).json();
+      if (j.error) { document.getElementById("p1-shared").textContent = j.error; return; }
+      document.getElementById("p1-shared").textContent = fmtInt(j.shared);
+      document.getElementById("p1-only").textContent = (j.only_baseline || j.only_comparison)
+        ? `(${fmtInt(j.only_baseline)} only in the baseline and ${fmtInt(j.only_comparison)} only in the comparison are left out.)` : "";
+      rowFor("p1-base", "Baseline · " + j.baseline.label, j.baseline, base, comp);
+      rowFor("p1-comp", "Comparison · " + j.comparison.label, j.comparison, comp, base);
+      document.getElementById("p1-diff").textContent = fmtInt(j.differences.total);
+      document.getElementById("p1-diff-text").textContent = j.differences.total === 1 ? "page decided differently" : "pages decided differently";
+      const d = j.differences;
+      document.getElementById("p1-diff-split").textContent =
+        `(${fmtInt(d.accepted_to_rejected)} accepted by the baseline but rejected by the comparison · ${fmtInt(d.rejected_to_accepted)} the other way` +
+        (d.involving_unscored ? ` · ${fmtInt(d.involving_unscored)} involving an unscored page` : "") + ")";
+      document.getElementById("p1-diff-link").href = listUrl({ context: "phase1_diff", baseline: base, comparison: comp });
+    }
+    async function load() {
+      const j = await (await fetch(`/api/categories/${CID}/runs`)).json();
+      RUNS = (j.runs || []).filter(r => !r.source_run_id);      // inclusion (Phase 1) runs = chain heads
+      RUNS.forEach(r => byId[r.run_id] = r);
+      const few = RUNS.length < 2;
+      document.getElementById("an-empty").hidden = !few;
+      document.getElementById("card-phase1").hidden = few;
+      const q = new URLSearchParams(location.search);
+      [["pick-base", q.get("baseline") || (RUNS[0] || {}).run_id], ["pick-comp", q.get("comparison") || (RUNS[1] || {}).run_id]].forEach(([id, def]) => {
+        const sel = document.getElementById(id);
+        sel.innerHTML = RUNS.map(r => `<option value="${r.run_id}">${r.name ? r.name + " · " : ""}${fmtDate(r.started_at)} · ${r.actual_model || r.model || ""}</option>`).join("");
+        if (def && byId[def]) sel.value = def;
+        sel.addEventListener("change", render);
+      });
+      if (!few) render();
+    }
+    load();
+  </script>
+{% endblock %}
