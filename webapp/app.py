@@ -4441,14 +4441,19 @@ def download_page(request: Request, cid: int, stage: str = "keyword",
         except Exception:
             total = None
     # Columns come from the Audit shortlist selection (passed as ?fields=…); fall back
-    # to the default set if the page is opened directly with none.
+    # to the default set if the page is opened directly with none. The URL is always
+    # included (and first), even if the selection didn't request it, so every download
+    # keys back to the page.
     preselect = [f for f in fields if f in _all_audit_fields()] or list(_AUDIT_DEFAULT_FIELDS)
+    preselect = ["url"] + [f for f in preselect if f != "url"]
+    preselect_labels = [_field_label(k) for k in preselect]
     resp = templates.TemplateResponse("download.html", ctx(
         conn, request, category=category, total=total,
         stage=stage, stage_label=dict(_AUDIT_STAGES).get(stage, stage),
         run=run, run_name=(run_row.get("name") or run_row.get("run_id") if run_row else ""),
         runs=_incl_run_options(conn, cid),
-        preselect=preselect, default_filename=f"gov-uk-audit-shortlist-{_dl_stamp()}"))
+        preselect=preselect, preselect_labels=preselect_labels,
+        default_filename=f"gov-uk-audit-shortlist-{_dl_stamp()}"))
     conn.close()
     return resp
 
@@ -4476,6 +4481,8 @@ def export_category(request: Request, cid: int, format: str = "csv", stage: str 
         conn.close()
         return RedirectResponse(url=str(request.url_for("download_page", cid=cid)), status_code=303)
     wanted = [f for f in fields if f in _all_audit_fields()] or list(_AUDIT_DEFAULT_FIELDS)
+    if "url" not in wanted:                          # always include the URL, even if not requested
+        wanted = ["url"] + wanted
     real = [k for k in wanted if k in shortlist.EXPORT_FIELDS]
     keys, rows = shortlist.export_rows(conn, real, **_merge_extra(sq, ""))   # keys: real, url-first
     _enrich_audit_rows(conn, cid, rows, wanted, stage=stage, run=run or None)   # kw + reasons + stage + decision

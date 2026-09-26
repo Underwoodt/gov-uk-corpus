@@ -43,10 +43,11 @@
       <p class="hint" style="margin-top:6px;">The extension (.csv / .xlsx / .json) is added automatically.</p>
     </div>
 
-    <p class="secondary" style="max-width:640px;">
-      Downloads the <strong>{{ preselect|length }}</strong> column{{ '' if preselect|length == 1 else 's' }} selected on the
-      <a href="{{ url_for('shortlist_page', cid=category.id) }}">Shortlist</a> — change the selection there.
-    </p>
+    <div class="secondary" style="max-width:640px;">
+      <p style="margin:0 0 6px;">Downloads these <strong>{{ preselect_labels|length }}</strong> column{{ '' if preselect_labels|length == 1 else 's' }}
+        (URL is always included) — <a href="{{ url_for('shortlist_page', cid=category.id) }}">change the selection on the Shortlist</a>:</p>
+      <p style="margin:0 0 4px;font-weight:700;color:var(--ink,#0b0c0c);">{{ preselect_labels | join(', ') }}</p>
+    </div>
 
     <button class="btn" type="submit">Download</button>
   </form>
