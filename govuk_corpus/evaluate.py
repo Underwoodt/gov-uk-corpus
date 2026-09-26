@@ -550,13 +550,19 @@ def norm_sampling(sampling) -> Dict:
     return {"temperature": t, "thinking": th, "effort": str(e) if e else None}
 
 
+# A run with no explicit concurrency now evaluates pages in parallel waves by default (was 1 =
+# sequential). Only affects NEW runs — existing runs stamp their own concurrency in prompt_spec.
+DEFAULT_CONCURRENCY = 5
+
+
 def norm_trial(trial) -> dict:
-    """Clamp/validate the A/B trial knobs; the defaults reproduce today's behaviour (no sampling
-    controls sent — the provider's defaults apply)."""
+    """Clamp/validate the A/B trial knobs; sampling defaults reproduce today's behaviour (no
+    sampling controls sent — the provider's defaults apply). Concurrency defaults to
+    DEFAULT_CONCURRENCY (parallel) so a normal Active Run runs concurrently unless set to 1."""
     t = trial or {}
     return {
         "prompt_variant": "cached" if str(t.get("prompt_variant") or "current").lower() == "cached" else "current",
-        "concurrency": max(1, min(int(t.get("concurrency") or 1), 10)),
+        "concurrency": max(1, min(int(t.get("concurrency") or DEFAULT_CONCURRENCY), 10)),
         "caching": bool(t.get("caching")),
         "sampling": norm_sampling(t.get("sampling")),
     }
