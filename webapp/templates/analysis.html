@@ -325,7 +325,7 @@
     function mdToHtml(md) {
       const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
       const blocks = [];
-      md = String(md).replace(/```[\w-]*\n?([\s\S]*?)```/g, (m, code) => { blocks.push(code.replace(/\n$/, "")); return `\u0000${blocks.length - 1}\u0000`; });
+      md = String(md).replace(/```[^\n]*\n?([\s\S]*?)```/g, (m, code) => { blocks.push(code.replace(/\n$/, "")); return `\u0000${blocks.length - 1}\u0000`; });
       const inline = s => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>")
         .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>");
       const lines = md.split(/\r?\n/); let html = "", i = 0;
