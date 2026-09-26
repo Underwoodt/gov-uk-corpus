@@ -552,7 +552,8 @@ def norm_sampling(sampling) -> Dict:
 
 # A run with no explicit concurrency now evaluates pages in parallel waves by default (was 1 =
 # sequential). Only affects NEW runs — existing runs stamp their own concurrency in prompt_spec.
-DEFAULT_CONCURRENCY = 5
+DEFAULT_CONCURRENCY = 10
+MAX_CONCURRENCY = 20
 
 
 def norm_trial(trial) -> dict:
@@ -562,7 +563,7 @@ def norm_trial(trial) -> dict:
     t = trial or {}
     return {
         "prompt_variant": "cached" if str(t.get("prompt_variant") or "current").lower() == "cached" else "current",
-        "concurrency": max(1, min(int(t.get("concurrency") or DEFAULT_CONCURRENCY), 10)),
+        "concurrency": max(1, min(int(t.get("concurrency") or DEFAULT_CONCURRENCY), MAX_CONCURRENCY)),
         "caching": bool(t.get("caching")),
         "sampling": norm_sampling(t.get("sampling")),
     }

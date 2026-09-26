@@ -213,7 +213,7 @@
     btn.disabled = true;
     try {
       const v = $("trial-variant"), c = $("trial-concurrency"), ca = $("trial-caching");
-      const body = v ? { prompt_variant: v.value, concurrency: Number(c && c.value) || 5,
+      const body = v ? { prompt_variant: v.value, concurrency: Number(c && c.value) || 10,
                          caching: !!(ca && ca.checked) } : {};
       const j = await (await fetch(`/api/categories/${CID}/runs`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })).json();
