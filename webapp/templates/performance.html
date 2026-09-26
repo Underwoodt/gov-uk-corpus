@@ -135,6 +135,10 @@
         <tr data-metric="final-dis-out"><td class="secondary" style="padding-left:26px;">Run 1 dropped · this run kept</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
 
         <tr><td colspan="4" style="font-weight:700;padding-top:18px;border-top:2px solid var(--border-mid);">Run configuration</td></tr>
+        <tr data-metric="cfg-name"><td>Run name <span class="metric-i" tabindex="0" title="The run's name, as shown in the Run pickers above. Both phases share it." style="cursor:help;color:var(--link,#1d70b8);font-weight:700;font-size:13px;">&#9432;</span></td><td></td><td></td><td></td></tr>
+        <tr data-metric="cfg-datetime"><td>Run date/time <span class="metric-i" tabindex="0" title="When Phase 1 started (evaluation_runs.started_at)." style="cursor:help;color:var(--link,#1d70b8);font-weight:700;font-size:13px;">&#9432;</span></td><td></td><td></td><td></td></tr>
+        <tr data-metric="cfg-provider-p1"><td>Provider / model – Phase 1 <span class="metric-i" tabindex="0" title="The provider and the model that actually served Phase 1 (inclusion), as reported by the API." style="cursor:help;color:var(--link,#1d70b8);font-weight:700;font-size:13px;">&#9432;</span></td><td class="mono"></td><td class="mono"></td><td class="mono"></td></tr>
+        <tr data-metric="cfg-provider-p2"><td>Provider / model – Phase 2 <span class="metric-i" tabindex="0" title="The provider and the model that actually served Phase 2 (exclusion), as reported by the API." style="cursor:help;color:var(--link,#1d70b8);font-weight:700;font-size:13px;">&#9432;</span></td><td class="mono"></td><td class="mono"></td><td class="mono"></td></tr>
         <tr data-metric="cfg-variant"><td>Prompt variant <span class="metric-i" tabindex="0" title="Prompt build used: current (today's wording) or cached (reordered, cache-enabled). Stamped at run creation." style="cursor:help;color:var(--link,#1d70b8);font-weight:700;font-size:13px;">&#9432;</span></td><td></td><td></td><td></td></tr>
         <tr data-metric="cfg-concurrency"><td>Concurrency <span class="metric-i" tabindex="0" title="How many pages were sent to the model at once (1 = sequential). Stamped at run creation." style="cursor:help;color:var(--link,#1d70b8);font-weight:700;font-size:13px;">&#9432;</span></td><td></td><td></td><td></td></tr>
         <tr data-metric="cfg-caching"><td>Caching <span class="metric-i" tabindex="0" title="Whether a cache breakpoint was set on the stable prompt prefix. Stamped at run creation." style="cursor:help;color:var(--link,#1d70b8);font-weight:700;font-size:13px;">&#9432;</span></td><td></td><td></td><td></td></tr>
@@ -199,6 +203,7 @@
         "misstokens","misstokens-p1","misstokens-p2","outtokens","outtokens-p1","outtokens-p2",
         "totaltime","totaltime-p1","totaltime-p2","elapsed","elapsed-p1","elapsed-p2",
         "keep","keep-p1","keep-p2","drop","drop-p1","drop-p2",
+        "cfg-name","cfg-datetime","cfg-provider-p1","cfg-provider-p2",
         "cfg-variant","cfg-concurrency","cfg-caching","cfg-fp-p1","cfg-fp-p2","cfg-version","cfg-bodylimit",
         "cfg-sampling","cfg-scope"];
       const ch = chainFor(col);
@@ -232,6 +237,12 @@
       const modelOf = x => x ? `${x.provider || ""} / ${x.actual_model || x.model || ""}` : "—";
       set("model-p1", modelOf(incl));
       set("model-p2", modelOf(excl));
+      // The same identity details again inside the Run configuration block, so that block
+      // reads on its own (name · date/time · provider/model, as the Run pickers show them).
+      set("cfg-name", head.name || r.name || "—");
+      set("cfg-datetime", fmtDate(head.started_at));
+      set("cfg-provider-p1", modelOf(incl));
+      set("cfg-provider-p2", modelOf(excl));
 
       const wc = x => (x && x.started_at && x.finished_at)
         ? (new Date(x.finished_at) - new Date(x.started_at)) / 1000 : null;
