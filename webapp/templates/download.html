@@ -36,6 +36,20 @@
       </div>
     </div>
 
+    {% if runs %}
+    <div class="field" style="max-width:none;">
+      <label class="q">Runs <span class="secondary" style="font-weight:400;">— this shortlist's AI runs, newest first</span></label>
+      <p class="hint" style="margin:4px 0 10px;max-width:640px;">Tick the runs to download. Each run's rows go into the same file, told apart by the Run ID column, so you can compare them side by side. Nothing ticked = the active run.</p>
+      <div class="run-picker" style="display:flex;flex-wrap:wrap;gap:6px 28px;">
+      {% for r in runs %}
+        <label class="check" style="white-space:nowrap;display:inline-flex;align-items:center;gap:6px;margin:0;">
+          <input type="checkbox" name="run" value="{{ r.run_id }}" {{ 'checked' if r.run_id in runs_selected else '' }}> {{ r.label }}
+        </label>
+      {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
     <div class="field" style="max-width:440px;">
       <label class="q" for="format">Output type</label>
       <select id="format" name="format" style="width:100%;">
@@ -51,21 +65,6 @@
       <p class="hint" style="margin-top:6px;">The extension (.csv / .xlsx / .json) is added automatically.</p>
     </div>
 
-    {% if runs %}
-    <div class="field" style="max-width:640px;">
-      <label class="q">Runs <span class="secondary" style="font-weight:400;">— this shortlist's AI runs, newest first</span></label>
-      <p class="hint" style="margin:4px 0 10px;">Tick the runs to download. Each run's rows go into the same file, told apart by the Run ID column, so you can compare them side by side. Nothing ticked = the active run.</p>
-      <div class="col-picker">
-        <div>
-        {% for r in runs %}
-          <label class="check">
-            <input type="checkbox" name="run" value="{{ r.run_id }}" {{ 'checked' if r.run_id in runs_selected else '' }}> {{ r.label }}
-          </label>
-        {% endfor %}
-        </div>
-      </div>
-    </div>
-    {% endif %}
 
     <button class="btn" type="submit">Download</button>
   </form>

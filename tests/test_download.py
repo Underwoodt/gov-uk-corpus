@@ -73,8 +73,9 @@ class TestDownloadRuns(unittest.TestCase):
         r = c.get(f"/categories/{self.cid}/download", params={"run": self.r1, "stage": "final"})
         self.assertEqual(r.status_code, 200)
         self.assertNotIn("<select id=\"dl-run\"", r.text)                      # checkboxes, not a select
-        self.assertLess(r.text.index('id="filename"'), r.text.index('<label class="q">Runs'))   # runs sit last, by the button
-        self.assertLess(r.text.index('<label class="q">Runs'), r.text.index('type="submit">Download'))
+        self.assertLess(r.text.index('Fields to include'), r.text.index('<label class="q">Runs'))   # runs sit after the fields...
+        self.assertLess(r.text.index('<label class="q">Runs'), r.text.index('for="format">Output type'))   # ...and above Output type
+        self.assertIn('white-space:nowrap', r.text.split('class="run-picker"')[1].split("</div>")[0])   # run names never wrap
         self.assertIn(f'name="run" value="{self.r1}" checked', r.text)
         self.assertIn(f'name="run" value="{self.r2}" >', r.text)
         r = c.get(f"/categories/{self.cid}/download", params=[("run", self.r1), ("run", self.r2)])
