@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_crumbs.html" import crumbs %}
 {% block page_id %}guc-0028{% endblock %}
 {% block title %}{{ category.display_name }} — why runs differ{% endblock %}
 {% block content %}
@@ -71,7 +72,11 @@
     </div>
   {% endmacro %}
 
-  <a class="back" href="{{ url_for('performance_page', cid=category.id) }}">‹ Run performance</a>
+  {{ crumbs([
+      ("Shortlists", url_for('list_categories_page')),
+      (category.display_name, url_for('shortlist_page', cid=category.id)),
+      ("Run performance", url_for('performance_page', cid=category.id)),
+      ("Run diff", none)]) }}
   <h1 style="margin:16px 0 6px;">Why did the runs differ?</h1>
   <p class="hint" style="margin:0 0 4px;">Want ground truth rather than a run-vs-run verdict? Rate one run's
     outcomes page by page on the <a href="{{ url_for('gold_page', cid=category.id) }}{% if other_head %}?run={{ other_head }}{% elif base_head %}?run={{ base_head }}{% endif %}">Gold labels</a> page — each “correct / wrong” becomes a gold label.</p>
