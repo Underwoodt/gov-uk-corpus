@@ -261,6 +261,8 @@ td.num.timing, th.num { font-variant-numeric:tabular-nums; }
   margin-left:6px; vertical-align:middle; }
 .run-chip.running { background:#d2e2f1; color:#0b3d6b; }
 .run-chip.stalled { background:#fbe5d6; color:#8a3b12; }
+.run-chip.stopped-warn { background:#fdf3d8; color:#7a5b00; }
+.run-chip.stopped-bad { background:#f6d7d2; color:#942316; }
 .pg-sub { color:var(--muted,#6b7477); font-weight:400; }
 .pg-drift { display:inline-block; margin-left:6px; font-size:11px; font-weight:700; padding:0 6px;
   border-radius:999px; background:#fdf0e6; color:#8a4b12; vertical-align:middle; cursor:help; }

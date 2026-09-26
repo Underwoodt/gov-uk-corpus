@@ -38,6 +38,21 @@
     if (r.stalled) return ` <span class="run-chip stalled" title="Marked running but no process is working it — resume to finish">⚠ stalled</span>`;
     return "";
   }
+  // Why an unfinished run stopped (persisted on the run). Amber = benign pacing / manual; red = a
+  // real failure. Legacy runs stopped before this was recorded have no stop_reason -> no chip.
+  const STOP_CHIP = {
+    budget:          { t: "budget reached",  cls: "stopped-warn" },
+    provider_errors: { t: "provider errors", cls: "stopped-bad" },
+    config:          { t: "config error",    cls: "stopped-bad" },
+    manual:          { t: "stopped manually", cls: "stopped-warn" },
+    cap:             { t: "page cap",         cls: "stopped-warn" },
+    error:           { t: "error",            cls: "stopped-bad" },
+  };
+  function stopChip(r) {
+    if (!r || r.run_status !== "stopped" || !r.stop_reason) return "";
+    const m = STOP_CHIP[r.stop_reason] || { t: r.stop_reason, cls: "stopped-warn" };
+    return ` <span class="run-chip ${m.cls}" title="Stopped early — reason: ${esc(r.stop_reason)}">■ ${esc(m.t)}</span>`;
+  }
   function statusPill(status) {
     const m = { complete: { t: "Complete", bg: "#cce2d8", c: "#005a30" },
                 incomplete: { t: "Incomplete", bg: "#fdf3d8", c: "#7a5b00" },
@@ -150,7 +165,8 @@
       const tail = excl || incl;                                  // the phase "Execute" continues
       const isActive = phases.some(p => p.run_id === activeRun);
       const chip = phases.some(p => p.alive) ? ' <span class="run-chip running" title="A process is evaluating this run">● running</span>'
-                 : phases.some(p => p.stalled) ? ' <span class="run-chip stalled" title="Marked running but no process is working it">⚠ stalled</span>' : '';
+                 : phases.some(p => p.stalled) ? ' <span class="run-chip stalled" title="Marked running but no process is working it">⚠ stalled</span>'
+                 : stopChip(tail);
       const phaseNote = excl ? ` <span class="pg-sub">(incl ${fmtInt(incl.pages)} → excl ${fmtInt(excl.pages)})</span>` : '';
       const tr = document.createElement("tr");
       if (isActive) tr.style.fontWeight = "700";
