@@ -3629,7 +3629,9 @@ def run_detail_page(request: Request, cid: int, run_id: str):
         shortlist_total = None
     commentary = evaluate.run_commentary(chain, shortlist_total, opened_run_id=run_id)
     continue_reason = evaluate.continuable_reason(chain, shortlist_total)
-    unparsed = evaluate.unparsed_results(conn, [r["run_id"] for r in chain])
+    chain_ids = [r["run_id"] for r in chain]
+    unparsed = evaluate.unparsed_results(conn, chain_ids)
+    truncated = evaluate.truncated_results(conn, chain_ids)
     phase_by_id = {r["run_id"]: r.get("phase") for r in chain}
     for u in unparsed:
         u["phase"] = phase_by_id.get(u["run_id"])
@@ -3650,10 +3652,12 @@ def run_detail_page(request: Request, cid: int, run_id: str):
     # Run lifecycle state for the action button: fresh (never run) | partial (started, unfinished) | complete.
     started = (totals.get("pages") or 0) > 0
     run_state = "complete" if not continue_reason else ("partial" if started else "fresh")
+    outcome = evaluate.run_outcome(run_state, run.get("run_status"), continue_reason,
+                                   len(unparsed), len(truncated))
     resp = templates.TemplateResponse("run_detail.html", ctx(
         conn, request, category=category, run=run, chain=chain, totals=totals,
-        commentary=commentary, unparsed=unparsed, continue_reason=continue_reason,
-        run_trial=_run_trial(conn, run_id), run_configs=run_configs, run_state=run_state))
+        commentary=commentary, unparsed=unparsed, truncated=truncated, continue_reason=continue_reason,
+        run_trial=_run_trial(conn, run_id), run_configs=run_configs, run_state=run_state, outcome=outcome))
     conn.close()
     return resp
 

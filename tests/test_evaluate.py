@@ -649,5 +649,31 @@ class TestRunCommentary(unittest.TestCase):
         self.assertIsNone(evaluate.continuable_reason([inc, exc], shortlist_total=200))
 
 
+class TestRunOutcome(unittest.TestCase):
+    def test_complete(self):
+        o = evaluate.run_outcome("complete", "complete", None, 0, 0)
+        self.assertEqual(o["label"], "Completed")
+        self.assertEqual(o["kind"], "good")
+        self.assertIsNone(o["why"])
+
+    def test_fresh(self):
+        o = evaluate.run_outcome("fresh", None, None, 0, 0)
+        self.assertEqual(o["kind"], "muted")
+        self.assertIsNone(o["why"])
+
+    def test_partial_stopped_names_causes(self):
+        o = evaluate.run_outcome("partial", "stopped", "Phase 1 evaluated 100 of 200 …", 3, 1)
+        self.assertEqual(o["label"], "Did not complete")
+        self.assertEqual(o["kind"], "warn")
+        self.assertIn("budget", o["why"])
+        self.assertIn("manually", o["why"])
+        self.assertEqual((o["unparsed"], o["truncated"]), (3, 1))
+
+    def test_partial_running_uses_continue_reason(self):
+        o = evaluate.run_outcome("partial", "running", "Phase 2 (Exclusion) hasn't run …", 0, 0)
+        self.assertIn("Exclusion", o["why"])
+        self.assertIn("Re-execute", o["why"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -976,6 +976,52 @@ def unparsed_results(conn, run_ids: Sequence[str]) -> List[dict]:
     return [dict(r) for r in rows]
 
 
+# Provider finish reasons that mean the reply was cut off before it was complete.
+_TRUNCATED_STOP = ("max_tokens", "length")
+
+
+def truncated_results(conn, run_ids: Sequence[str]) -> List[dict]:
+    """Pages whose model reply was cut off at the token limit (stop_reason max_tokens/length)
+    across the given runs — a distinct failure from 'unparseable' (though a cut-off reply is
+    often also unparseable). Returns [{run_id, url, keep, stop_reason}]."""
+    ids = list(run_ids)
+    if not ids:
+        return []
+    ph = ",".join([_P] * len(ids))
+    sp = ",".join([_P] * len(_TRUNCATED_STOP))
+    rows = conn.execute(
+        f"SELECT run_id, url, keep, stop_reason FROM evaluation_results "
+        f"WHERE stop_reason IN ({sp}) AND run_id IN ({ph}) ORDER BY url",
+        tuple(_TRUNCATED_STOP) + tuple(ids)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def run_outcome(run_state: str, run_status: Optional[str], continue_reason: Optional[str],
+                unparsed_count: int, truncated_count: int) -> Dict:
+    """One-glance summary of a run's outcome for the Run details page (guc-0006): a status
+    `label` + `kind` ('good' | 'warn' | 'muted'), a plain-English `why` it didn't finish (None
+    when it did or never started), and the two page-level failure counts. Pure/testable — the
+    route passes the pieces it already computed (run_state, run_status, continue_reason).
+
+    NOTE: the precise stop cause of an early stop (budget vs provider error vs manual Stop) is
+    not persisted, so `why` names the possibilities rather than asserting one.
+    """
+    if run_state == "complete":
+        label, kind, why = "Completed", "good", None
+    elif run_state == "fresh":
+        label, kind, why = "Not started", "muted", None
+    else:  # partial — started but work remains
+        label, kind = "Did not complete", "warn"
+        if run_status == "stopped":
+            why = ("Stopped early — the daily AI budget was reached, a provider error occurred, "
+                   "or it was stopped manually. Re-execute to continue where it left off.")
+        else:
+            lead = (continue_reason + " ") if continue_reason else "Some pages were not evaluated. "
+            why = lead + "Re-execute to evaluate the rest."
+    return {"label": label, "kind": kind, "why": why,
+            "unparsed": int(unparsed_count or 0), "truncated": int(truncated_count or 0)}
+
+
 def continuable_reason(chain: List[dict], shortlist_total: Optional[int] = None) -> Optional[str]:
     """If the evaluation still has work to do — a phase in progress, a phase that
     stopped below its input (input ≠ kept + dropped because pages remain), or a

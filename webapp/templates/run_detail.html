@@ -29,11 +29,28 @@
     </div>
   </div>
 
-  <p class="secondary" style="margin:14px 0 6px;">
-    Started {{ (run.started_at or '')[:19]|replace('T',' ') or '—' }}
-    {% if run.finished_at %}· Finished {{ run.finished_at[:19]|replace('T',' ') }}{% endif %}
-    {% if run.status %}· {{ run.status }}{% endif %}
-  </p>
+  {# Run outcome — one-glance answer to "what happened / what failed / why it didn't finish". #}
+  {% set _oc = {'good': '#00703c', 'warn': '#f47738', 'muted': '#6f777b'} %}
+  <div style="margin:14px 0 0;padding:12px 16px;border-left:4px solid {{ _oc[outcome.kind] }};
+    background:var(--surface-2);border-radius:0 6px 6px 0;max-width:840px;">
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;">
+      <span style="font-weight:700;font-size:16px;color:{{ _oc[outcome.kind] }};">
+        {% if outcome.kind == 'good' %}✅{% elif outcome.kind == 'warn' %}⚠{% else %}○{% endif %} {{ outcome.label }}
+      </span>
+      <span class="secondary" style="font-size:13px;">
+        Started {{ (run.started_at or '')[:19]|replace('T',' ') or '—' }}{% if run.finished_at %}
+        · Finished {{ run.finished_at[:19]|replace('T',' ') }}{% endif %}{% if run.run_status %}
+        · status <span class="mono">{{ run.run_status }}</span>{% endif %}
+      </span>
+    </div>
+    {% if outcome.why %}<p style="margin:8px 0 0;font-size:14px;"><strong>Why it didn't complete:</strong> {{ outcome.why }}</p>{% endif %}
+    <p style="margin:8px 0 0;font-size:14px;"><strong>What failed:</strong>
+      {% if outcome.unparsed or outcome.truncated %}
+        {% if outcome.unparsed %}<a href="#not-parsed">{{ outcome.unparsed }} repl{{ 'y' if outcome.unparsed == 1 else 'ies' }} couldn't be parsed</a>{% endif %}{% if outcome.unparsed and outcome.truncated %} · {% endif %}
+        {% if outcome.truncated %}{{ outcome.truncated }} repl{{ 'y' if outcome.truncated == 1 else 'ies' }} cut off at the token limit{% endif %}.
+      {% else %}None — every evaluated page returned a usable verdict.{% endif %}
+    </p>
+  </div>
   {% if run_trial and (run_trial.prompt_variant != 'current' or run_trial.concurrency > 1 or run_trial.caching) %}
   <p class="secondary" data-level="advanced" style="margin:0 0 6px;">
     <span style="font-weight:700;">Trial (A/B):</span>
@@ -166,7 +183,7 @@
   {% if commentary.reconcile %}{{ notelist(commentary.reconcile) }}
   {% else %}<p class="secondary" style="margin:0 0 18px;">Shortlist total unavailable, so input/output couldn't be reconciled.</p>{% endif %}
 
-  <h2 style="margin-top:30px;">Not parsed</h2>
+  <h2 id="not-parsed" style="margin-top:30px;">Not parsed</h2>
   {% if unparsed %}
   <p class="hint">The {{ unparsed|length }} page{{ '' if unparsed|length == 1 else 's' }} below returned a model
     reply that couldn't be parsed, so {{ 'it was' if unparsed|length == 1 else 'they were' }} left unscored
