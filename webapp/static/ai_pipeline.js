@@ -167,7 +167,8 @@
         `<td class="num">${fmtInt(sumF(phases, "in_tokens"))}</td>` +
         `<td class="num">${fmtInt(sumF(phases, "out_tokens"))}</td>` +
         `<td class="num">$${sumF(phases, "cost").toFixed(2)}</td>` +
-        `<td><a href="#" class="del-run" data-runs="${phases.map(p => p.run_id).join(",")}" data-pages="${sumF(phases, "pages")}" style="color:#d4351c;">Delete</a></td>`;
+        `<td><a href="/categories/${CID}/download?stage=final" title="Download this shortlist's final results on the download page (pick columns/format there)">Download</a>` +
+        `<a href="#" class="del-run" data-runs="${phases.map(p => p.run_id).join(",")}" data-pages="${sumF(phases, "pages")}" style="color:#d4351c;margin-left:14px;">Delete</a></td>`;
       tbody.appendChild(tr);
     }
     table.hidden = chains.length === 0;
