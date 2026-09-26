@@ -55,6 +55,50 @@
         · <a id="p1-diff-link" href="#">Review the exceptions</a>
       </p>
     </div>
+
+    {# Card 2: Phase 2 (exclusion) — where the runs diverge, stratified by Phase-1 confidence. #}
+    <div class="card" id="card-phase2" style="max-width:860px;padding:18px 22px;margin-top:16px;">
+      <h3 style="margin:0 0 4px;">Phase 2 – Exclusion (Precision): where the runs diverge</h3>
+      <p class="secondary" style="margin:0 0 12px;">Of the <strong id="p2-input">…</strong> pages <em>both</em> runs kept at Phase 1, how each run's exclusion pass judged them.</p>
+      <div class="table-wrap">
+        <table id="p2-table" style="font-size:15px;">
+          <thead><tr><th>Run</th><th class="num">Kept (final)</th><th class="num">Dropped</th></tr></thead>
+          <tbody>
+            <tr id="p2-base"><td></td><td class="num"></td><td class="num"></td></tr>
+            <tr id="p2-comp"><td></td><td class="num"></td><td class="num"></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="margin:14px 0 8px;font-size:15px;"><strong id="p2-flips">…</strong> pages end with a different final result — <strong id="p2-excl">…</strong> driven by Phase 2, not Phase 1.</p>
+      <p class="secondary" style="margin:0 0 6px;">Flip rate by Phase-1 confidence — variance concentrates in the low-confidence band:</p>
+      <div class="table-wrap">
+        <table id="p2-bands" style="font-size:14px;">
+          <thead><tr><th>Inclusion score</th><th class="num">Pages</th><th class="num">Flipped</th><th class="num">Flip rate</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    {# Card 3: Overall run-to-run reliability. #}
+    <div class="card" id="card-overall" style="max-width:860px;padding:18px 22px;margin-top:16px;">
+      <h3 style="margin:0 0 4px;">Overall performance: run-to-run reliability</h3>
+      <p class="secondary" style="margin:0 0 12px;">The two final shortlists compared over the <strong id="ov-shared">…</strong> pages both runs evaluated.</p>
+      <div style="display:flex;gap:26px;flex-wrap:wrap;margin:0 0 14px;">
+        <div><div class="secondary" style="font-size:13px;">Final agreement</div><div style="font-size:26px;font-weight:700;" id="ov-agree">…</div></div>
+        <div><div class="secondary" style="font-size:13px;">Pages differing</div><div style="font-size:26px;font-weight:700;" id="ov-sym">…</div></div>
+        <div><div class="secondary" style="font-size:13px;">Phase-1 score |Δ| (mean)</div><div style="font-size:26px;font-weight:700;" id="ov-delta">…</div></div>
+      </div>
+      <div class="table-wrap">
+        <table id="ov-conf" style="font-size:14px;">
+          <thead><tr><th></th><th class="num">In comparison</th><th class="num">Out of comparison</th></tr></thead>
+          <tbody>
+            <tr><td>In baseline</td><td class="num" id="ov-bi"></td><td class="num" id="ov-bo"></td></tr>
+            <tr><td>Out of baseline</td><td class="num" id="ov-ob"></td><td class="num" id="ov-oo"></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="secondary" style="margin:12px 0 0;" id="ov-note"></p>
+    </div>
   </div>
 
   <script>
@@ -94,6 +138,39 @@
         `(${fmtInt(d.accepted_to_rejected)} accepted by the baseline but rejected by the comparison · ${fmtInt(d.rejected_to_accepted)} the other way` +
         (d.involving_unscored ? ` · ${fmtInt(d.involving_unscored)} involving an unscored page` : "") + ")";
       document.getElementById("p1-diff-link").href = listUrl({ context: "phase1_diff", baseline: base, comparison: comp });
+
+      // Phase 2 — exclusion divergence, stratified by confidence.
+      const p2 = await (await fetch(`/api/categories/${CID}/analysis/phase2?baseline=${encodeURIComponent(base)}&comparison=${encodeURIComponent(comp)}`)).json();
+      if (!p2.error) {
+        document.getElementById("p2-input").textContent = fmtInt(p2.excl_input);
+        const p2row = (id, pre, r) => { const t = document.getElementById(id).querySelectorAll("td");
+          t[0].textContent = pre + " · " + r.label; t[1].textContent = fmtInt(r.kept); t[2].textContent = fmtInt(r.dropped); };
+        p2row("p2-base", "Baseline", p2.baseline); p2row("p2-comp", "Comparison", p2.comparison);
+        document.getElementById("p2-flips").textContent = fmtInt(p2.flips.total);
+        const pct = p2.flips.total ? Math.round(100 * p2.flips.exclusion_driven / p2.flips.total) : 0;
+        document.getElementById("p2-excl").textContent = `${fmtInt(p2.flips.exclusion_driven)} (${pct}%)`;
+        document.querySelector("#p2-bands tbody").innerHTML = p2.bands.map(b =>
+          `<tr><td>${b.band}</td><td class="num">${fmtInt(b.pages)}</td><td class="num">${fmtInt(b.flipped)}</td>`
+          + `<td class="num">${b.pages ? Math.round(100 * b.flipped / b.pages) : 0}%</td></tr>`).join("");
+      }
+
+      // Overall — final-shortlist reliability.
+      const ov = await (await fetch(`/api/categories/${CID}/analysis/overall?baseline=${encodeURIComponent(base)}&comparison=${encodeURIComponent(comp)}`)).json();
+      if (!ov.error) {
+        document.getElementById("ov-shared").textContent = fmtInt(ov.shared);
+        document.getElementById("ov-agree").textContent = ov.agree_pct + "%";
+        document.getElementById("ov-sym").textContent = fmtInt(ov.sym_diff);
+        document.getElementById("ov-delta").textContent = ov.score_mean_abs_delta;
+        const c = ov.confusion;
+        document.getElementById("ov-bi").textContent = fmtInt(c.both_in);
+        document.getElementById("ov-bo").textContent = fmtInt(c.base_only);
+        document.getElementById("ov-ob").textContent = fmtInt(c.comp_only);
+        document.getElementById("ov-oo").textContent = fmtInt(c.both_out);
+        document.getElementById("ov-note").innerHTML = "Phase-1 scores are "
+          + (ov.score_mean_abs_delta <= 0.05 ? "<strong>highly</strong>" : "only moderately")
+          + ` repeatable (mean per-page score change = <strong>${ov.score_mean_abs_delta}</strong>). `
+          + "Low final agreement with a small score change means the variance is coming from Phase 2, not the scoring.";
+      }
     }
     async function load() {
       const j = await (await fetch(`/api/categories/${CID}/runs`)).json();
@@ -101,7 +178,7 @@
       RUNS.forEach(r => byId[r.run_id] = r);
       const few = RUNS.length < 2;
       document.getElementById("an-empty").hidden = !few;
-      document.getElementById("card-phase1").hidden = few;
+      ["card-phase1", "card-phase2", "card-overall"].forEach(id => { const el = document.getElementById(id); if (el) el.hidden = few; });
       const q = new URLSearchParams(location.search);
       [["pick-base", q.get("baseline") || (RUNS[0] || {}).run_id], ["pick-comp", q.get("comparison") || (RUNS[1] || {}).run_id]].forEach(([id, def]) => {
         const sel = document.getElementById(id);

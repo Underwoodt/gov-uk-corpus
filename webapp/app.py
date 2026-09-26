@@ -4604,6 +4604,80 @@ def _phase1_compare(conn, cid: int, baseline: str, comparison: str) -> dict:
     }
 
 
+def _band(s) -> str:
+    s = s or 0
+    return "0 (wrong sense)" if s <= 0 else "0.01–0.35 (in passing)" if s <= 0.35 \
+        else "0.36–0.65 (moderate)" if s <= 0.65 else "0.66–1 (major)"
+
+_BAND_ORDER = ["0 (wrong sense)", "0.01–0.35 (in passing)", "0.36–0.65 (moderate)", "0.66–1 (major)"]
+
+
+def _phase2_compare(conn, cid: int, baseline: str, comparison: str) -> dict:
+    """Phase-2 (exclusion) decisions of two run-chains, and where the FINAL result diverges,
+    stratified by Phase-1 confidence — the key to explaining run-to-run variance."""
+    _, b_excl = _chain_of(conn, baseline)
+    _, c_excl = _chain_of(conn, comparison)
+    bi = {r["url"]: r for r in evaluate.run_results(conn, baseline)}
+    ci = {r["url"]: r for r in evaluate.run_results(conn, comparison)}
+    be = {r["url"]: r for r in evaluate.run_results(conn, b_excl["run_id"])} if b_excl else {}
+    ce = {r["url"]: r for r in evaluate.run_results(conn, c_excl["run_id"])} if c_excl else {}
+    fb = evaluate._final_keep_map(conn, baseline, b_excl and b_excl["run_id"])
+    fc = evaluate._final_keep_map(conn, comparison, c_excl and c_excl["run_id"])
+    shared = sorted(set(bi) & set(ci))
+    excl_input = [u for u in shared if bi[u].get("keep") == 1 and ci[u].get("keep") == 1]
+
+    def ecount(em):
+        dropped = sum(1 for u in excl_input if em.get(u, {}).get("keep") == 0)
+        return {"kept": len(excl_input) - dropped, "dropped": dropped}
+
+    flips = [u for u in shared if fb.get(u) != fc.get(u)]
+    excl_driven = sum(1 for u in flips if bi[u].get("keep") == ci[u].get("keep"))
+    bands = {}
+    for u in shared:
+        d = bands.setdefault(_band(min(bi[u].get("score") or 0, ci[u].get("score") or 0)),
+                             {"pages": 0, "flipped": 0})
+        d["pages"] += 1
+        if fb.get(u) != fc.get(u):
+            d["flipped"] += 1
+    return {
+        "shared": len(shared), "excl_input": len(excl_input),
+        "baseline": {"label": _run_label(evaluate.get_run(conn, baseline)), **ecount(be)},
+        "comparison": {"label": _run_label(evaluate.get_run(conn, comparison)), **ecount(ce)},
+        "flips": {"total": len(flips), "exclusion_driven": excl_driven,
+                  "inclusion_driven": len(flips) - excl_driven},
+        "bands": [{"band": b, **bands[b]} for b in _BAND_ORDER if b in bands],
+    }
+
+
+def _overall_compare(conn, cid: int, baseline: str, comparison: str) -> dict:
+    """Overall run-to-run reliability: the two FINAL shortlists compared, plus Phase-1 score
+    stability (how repeatable the scoring itself is)."""
+    _, b_excl = _chain_of(conn, baseline)
+    _, c_excl = _chain_of(conn, comparison)
+    bi = {r["url"]: r for r in evaluate.run_results(conn, baseline)}
+    ci = {r["url"]: r for r in evaluate.run_results(conn, comparison)}
+    fb = evaluate._final_keep_map(conn, baseline, b_excl and b_excl["run_id"])
+    fc = evaluate._final_keep_map(conn, comparison, c_excl and c_excl["run_id"])
+    shared = sorted(set(fb) & set(fc))
+    both_in = sum(1 for u in shared if fb[u] and fc[u])
+    both_out = sum(1 for u in shared if not fb[u] and not fc[u])
+    base_only = sum(1 for u in shared if fb[u] and not fc[u])
+    comp_only = sum(1 for u in shared if not fb[u] and fc[u])
+    agree = both_in + both_out
+    deltas = [abs((bi[u].get("score") or 0) - (ci[u].get("score") or 0))
+              for u in shared if u in bi and u in ci]
+    mean_delta = round(sum(deltas) / len(deltas), 3) if deltas else 0
+    return {
+        "shared": len(shared), "agree": agree,
+        "agree_pct": round(100 * agree / len(shared), 1) if shared else 0,
+        "sym_diff": len(shared) - agree,
+        "confusion": {"both_in": both_in, "both_out": both_out, "base_only": base_only, "comp_only": comp_only},
+        "score_mean_abs_delta": mean_delta,
+        "baseline_label": _run_label(evaluate.get_run(conn, baseline)),
+        "comparison_label": _run_label(evaluate.get_run(conn, comparison)),
+    }
+
+
 @app.get("/categories/{cid}/analysis", response_class=HTMLResponse)
 def analysis_page(request: Request, cid: int):
     """Data Analysis sub-tab: cards explaining the difference between a baseline run and a
@@ -4630,6 +4704,32 @@ def api_analysis_phase1(request: Request, cid: int, baseline: str = "", comparis
         if not (_own_run(conn, cid, baseline) and _own_run(conn, cid, comparison)):
             return JSONResponse({"error": "Pick two inclusion runs of this shortlist."}, status_code=400)
         return JSONResponse(_phase1_compare(conn, cid, baseline, comparison))
+    finally:
+        conn.close()
+
+
+@app.get("/api/categories/{cid}/analysis/phase2")
+def api_analysis_phase2(request: Request, cid: int, baseline: str = "", comparison: str = ""):
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    conn = connect()
+    try:
+        if not (_own_run(conn, cid, baseline) and _own_run(conn, cid, comparison)):
+            return JSONResponse({"error": "Pick two inclusion runs of this shortlist."}, status_code=400)
+        return JSONResponse(_phase2_compare(conn, cid, baseline, comparison))
+    finally:
+        conn.close()
+
+
+@app.get("/api/categories/{cid}/analysis/overall")
+def api_analysis_overall(request: Request, cid: int, baseline: str = "", comparison: str = ""):
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    conn = connect()
+    try:
+        if not (_own_run(conn, cid, baseline) and _own_run(conn, cid, comparison)):
+            return JSONResponse({"error": "Pick two inclusion runs of this shortlist."}, status_code=400)
+        return JSONResponse(_overall_compare(conn, cid, baseline, comparison))
     finally:
         conn.close()
 
