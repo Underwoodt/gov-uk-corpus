@@ -54,6 +54,15 @@
         <span class="secondary" id="p1-diff-split"></span>
         · <a id="p1-diff-link" href="#">Review the exceptions</a>
       </p>
+      <div style="margin:18px 0 0;border-top:1px solid var(--border);padding-top:14px;">
+        <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--muted);margin:0 0 8px;">
+          <span style="font-weight:700;color:var(--ink,#0b0c0c);font-size:13px;">Final outcome by Phase-1 score</span>
+          <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:11px;height:11px;background:#1d70b8;border-radius:2px;"></span>Same in both runs</span>
+          <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:11px;height:11px;background:#d4351c;border-radius:2px;"></span>Flipped <span id="p1-chart-flips"></span></span>
+        </div>
+        <svg id="p1-chart" viewBox="0 0 680 300" style="width:100%;max-width:680px;height:auto;" role="img" aria-label="Pages by Phase-1 inclusion score, split into same versus flipped final outcome between the two runs; flips concentrate in the low-score band."></svg>
+        <p class="secondary" style="font-size:12px;margin:6px 0 0;max-width:680px;">Each bar is the pages at that Phase-1 confidence; red is where the two runs' <em>final</em> decision diverged — repeatability problems concentrate in the low-confidence band.</p>
+      </div>
     </div>
 
     {# Card 2: Phase 2 (exclusion) — where the runs diverge, stratified by Phase-1 confidence. #}
@@ -140,6 +149,31 @@
       tds[3].textContent = fmtInt(c.unscored);
       cellLink(tds[4], c.total, { ...base, verdict: "all" });
     }
+    function renderP1Chart(hist) {
+      const svg = document.getElementById("p1-chart");
+      if (!svg) return;
+      const data = (hist || []).filter(d => d.pages > 0);
+      if (!data.length) { svg.innerHTML = ""; return; }
+      const W = 680, H = 300, L = 44, R = 12, T = 16, B = 44, pw = W - L - R, ph = H - T - B;
+      const maxV = Math.max(...data.map(d => d.pages), 1);
+      const step = maxV <= 20 ? 5 : maxV <= 50 ? 10 : maxV <= 120 ? 20 : maxV <= 300 ? 50 : 100;
+      const yMax = Math.ceil(maxV / step) * step;
+      const y = v => T + ph - (v / yMax) * ph;
+      const n = data.length, bw = (pw / n) * 0.66;
+      let s = "";
+      for (let g = 0; g <= yMax; g += step) {
+        s += `<line x1="${L}" y1="${y(g)}" x2="${W - R}" y2="${y(g)}" stroke="#e1e0d9" stroke-width="1"/>`;
+        s += `<text x="${L - 6}" y="${y(g) + 4}" text-anchor="end" font-size="11" fill="#6f777b">${g}</text>`;
+      }
+      data.forEach((d, i) => {
+        const cx = L + pw * (i + 0.5) / n, x = cx - bw / 2, same = d.pages - d.flipped;
+        s += `<rect x="${x}" y="${y(same)}" width="${bw}" height="${(T + ph) - y(same)}" fill="#1d70b8"/>`;
+        if (d.flipped) s += `<rect x="${x}" y="${y(d.pages)}" width="${bw}" height="${y(same) - y(d.pages)}" fill="#d4351c"/>`;
+        s += `<text x="${cx}" y="${H - B + 18}" text-anchor="middle" font-size="11" fill="#0b0c0c">${d.label}</text>`;
+      });
+      s += `<text x="${L + pw / 2}" y="${H - 6}" text-anchor="middle" font-size="11" fill="#6f777b">Phase-1 inclusion score</text>`;
+      svg.innerHTML = s;
+    }
     async function render() {
       const base = document.getElementById("pick-base").value, comp = document.getElementById("pick-comp").value;
       if (!base || !comp) return;
@@ -171,6 +205,8 @@
         document.querySelector("#p2-bands tbody").innerHTML = p2.bands.map(b =>
           `<tr><td>${b.band}</td><td class="num">${fmtInt(b.pages)}</td><td class="num">${fmtInt(b.flipped)}</td>`
           + `<td class="num">${b.pages ? Math.round(100 * b.flipped / b.pages) : 0}%</td></tr>`).join("");
+        renderP1Chart(p2.score_hist);
+        const cf = document.getElementById("p1-chart-flips"); if (cf) cf.textContent = `(${fmtInt(p2.flips.total)})`;
       }
 
       // Overall — final-shortlist reliability.

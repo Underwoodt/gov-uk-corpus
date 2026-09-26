@@ -4611,6 +4611,14 @@ def _band(s) -> str:
 
 _BAND_ORDER = ["0 (wrong sense)", "0.01–0.35 (in passing)", "0.36–0.65 (moderate)", "0.66–1 (major)"]
 
+_SCORE_BUCKETS = ["0.0", "0.1", "0.15–0.2", "0.25–0.35", "0.4–0.65", "0.7–1.0"]
+
+
+def _score_bucket(s) -> str:
+    s = s or 0
+    return "0.0" if s <= 0 else "0.1" if s <= 0.12 else "0.15–0.2" if s <= 0.23 \
+        else "0.25–0.35" if s <= 0.35 else "0.4–0.65" if s <= 0.65 else "0.7–1.0"
+
 
 def _phase2_compare(conn, cid: int, baseline: str, comparison: str) -> dict:
     """Phase-2 (exclusion) decisions of two run-chains, and where the FINAL result diverges,
@@ -4633,12 +4641,13 @@ def _phase2_compare(conn, cid: int, baseline: str, comparison: str) -> dict:
     flips = [u for u in shared if fb.get(u) != fc.get(u)]
     excl_driven = sum(1 for u in flips if bi[u].get("keep") == ci[u].get("keep"))
     bands = {}
+    hist = {b: {"pages": 0, "flipped": 0} for b in _SCORE_BUCKETS}
     for u in shared:
-        d = bands.setdefault(_band(min(bi[u].get("score") or 0, ci[u].get("score") or 0)),
-                             {"pages": 0, "flipped": 0})
-        d["pages"] += 1
-        if fb.get(u) != fc.get(u):
-            d["flipped"] += 1
+        sc = min(bi[u].get("score") or 0, ci[u].get("score") or 0)
+        flip = 1 if fb.get(u) != fc.get(u) else 0
+        d = bands.setdefault(_band(sc), {"pages": 0, "flipped": 0})
+        d["pages"] += 1; d["flipped"] += flip
+        h = hist[_score_bucket(sc)]; h["pages"] += 1; h["flipped"] += flip
     return {
         "shared": len(shared), "excl_input": len(excl_input),
         "baseline": {"label": _run_label(evaluate.get_run(conn, baseline)), **ecount(be)},
@@ -4646,6 +4655,7 @@ def _phase2_compare(conn, cid: int, baseline: str, comparison: str) -> dict:
         "flips": {"total": len(flips), "exclusion_driven": excl_driven,
                   "inclusion_driven": len(flips) - excl_driven},
         "bands": [{"band": b, **bands[b]} for b in _BAND_ORDER if b in bands],
+        "score_hist": [{"label": b, **hist[b]} for b in _SCORE_BUCKETS],
     }
 
 
