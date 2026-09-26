@@ -4744,6 +4744,47 @@ def api_analysis_overall(request: Request, cid: int, baseline: str = "", compari
         conn.close()
 
 
+def _discriminability(conn, cid: int, run: str) -> dict:
+    """Single-run 'will this be repeatable?' diagnostic: how the Phase-1 scores spread, how much
+    of the shortlist is low-confidence (a Phase-2 re-decision will be unstable on those), and how
+    piled-up the scoring is — all readable from ONE run, no pair needed."""
+    from collections import Counter
+    rows = evaluate.run_results(conn, run)
+    scored = [r for r in rows if r.get("keep") is not None]
+    kept = [r for r in scored if r.get("keep") == 1]
+    hist = {b: 0 for b in _SCORE_BUCKETS}
+    for r in scored:
+        hist[_score_bucket(r.get("score") or 0)] += 1
+    borderline = [r for r in kept if 0 < (r.get("score") or 0) <= 0.35]
+    sc = Counter(round(r.get("score") or 0, 2) for r in kept)
+    top_score, top_n = (sc.most_common(1)[0] if sc else (None, 0))
+
+    def zone(b):
+        return "drop" if b == "0.0" else "borderline" if b in ("0.1", "0.15–0.2", "0.25–0.35") else "confident"
+
+    return {
+        "run_label": _run_label(evaluate.get_run(conn, run)),
+        "scored": len(scored), "kept": len(kept), "dropped": len(scored) - len(kept),
+        "borderline_keeps": len(borderline),
+        "borderline_pct": round(100 * len(borderline) / len(kept), 1) if kept else 0,
+        "top_score": top_score, "top_share": round(100 * top_n / len(kept), 1) if kept else 0,
+        "score_hist": [{"label": b, "pages": hist[b], "zone": zone(b)} for b in _SCORE_BUCKETS],
+    }
+
+
+@app.get("/api/categories/{cid}/analysis/discriminability")
+def api_analysis_discriminability(request: Request, cid: int, run: str = ""):
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    conn = connect()
+    try:
+        if not _own_run(conn, cid, run):
+            return JSONResponse({"error": "Pick an inclusion run of this shortlist."}, status_code=400)
+        return JSONResponse(_discriminability(conn, cid, run))
+    finally:
+        conn.close()
+
+
 _PROMPT_REVIEW_SYSTEM = (
     "You are a prompt engineer improving the REPEATABILITY of an LLM pipeline that shortlists "
     "GOV.UK pages in two phases: Phase 1 INCLUSION scores each page 0.0–1.0 and keeps any positive "

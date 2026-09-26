@@ -32,8 +32,30 @@
       <label>Baseline <select id="pick-base" class="run-pick"></select></label>
       <label>Comparison <select id="pick-comp" class="run-pick"></select></label>
     </div>
-    <p id="an-empty" class="secondary" hidden>Fewer than two runs yet — evaluate the shortlist on the
-      <a href="{{ url_for('preview_category_page', cid=category.id) }}">Explainability</a> tab first.</p>
+    <p id="an-empty" class="secondary" hidden></p>
+
+    {# Card 0: single-run discriminability — a repeatability leading indicator from ONE run. #}
+    <div class="card" id="card-disc" style="max-width:860px;padding:18px 22px;margin-top:8px;">
+      <h3 style="margin:0 0 4px;">Single-run discriminability <span class="secondary" style="font-weight:400;font-size:14px;">— needs only one run</span></h3>
+      <p class="secondary" style="margin:0 0 12px;max-width:720px;">Readable from a single run: how the Phase-1 scores spread, and how much of the shortlist sits in the
+        low-confidence band — the pages a Phase-2 re-decision will be unstable on. A big pile in the amber band predicts poor
+        run-to-run repeatability <em>before</em> you run twice.</p>
+      <div class="controls" style="align-items:center;gap:12px;margin:0 0 12px;">
+        <label>Run <select id="disc-run" class="run-pick"></select></label>
+      </div>
+      <div style="display:flex;gap:26px;flex-wrap:wrap;margin:0 0 14px;">
+        <div><div class="secondary" style="font-size:13px;">Kept</div><div style="font-size:26px;font-weight:700;" id="disc-kept">…</div></div>
+        <div><div class="secondary" style="font-size:13px;">Low-confidence keeps</div><div style="font-size:26px;font-weight:700;" id="disc-border">…</div></div>
+        <div><div class="secondary" style="font-size:13px;">Biggest score pile-up</div><div style="font-size:26px;font-weight:700;" id="disc-pile">…</div></div>
+      </div>
+      <div style="display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:0 0 6px;">
+        <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:11px;height:11px;background:#b1b4b6;border-radius:2px;"></span>Dropped (score 0)</span>
+        <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:11px;height:11px;background:#f47738;border-radius:2px;"></span>Low-confidence keeps</span>
+        <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:11px;height:11px;background:#1d70b8;border-radius:2px;"></span>Confident keeps</span>
+      </div>
+      <svg id="disc-chart" viewBox="0 0 680 300" style="width:100%;max-width:680px;height:auto;" role="img" aria-label="Pages by Phase-1 inclusion score for one run, coloured by dropped, low-confidence keep, and confident keep."></svg>
+      <p class="secondary" style="font-size:13px;margin:8px 0 0;max-width:720px;" id="disc-note"></p>
+    </div>
 
     {# Card 1: Phase 1 (inclusion) decisions on the shared pages. #}
     <div class="card" id="card-phase1" style="max-width:860px;padding:18px 22px;margin-top:8px;">
@@ -174,6 +196,46 @@
       s += `<text x="${L + pw / 2}" y="${H - 6}" text-anchor="middle" font-size="11" fill="#6f777b">Phase-1 inclusion score</text>`;
       svg.innerHTML = s;
     }
+    function renderDiscChart(hist) {
+      const svg = document.getElementById("disc-chart");
+      if (!svg) return;
+      const data = (hist || []).filter(d => d.pages > 0);
+      if (!data.length) { svg.innerHTML = ""; return; }
+      const W = 680, H = 300, L = 44, R = 12, T = 16, B = 44, pw = W - L - R, ph = H - T - B;
+      const maxV = Math.max(...data.map(d => d.pages), 1);
+      const step = maxV <= 20 ? 5 : maxV <= 50 ? 10 : maxV <= 120 ? 20 : maxV <= 300 ? 50 : 100;
+      const yMax = Math.ceil(maxV / step) * step, y = v => T + ph - (v / yMax) * ph;
+      const n = data.length, bw = (pw / n) * 0.66;
+      const col = { drop: "#b1b4b6", borderline: "#f47738", confident: "#1d70b8" };
+      let s = "";
+      for (let g = 0; g <= yMax; g += step) {
+        s += `<line x1="${L}" y1="${y(g)}" x2="${W - R}" y2="${y(g)}" stroke="#e1e0d9" stroke-width="1"/>`;
+        s += `<text x="${L - 6}" y="${y(g) + 4}" text-anchor="end" font-size="11" fill="#6f777b">${g}</text>`;
+      }
+      data.forEach((d, i) => {
+        const cx = L + pw * (i + 0.5) / n, x = cx - bw / 2;
+        s += `<rect x="${x}" y="${y(d.pages)}" width="${bw}" height="${(T + ph) - y(d.pages)}" fill="${col[d.zone] || "#1d70b8"}"/>`;
+        s += `<text x="${cx}" y="${H - B + 18}" text-anchor="middle" font-size="11" fill="#0b0c0c">${d.label}</text>`;
+      });
+      s += `<text x="${L + pw / 2}" y="${H - 6}" text-anchor="middle" font-size="11" fill="#6f777b">Phase-1 inclusion score</text>`;
+      svg.innerHTML = s;
+    }
+    async function loadDisc() {
+      const run = document.getElementById("disc-run").value;
+      if (!run) return;
+      const j = await (await fetch(`/api/categories/${CID}/analysis/discriminability?run=${encodeURIComponent(run)}`)).json();
+      if (j.error) { document.getElementById("disc-note").textContent = j.error; return; }
+      document.getElementById("disc-kept").textContent = `${fmtInt(j.kept)} / ${fmtInt(j.scored)}`;
+      document.getElementById("disc-border").textContent = `${fmtInt(j.borderline_keeps)} (${j.borderline_pct}%)`;
+      document.getElementById("disc-pile").textContent = j.top_score == null ? "—" : `${j.top_score} · ${j.top_share}%`;
+      renderDiscChart(j.score_hist);
+      const risk = j.borderline_pct >= 40 ? "high" : j.borderline_pct >= 20 ? "moderate" : "low";
+      document.getElementById("disc-note").innerHTML =
+        `<strong>${j.borderline_pct}%</strong> of kept pages are low-confidence (score ≤ 0.35)`
+        + (j.top_score != null ? `, with ${j.top_share}% piled on a single score (${j.top_score})` : "")
+        + `. Predicted run-to-run risk: <strong>${risk}</strong> — these are the pages a Phase-2 re-decision flips. `
+        + "Sharpen the exclusion criteria / add examples for this band to make results repeatable.";
+    }
     async function render() {
       const base = document.getElementById("pick-base").value, comp = document.getElementById("pick-comp").value;
       if (!base || !comp) return;
@@ -231,13 +293,22 @@
       const j = await (await fetch(`/api/categories/${CID}/runs`)).json();
       RUNS = (j.runs || []).filter(r => !r.source_run_id);      // inclusion (Phase 1) runs = chain heads
       RUNS.forEach(r => byId[r.run_id] = r);
-      const few = RUNS.length < 2;
-      document.getElementById("an-empty").hidden = !few;
+      const none = RUNS.length === 0, few = RUNS.length < 2;
+      const opts = RUNS.map(r => `<option value="${r.run_id}">${r.name ? r.name + " · " : ""}${fmtDate(r.started_at)} · ${r.actual_model || r.model || ""}</option>`).join("");
+      const empty = document.getElementById("an-empty");
+      empty.hidden = !few;
+      empty.innerHTML = none ? "No runs yet — evaluate the shortlist on the Explainability tab first."
+        : "Only one run so far — the pair-comparison cards below need two runs, but the single-run discriminability card works now.";
+      document.getElementById("card-disc").hidden = none;
       ["card-phase1", "card-phase2", "card-overall", "card-review"].forEach(id => { const el = document.getElementById(id); if (el) el.hidden = few; });
+      // Single-run picker.
+      const dr = document.getElementById("disc-run");
+      if (dr && !none) { dr.innerHTML = opts; dr.value = (RUNS[0] || {}).run_id; dr.addEventListener("change", loadDisc); loadDisc(); }
+      // Pair pickers.
       const q = new URLSearchParams(location.search);
       [["pick-base", q.get("baseline") || (RUNS[0] || {}).run_id], ["pick-comp", q.get("comparison") || (RUNS[1] || {}).run_id]].forEach(([id, def]) => {
         const sel = document.getElementById(id);
-        sel.innerHTML = RUNS.map(r => `<option value="${r.run_id}">${r.name ? r.name + " · " : ""}${fmtDate(r.started_at)} · ${r.actual_model || r.model || ""}</option>`).join("");
+        sel.innerHTML = opts;
         if (def && byId[def]) sel.value = def;
         sel.addEventListener("change", render);
       });
