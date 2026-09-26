@@ -82,6 +82,10 @@ def init_db(conn) -> None:
     conn.execute("ALTER TABLE content ADD COLUMN IF NOT EXISTS view_count_updated text")
     conn.execute("ALTER TABLE content ADD COLUMN IF NOT EXISTS view_count_source text")
     conn.commit()
+    # Fill the prompt criteria fields on runs that predate full prompt_spec stamping, from the
+    # run's category's current values (idempotent; marks them criteria_backfilled).
+    from .backfill_prompt_fields import backfill as _backfill_prompt_fields
+    _backfill_prompt_fields(conn)
 
 
 # ---- runs -----------------------------------------------------------------

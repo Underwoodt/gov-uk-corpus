@@ -59,6 +59,10 @@ def init_db(conn: sqlite3.Connection) -> None:
         if col not in have_content:
             conn.execute(f"ALTER TABLE content ADD COLUMN {col} {typ}")
     conn.commit()
+    # Fill the prompt criteria fields on runs that predate full prompt_spec stamping, from the
+    # run's category's current values (idempotent; marks them criteria_backfilled).
+    from .backfill_prompt_fields import backfill as _backfill_prompt_fields
+    _backfill_prompt_fields(conn)
 
 
 # ---- runs -----------------------------------------------------------------
