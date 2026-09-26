@@ -1,0 +1,12 @@
+{# Breadcrumb trail. Usage:
+   {% from "_crumbs.html" import crumbs %}
+   {{ crumbs([("Shortlists", url_for('list_categories_page')), (category.display_name, None)]) }}
+   Each item is (label, href); pass href=None (or omit for the last) to render it as the
+   current page. The last item is always shown as current, even if it has an href. #}
+{% macro crumbs(items) -%}
+<nav aria-label="Breadcrumb"><ol class="crumbs">
+  {%- for label, href in items %}
+  <li>{% if href and not loop.last %}<a href="{{ href }}">{{ label }}</a>{% else %}<span class="current" aria-current="page">{{ label }}</span>{% endif %}</li>
+  {%- endfor %}
+</ol></nav>
+{%- endmacro %}

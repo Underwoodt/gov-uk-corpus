@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_sql.html" import sql_panel %}
+{% from "_crumbs.html" import crumbs %}
 {% set page_ref = "guc-0004" %}
 {% block page_id %}{{ page_ref }}{% endblock %}
 {% block title %}{{ category.display_name }} — shortlist{% endblock %}
@@ -32,7 +33,7 @@
     @media (max-width:560px) { .col-picker { column-count:1; } }
   </style>
 
-  <a class="back" href="{{ url_for('list_categories_page') }}">‹ Shortlists</a>
+  {{ crumbs([("Shortlists", url_for('list_categories_page')), (category.display_name, none)]) }}
   <h1 style="margin:20px 0 20px;">{{ category.display_name }}</h1>
 
   <div class="tabs">

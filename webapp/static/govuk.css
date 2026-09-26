@@ -79,6 +79,13 @@ h3 { font-size:17px; font-weight:700; margin:0; }
 .secondary { font-size:15px; color:var(--grey-text); }
 .hint { font-size:15px; color:var(--muted); margin:5px 0 10px; }
 .back { display:inline-block; font-size:15px; padding-top:26px; }
+/* Breadcrumb trail (replaces the single back link at the top of a page). */
+.crumbs { list-style:none; margin:0; padding:22px 0 0; font-size:14px; display:flex; flex-wrap:wrap; align-items:center; }
+.crumbs li { display:inline-flex; align-items:center; }
+.crumbs li + li::before { content:"›"; color:var(--muted); margin:0 9px; }
+.crumbs a { color:var(--blue); }
+.crumbs a:hover { color:var(--dark-blue,#003078); }
+.crumbs .current { color:var(--muted); }
 code, .mono { font-family:var(--mono); font-size:.92em; }
 
 /* ---- forms ---- */
