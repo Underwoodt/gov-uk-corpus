@@ -651,28 +651,83 @@ class TestRunCommentary(unittest.TestCase):
 
 class TestRunOutcome(unittest.TestCase):
     def test_complete(self):
-        o = evaluate.run_outcome("complete", "complete", None, 0, 0)
+        o = evaluate.run_outcome("complete", "complete", None, None, 0, 0)
         self.assertEqual(o["label"], "Completed")
         self.assertEqual(o["kind"], "good")
         self.assertIsNone(o["why"])
 
     def test_fresh(self):
-        o = evaluate.run_outcome("fresh", None, None, 0, 0)
+        o = evaluate.run_outcome("fresh", None, None, None, 0, 0)
         self.assertEqual(o["kind"], "muted")
         self.assertIsNone(o["why"])
 
-    def test_partial_stopped_names_causes(self):
-        o = evaluate.run_outcome("partial", "stopped", "Phase 1 evaluated 100 of 200 …", 3, 1)
+    def test_partial_budget_exact(self):
+        o = evaluate.run_outcome("partial", "stopped", "budget", None, 3, 1)
         self.assertEqual(o["label"], "Did not complete")
-        self.assertEqual(o["kind"], "warn")
+        self.assertEqual(o["kind"], "warn")          # budget is benign pacing
         self.assertIn("budget", o["why"])
-        self.assertIn("manually", o["why"])
         self.assertEqual((o["unparsed"], o["truncated"]), (3, 1))
 
+    def test_partial_provider_errors_is_bad(self):
+        o = evaluate.run_outcome("partial", "stopped", "provider_errors", None, 0, 0)
+        self.assertEqual(o["kind"], "bad")
+        self.assertIn("rate-limiting", o["why"])
+
+    def test_partial_config_is_bad(self):
+        o = evaluate.run_outcome("partial", "stopped", "config", None, 0, 0)
+        self.assertEqual(o["kind"], "bad")
+        self.assertIn("API key", o["why"])
+
+    def test_partial_manual(self):
+        o = evaluate.run_outcome("partial", "stopped", "manual", None, 0, 0)
+        self.assertIn("Stop", o["why"])
+
+    def test_partial_cap_uses_continue_reason(self):
+        o = evaluate.run_outcome("partial", "stopped", "cap", "Phase 1 evaluated 600 of 900 …", 0, 0)
+        self.assertEqual(o["kind"], "warn")
+        self.assertIn("600 of 900", o["why"])
+        self.assertIn("page cap", o["why"])
+
+    def test_partial_legacy_no_reason_hedges(self):
+        o = evaluate.run_outcome("partial", "stopped", None, None, 0, 0)
+        self.assertIn("budget", o["why"])            # names the possibilities
+        self.assertIn("manually", o["why"])
+
     def test_partial_running_uses_continue_reason(self):
-        o = evaluate.run_outcome("partial", "running", "Phase 2 (Exclusion) hasn't run …", 0, 0)
+        o = evaluate.run_outcome("partial", "running", None, "Phase 2 (Exclusion) hasn't run …", 0, 0)
         self.assertIn("Exclusion", o["why"])
         self.assertIn("Re-execute", o["why"])
+
+
+class TestStopReasonPersistence(unittest.TestCase):
+    def setUp(self):
+        self.conn = db.connect(":memory:")
+        db.init_db(self.conn)
+        self.rid = evaluate.create_run(self.conn, 1, "m", "anthropic")
+
+    def tearDown(self):
+        self.conn.close()
+
+    def _reason(self):
+        return evaluate.get_run(self.conn, self.rid)["stop_reason"]
+
+    def test_reason_recorded(self):
+        evaluate.mark_run_stopped(self.conn, self.rid, "budget")
+        self.assertEqual(self._reason(), "budget")
+        self.assertEqual(evaluate.get_run(self.conn, self.rid)["run_status"], "stopped")
+
+    def test_none_preserves_existing(self):
+        evaluate.mark_run_stopped(self.conn, self.rid, "provider_errors")
+        evaluate.mark_run_stopped(self.conn, self.rid, None)   # catch-all call must not erase it
+        self.assertEqual(self._reason(), "provider_errors")
+
+    def test_finish_clears_reason(self):
+        evaluate.mark_run_stopped(self.conn, self.rid, "budget")
+        evaluate.finish_run(self.conn, self.rid)
+        self.assertIsNone(self._reason())
+        # A finished run is immune to a later stop (finished_at guard), so the reason stays clear.
+        evaluate.mark_run_stopped(self.conn, self.rid, "manual")
+        self.assertIsNone(self._reason())
 
 
 if __name__ == "__main__":

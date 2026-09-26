@@ -151,7 +151,8 @@ CREATE TABLE IF NOT EXISTS evaluation_runs (
     pid          integer,            -- OS pid of the driver process while running (NULL otherwise)
     host         text,               -- hostname of that process (pid only trusted on this host)
     heartbeat_at text,               -- last time the driver made progress (staleness check)
-    prompt_spec  text                -- JSON snapshot of the prompt inputs this run used (template
+    prompt_spec  text,               -- JSON snapshot of the prompt inputs this run used (template
+    stop_reason  text                -- why an unfinished run stopped: budget|provider_errors|config|manual|cap
 );                                   -- + version + Include/Exclude context + hints), so its prompts
 CREATE INDEX IF NOT EXISTS idx_eval_runs_cat ON evaluation_runs(category_id);  -- are exactly reproducible
 

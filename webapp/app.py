@@ -1910,8 +1910,9 @@ def _run_evaluation(cid: int, limit: int) -> dict:
         phase = run.get("phase") or evaluate.PHASE_INCLUSION
         cfg = _cfg_for(conn, run["provider"], run["model"])
         if not cfg["key"]:
-            evaluate.mark_run_stopped(conn, run_id)
-            return {"error": f"No API key for {cfg['label']} (this run's provider) — set one in Settings."}
+            evaluate.mark_run_stopped(conn, run_id, "config")
+            return {"error": f"No API key for {cfg['label']} (this run's provider) — set one in Settings.",
+                    "stop_reason": "config"}
 
         limit = min(limit, _max_docs(conn))
         filters = _effective_filters(conn, category)
@@ -1961,23 +1962,23 @@ def _run_evaluation(cid: int, limit: int) -> dict:
                 if res.get("error"):
                     # Fatal (no key / bad config) -> stop the run and report it.
                     if res.get("fatal"):
-                        evaluate.mark_run_stopped(conn, run_id)
+                        evaluate.mark_run_stopped(conn, run_id, "config")
                         fatal_return = {"error": res["error"], "fatal": True, "run_id": run_id,
                                         "evaluated_this_run": done, "skipped": skipped,
                                         "cost_usd": round(cost, 6), "spent_today": round(spent, 4),
-                                        "budget": budget}
+                                        "budget": budget, "stop_reason": "config"}
                         break
                     # Transient (the SDK has already retried): if it keeps failing the provider is
                     # likely down — stop cleanly; the user re-executes to resume where it left off.
                     consec_err += 1
                     if consec_err >= MAX_CONSEC_EVAL_ERRORS:
-                        evaluate.mark_run_stopped(conn, run_id)
+                        evaluate.mark_run_stopped(conn, run_id, "provider_errors")
                         fatal_return = {"error": f"Stopped after {consec_err} evaluation errors in a row "
                                         f"(last: {res['error']}). The provider may be down or rate-limiting — "
                                         f"re-execute to resume where it left off.",
                                         "run_id": run_id, "evaluated_this_run": done, "skipped": skipped,
                                         "cost_usd": round(cost, 6), "spent_today": round(spent, 4),
-                                        "budget": budget, "stopped": "errors"}
+                                        "budget": budget, "stopped": "errors", "stop_reason": "provider_errors"}
                         break
                     # Isolated failure: record the page as unscored (so it's excluded next time and
                     # shows on the Run detail 'Not parsed' list) and carry on.
@@ -2008,7 +2009,7 @@ def _run_evaluation(cid: int, limit: int) -> dict:
         remaining = max(0, total - (run["pages"] or 0))
         advanced = None
         if stopped == "budget":                 # driver will step away this batch — mark it idle
-            evaluate.mark_run_stopped(conn, run_id)
+            evaluate.mark_run_stopped(conn, run_id, "budget")
         if remaining == 0 and stopped is None:
             evaluate.finish_run(conn, run_id)
             # Auto-advance: when an inclusion run completes, start Phase 2 (Exclusion)
@@ -2035,6 +2036,7 @@ def _run_evaluation(cid: int, limit: int) -> dict:
                 "phase": phase, "evaluated_this_run": done, "skipped": skipped,
                 "cost_usd": round(cost, 6), "spent_today": round(spent, 4), "budget": budget,
                 "advanced": advanced, "warning": warning, "stopped": stopped,
+                "stop_reason": ("budget" if stopped == "budget" else None),
                 "remaining": remaining, "run": run}
     finally:
         conn.close()
@@ -2099,6 +2101,7 @@ def _background_eval_loop(cid: int, stop_event: threading.Event, status: dict) -
             res = _run_evaluation(cid, BG_EVAL_CHUNK)
             if res.get("error"):
                 status["error"] = res["error"]
+                status["stop_reason"] = res.get("stop_reason") or "error"
                 logging.getLogger("assistant").warning("background eval stopped (cid=%s): %s", cid, res["error"])
                 break
             status["done"] += res.get("evaluated_this_run", 0)
@@ -2111,6 +2114,7 @@ def _background_eval_loop(cid: int, stop_event: threading.Event, status: dict) -
             status["budget"] = res.get("budget")
             if res.get("stopped") == "budget":
                 status["stopped"] = "budget"
+                status["stop_reason"] = "budget"
                 break
             # No auto-advance and nothing left (or nothing progressed) -> the chain looks done.
             if not res.get("advanced") and (res.get("evaluated_this_run", 0) == 0
@@ -2137,6 +2141,7 @@ def _background_eval_loop(cid: int, stop_event: threading.Event, status: dict) -
             # shortlist in one unbounded run.
             if cap and status["done"] >= cap:
                 status["stopped"] = "cap"
+                status["stop_reason"] = "cap"
                 break
     except Exception as e:                      # never let the thread die silently
         status["error"] = f"{type(e).__name__}: {e}"
@@ -2146,11 +2151,15 @@ def _background_eval_loop(cid: int, stop_event: threading.Event, status: dict) -
         # This driver is stepping away — clear the run's 'running' flag unless it completed
         # (mark_run_stopped is a no-op on a finished run), so a stalled run is detectable.
         rid = status.get("run_id")
+        # Record why the driver stepped away (no-op on a completed run): the specific code from
+        # the loop, else an uncaught error, else the user pressing Stop.
+        reason = status.get("stop_reason") or ("error" if status.get("error")
+                                               else ("manual" if stop_event.is_set() else None))
         if rid:
             try:
                 c = connect()
                 try:
-                    evaluate.mark_run_stopped(c, rid)
+                    evaluate.mark_run_stopped(c, rid, reason)
                 finally:
                     c.close()
             except Exception:
@@ -3652,8 +3661,8 @@ def run_detail_page(request: Request, cid: int, run_id: str):
     # Run lifecycle state for the action button: fresh (never run) | partial (started, unfinished) | complete.
     started = (totals.get("pages") or 0) > 0
     run_state = "complete" if not continue_reason else ("partial" if started else "fresh")
-    outcome = evaluate.run_outcome(run_state, run.get("run_status"), continue_reason,
-                                   len(unparsed), len(truncated))
+    outcome = evaluate.run_outcome(run_state, run.get("run_status"), run.get("stop_reason"),
+                                   continue_reason, len(unparsed), len(truncated))
     resp = templates.TemplateResponse("run_detail.html", ctx(
         conn, request, category=category, run=run, chain=chain, totals=totals,
         commentary=commentary, unparsed=unparsed, truncated=truncated, continue_reason=continue_reason,

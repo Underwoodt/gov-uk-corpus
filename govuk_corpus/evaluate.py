@@ -779,7 +779,7 @@ def add_run_cost(conn, run_id: str, cost: float,
 def finish_run(conn, run_id: str) -> None:
     conn.execute(
         f"UPDATE evaluation_runs SET finished_at = {_P}, run_status = 'complete', pid = NULL, "
-        f"heartbeat_at = {_P} WHERE run_id = {_P}",
+        f"heartbeat_at = {_P}, stop_reason = NULL WHERE run_id = {_P}",
         (db.now_iso(), db.now_iso(), run_id))
     conn.commit()
 
@@ -797,11 +797,14 @@ def mark_run_running(conn, run_id: str, pid: Optional[int] = None) -> None:
     conn.commit()
 
 
-def mark_run_stopped(conn, run_id: str) -> None:
-    """Driver stepped away without finishing (budget/cap/error/stop). Leaves finished_at as-is."""
+def mark_run_stopped(conn, run_id: str, reason: Optional[str] = None) -> None:
+    """Driver stepped away without finishing (budget/cap/error/stop). Leaves finished_at as-is.
+    `reason` (budget|provider_errors|config|manual|cap) is recorded in stop_reason; passing None
+    preserves any reason already stamped (COALESCE), so a later catch-all call can't erase it."""
     conn.execute(
-        f"UPDATE evaluation_runs SET run_status = 'stopped', pid = NULL, heartbeat_at = {_P} "
-        f"WHERE run_id = {_P} AND finished_at IS NULL", (db.now_iso(), run_id))
+        f"UPDATE evaluation_runs SET run_status = 'stopped', pid = NULL, heartbeat_at = {_P}, "
+        f"stop_reason = COALESCE({_P}, stop_reason) "
+        f"WHERE run_id = {_P} AND finished_at IS NULL", (db.now_iso(), reason, run_id))
     conn.commit()
 
 
@@ -996,30 +999,54 @@ def truncated_results(conn, run_ids: Sequence[str]) -> List[dict]:
     return [dict(r) for r in rows]
 
 
-def run_outcome(run_state: str, run_status: Optional[str], continue_reason: Optional[str],
-                unparsed_count: int, truncated_count: int) -> Dict:
-    """One-glance summary of a run's outcome for the Run details page (guc-0006): a status
-    `label` + `kind` ('good' | 'warn' | 'muted'), a plain-English `why` it didn't finish (None
-    when it did or never started), and the two page-level failure counts. Pure/testable — the
-    route passes the pieces it already computed (run_state, run_status, continue_reason).
+# A run's persisted stop_reason → the plain-English 'why it didn't finish' shown on guc-0006.
+_STOP_REASON_WHY = {
+    "budget": "Stopped early because the daily AI budget was reached. Re-execute to continue where it left off.",
+    "provider_errors": "Stopped after repeated provider errors in a row — the provider was likely down or "
+                       "rate-limiting. Re-execute to resume where it left off.",
+    "config": "Stopped because of a configuration problem — e.g. no API key set for this run's provider. "
+              "Fix it in Settings, then re-execute.",
+    "manual": "Stopped manually (you pressed Stop). Re-execute to continue where it left off.",
+    "error": "Stopped after an unexpected error. Re-execute to continue where it left off.",
+}
+# Stop reasons that signal a real failure (red) vs benign pacing/manual (amber).
+_STOP_REASON_BAD = {"provider_errors", "config", "error"}
 
-    NOTE: the precise stop cause of an early stop (budget vs provider error vs manual Stop) is
-    not persisted, so `why` names the possibilities rather than asserting one.
+
+def run_outcome(run_state: str, run_status: Optional[str], stop_reason: Optional[str],
+                continue_reason: Optional[str], unparsed_count: int, truncated_count: int) -> Dict:
+    """One-glance summary of a run's outcome for the Run details page (guc-0006): a status
+    `label` + `kind` ('good' | 'warn' | 'bad' | 'muted'), a plain-English `why` it didn't finish
+    (None when it did or never started), and the two page-level failure counts. Pure/testable.
+
+    `stop_reason` is the run's persisted code (budget|provider_errors|config|manual|cap|error);
+    when present it gives the exact cause. Older runs recorded no code, so `why` falls back to
+    naming the possibilities or the continue_reason (pages remaining / pending exclusion).
     """
     if run_state == "complete":
-        label, kind, why = "Completed", "good", None
-    elif run_state == "fresh":
-        label, kind, why = "Not started", "muted", None
-    else:  # partial — started but work remains
-        label, kind = "Did not complete", "warn"
-        if run_status == "stopped":
-            why = ("Stopped early — the daily AI budget was reached, a provider error occurred, "
-                   "or it was stopped manually. Re-execute to continue where it left off.")
-        else:
-            lead = (continue_reason + " ") if continue_reason else "Some pages were not evaluated. "
-            why = lead + "Re-execute to evaluate the rest."
-    return {"label": label, "kind": kind, "why": why,
-            "unparsed": int(unparsed_count or 0), "truncated": int(truncated_count or 0)}
+        return {"label": "Completed", "kind": "good", "why": None,
+                "unparsed": int(unparsed_count or 0), "truncated": int(truncated_count or 0),
+                "stop_reason": None}
+    if run_state == "fresh":
+        return {"label": "Not started", "kind": "muted", "why": None,
+                "unparsed": int(unparsed_count or 0), "truncated": int(truncated_count or 0),
+                "stop_reason": None}
+    # partial — started but work remains
+    kind = "bad" if stop_reason in _STOP_REASON_BAD else "warn"
+    if stop_reason == "cap":
+        lead = (continue_reason + " ") if continue_reason else ""
+        why = lead + "It reached this execution's page cap — re-execute to evaluate the rest."
+    elif stop_reason in _STOP_REASON_WHY:
+        why = _STOP_REASON_WHY[stop_reason]
+    elif run_status == "stopped":
+        why = ("Stopped early — the daily AI budget was reached, a provider error occurred, or it "
+               "was stopped manually. Re-execute to continue where it left off.")
+    else:
+        lead = (continue_reason + " ") if continue_reason else "Some pages were not evaluated. "
+        why = lead + "Re-execute to evaluate the rest."
+    return {"label": "Did not complete", "kind": kind, "why": why,
+            "unparsed": int(unparsed_count or 0), "truncated": int(truncated_count or 0),
+            "stop_reason": stop_reason}
 
 
 def continuable_reason(chain: List[dict], shortlist_total: Optional[int] = None) -> Optional[str]:

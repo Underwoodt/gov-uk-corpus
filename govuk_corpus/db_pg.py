@@ -68,6 +68,8 @@ def init_db(conn) -> None:
     conn.execute("ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS heartbeat_at text")
     # A JSON snapshot of the prompt inputs a run used, so its prompts are exactly reproducible.
     conn.execute("ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS prompt_spec text")
+    # Why an unfinished run stopped (budget|provider_errors|config|manual|cap); NULL = completed/legacy.
+    conn.execute("ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS stop_reason text")
     # Sampling provenance on gold labels (guc-0029 stage-stratified picks).
     conn.execute("ALTER TABLE category_gold_labels ADD COLUMN IF NOT EXISTS sample_run_id text")
     conn.execute("ALTER TABLE category_gold_labels ADD COLUMN IF NOT EXISTS sample_stage text")
