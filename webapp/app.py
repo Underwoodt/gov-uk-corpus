@@ -3966,6 +3966,7 @@ def _safe_filename(name: str, default: str) -> str:
 # Category/run-scoped columns that aren't plain content fields — added to each row in Python
 # (see _enrich_audit_rows), not fetched by the shortlist SQL. key -> label.
 _VIRTUAL_FIELDS = {
+    "run_id": "Run ID",
     "matched_keywords": "Matched keywords",
     "inclusion_reason": "Inclusion reason",
     "exclusion_reason": "Exclusion reason",
@@ -4003,6 +4004,9 @@ _DOWNLOAD_SECTIONS = [
          "the date the view count was collected"),
     ]),
     ("Matching & AI decision", [
+        ("run_id", "Run ID", True, True,
+         "the inclusion run the AI columns come from — always included, so rows from several runs "
+         "can be told apart in one file"),
         ("organisations", "Organisations", True, False, "all linked organisation slugs"),
         ("document_type", "Document type", True, False, None),
         ("matched_keywords", "Matched keywords", True, False,
@@ -4071,6 +4075,10 @@ def _enrich_audit_rows(conn, cid: int, rows: list, keys: list, stage: str = None
         stage_label = dict(_AUDIT_STAGES).get(stage, stage) or ""
         for r in rows:
             r["stage"] = stage_label
+    if "run_id" in need:                         # constant per run — which inclusion run the AI columns come from
+        rid = run or evaluate.latest_inclusion_run(conn, cid) or ""
+        for r in rows:
+            r["run_id"] = rid
     urls = [r.get("url") for r in rows if r.get("url")]
     if not need or not urls:
         for r in rows:                       # still populate empty cells so columns render
@@ -4416,9 +4424,23 @@ def api_audit_shortlist(request: Request, cid: int, stage: str = "keyword",
                          "sql": _display_sql(esql, eparams)})
 
 
+def _valid_runs(conn, cid: int, runs: List[str]) -> List[str]:
+    """Keep only inclusion runs of THIS category, in the order given, without duplicates."""
+    out = []
+    for rid in runs:
+        rid = (rid or "").strip()
+        if not rid or rid in out:
+            continue
+        row = evaluate.get_run(conn, rid)
+        if row and str(row.get("category_id")) == str(cid):
+            out.append(rid)
+    return out
+
+
 @app.get("/categories/{cid}/download", response_class=HTMLResponse)
 def download_page(request: Request, cid: int, stage: str = "keyword",
-                  fields: List[str] = Query(default=[]), run: str = ""):
+                  fields: List[str] = Query(default=[]), run: List[str] = Query(default=[])):
+    """`run` may repeat: every run given is pre-selected in the (multi-select) Run picker."""
     if not authed(request):
         return login_redirect(request)
     conn = connect()
@@ -4427,30 +4449,34 @@ def download_page(request: Request, cid: int, stage: str = "keyword",
         conn.close()
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
     category["display_name"] = cat.display_name(category)
-    # Optional run scope: an inclusion run of THIS category. Ignore anything else.
-    run_row = evaluate.get_run(conn, run) if run else None
-    if run and (not run_row or str(run_row.get("category_id")) != str(cid)):
-        run, run_row = "", None
+    runs_selected = _valid_runs(conn, cid, run)
     if stage not in _AUDIT_STAGE_KEYS:
         stage = "keyword"
-    sq = _stage_query(conn, category, stage, run=run or None)
-    total = None
-    if sq is not None:
+    # Page count: summed over the selected runs (each run contributes its own rows to the file).
+    total = 0
+    for rid in (runs_selected or [""]):
+        sq = _stage_query(conn, category, stage, run=rid or None)
+        if sq is None:
+            total = None
+            break
         try:
-            total = shortlist.count(conn, **_merge_extra(sq, ""))
+            total += shortlist.count(conn, **_merge_extra(sq, ""))
         except Exception:
             total = None
+            break
     # Columns come from the Audit shortlist selection (passed as ?fields=…); fall back
-    # to the default set if the page is opened directly with none. The URL is always
-    # included (and first), even if the selection didn't request it, so every download
-    # keys back to the page.
+    # to the default set if the page is opened directly with none. URL and Run ID are
+    # always included (and first), so every download keys back to the page and its run.
     preselect = [f for f in fields if f in _all_audit_fields()] or list(_AUDIT_DEFAULT_FIELDS)
-    preselect = ["url"] + [f for f in preselect if f != "url"]
+    preselect = ["url", "run_id"] + [f for f in preselect if f not in ("url", "run_id")]
+    options = _incl_run_options(conn, cid)
+    names = {o["run_id"]: o["label"] for o in options}
     resp = templates.TemplateResponse("download.html", ctx(
         conn, request, category=category, total=total,
         stage=stage, stage_label=dict(_AUDIT_STAGES).get(stage, stage),
-        run=run, run_name=(run_row.get("name") or run_row.get("run_id") if run_row else ""),
-        runs=_incl_run_options(conn, cid),
+        runs_selected=runs_selected,
+        run_name=", ".join(names.get(r, r) for r in runs_selected),
+        runs=options,
         preselect=preselect, audit_sections=_DOWNLOAD_SECTIONS,
         default_filename=f"gov-uk-audit-shortlist-{_dl_stamp()}"))
     conn.close()
@@ -4459,10 +4485,12 @@ def download_page(request: Request, cid: int, stage: str = "keyword",
 
 @app.get("/categories/{cid}/export")
 def export_category(request: Request, cid: int, format: str = "csv", stage: str = "keyword",
-                    filename: str = "", fields: List[str] = Query(default=[]), run: str = ""):
+                    filename: str = "", fields: List[str] = Query(default=[]), run: List[str] = Query(default=[])):
     """Build the chosen-format, chosen-field export for an audit stage. Sync route ->
-    runs in a threadpool so a large export doesn't block the event loop. `run` (an inclusion
-    run of this category) scopes the LLM stages + AI-decision columns to that run-chain."""
+    runs in a threadpool so a large export doesn't block the event loop. `run` may repeat:
+    each inclusion run of this category contributes its own block of rows (scoping the LLM
+    stages + AI-decision columns to that run-chain) to the same file, told apart by the
+    Run ID column, which is always included. No run = the category's active run."""
     if not authed(request):
         return login_redirect(request)
     conn = connect()
@@ -4470,24 +4498,24 @@ def export_category(request: Request, cid: int, format: str = "csv", stage: str 
     if not category:
         conn.close()
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
-    run_row = evaluate.get_run(conn, run) if run else None
-    if run and (not run_row or str(run_row.get("category_id")) != str(cid)):
-        run = ""
+    runs_selected = _valid_runs(conn, cid, run) or [""]
     if stage not in _AUDIT_STAGE_KEYS:
         stage = "keyword"
-    sq = _stage_query(conn, category, stage, run=run or None)
-    if sq is None:
-        conn.close()
-        return RedirectResponse(url=str(request.url_for("download_page", cid=cid)), status_code=303)
     wanted = [f for f in fields if f in _all_audit_fields()] or list(_AUDIT_DEFAULT_FIELDS)
-    if "url" not in wanted:                          # always include the URL, even if not requested
-        wanted = ["url"] + wanted
+    wanted = ["url", "run_id"] + [k for k in wanted if k not in ("url", "run_id")]   # always included
     real = [k for k in wanted if k in shortlist.EXPORT_FIELDS]
-    keys, rows = shortlist.export_rows(conn, real, **_merge_extra(sq, ""))   # keys: real, url-first
-    _enrich_audit_rows(conn, cid, rows, wanted, stage=stage, run=run or None)   # kw + reasons + stage + decision
+    rows, keys = [], None
+    for rid in runs_selected:
+        sq = _stage_query(conn, category, stage, run=rid or None)
+        if sq is None:
+            conn.close()
+            return RedirectResponse(url=str(request.url_for("download_page", cid=cid)), status_code=303)
+        keys, run_rows = shortlist.export_rows(conn, real, **_merge_extra(sq, ""))   # keys: real, url-first
+        _enrich_audit_rows(conn, cid, run_rows, wanted, stage=stage, run=rid or None)  # kw + reasons + stage + decision
+        rows.extend(run_rows)
     conn.close()
-    # Columns: the real fields (url first) then any selected virtual fields, in selection order.
-    keys = list(keys) + [k for k in wanted if k in _VIRTUAL_FIELDS and k not in keys]
+    # Columns: url, then Run ID, then the other real fields, then the selected virtual fields.
+    keys = ["url", "run_id"] + [k for k in keys if k != "url"] + [k for k in wanted if k in _VIRTUAL_FIELDS and k not in keys and k != "run_id"]
     labels = [_field_label(k) for k in keys]
     name = _safe_filename(filename, f"gov-uk-audit-shortlist-{_dl_stamp()}")
 
