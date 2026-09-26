@@ -130,6 +130,9 @@
         <tr data-metric="dis"><td>Decisions disagree with Run 1 <span class="secondary" style="font-weight:400;">(shared pages)</span> <span class="metric-i" tabindex="0" title="Over pages BOTH runs scored (same URL), how many keep/drop verdicts differ from Run 1, compared per phase. ≈0 = they agreed. Run 1 shows “—” (baseline)." style="cursor:help;color:var(--link,#1d70b8);font-weight:700;font-size:13px;">&#9432;</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="dis-p1"><td class="secondary" style="padding-left:26px;">Phase 1 – Inclusion</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
         <tr data-metric="dis-p2"><td class="secondary" style="padding-left:26px;">Phase 2 – Exclusion</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="final-dis"><td>Final shortlist differs from Run 1 <span class="secondary" style="font-weight:400;">(shared pages)</span> <span class="metric-i" tabindex="0" title="The variability in the produced shortlist: over pages BOTH runs evaluated, how many end in a DIFFERENT final shortlist — in one run's final list but not the other's (final = kept by inclusion AND kept by exclusion). This is after Phase 2 has reconciled the per-phase disagreements above, so it shows how much the end result actually varies. Run 1 shows “—” (baseline). Click the total to list the pages." style="cursor:help;color:var(--link,#1d70b8);font-weight:700;font-size:13px;">&#9432;</span></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="final-dis-in"><td class="secondary" style="padding-left:26px;">Run 1 kept · this run dropped</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
+        <tr data-metric="final-dis-out"><td class="secondary" style="padding-left:26px;">Run 1 dropped · this run kept</td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
 
         <tr><td colspan="4" style="font-weight:700;padding-top:18px;border-top:2px solid var(--border-mid);">Run configuration</td></tr>
         <tr data-metric="cfg-variant"><td>Prompt variant <span class="metric-i" tabindex="0" title="Prompt build used: current (today's wording) or cached (reordered, cache-enabled). Stamped at run creation." style="cursor:help;color:var(--link,#1d70b8);font-weight:700;font-size:13px;">&#9432;</span></td><td></td><td></td><td></td></tr>
@@ -270,27 +273,43 @@
       catch (e) { return null; }
     }
 
-    // Disagreement of chains 2 & 3 vs chain 1 (baseline), per phase over pages evaluated in both.
+    async function finalDiffCounts(base, other) {
+      if (!base || !other || base === other) return null;
+      try { return await (await fetch(`/api/categories/${CID}/final-diff?base=${base}&other=${other}`)).json(); }
+      catch (e) { return null; }
+    }
+
+    const DIS_METRICS = ["dis", "dis-p1", "dis-p2", "final-dis", "final-dis-in", "final-dis-out"];
+
+    // Disagreement of chains 2 & 3 vs chain 1 (baseline), per phase over pages evaluated in both,
+    // plus the FINAL-shortlist difference (variability in the produced shortlist, with direction).
     async function renderComparisons() {
       const base = chainFor(0);
-      ["dis", "dis-p1", "dis-p2"].forEach(m => cell(m, 0).textContent = "—");   // baseline vs itself
+      DIS_METRICS.forEach(m => cell(m, 0).textContent = "—");   // baseline vs itself
       for (const col of [1, 2]) {
         const other = chainFor(col);
-        const setAll = v => ["dis", "dis-p1", "dis-p2"].forEach(m => cell(m, col).textContent = v);
-        if (!base || !other) { setAll("—"); continue; }
+        if (!base || !other) { DIS_METRICS.forEach(m => cell(m, col).textContent = "—"); continue; }
         const d1 = await disagreeCount(base.incl && base.incl.run_id, other.incl && other.incl.run_id);
         const d2 = await disagreeCount(base.excl && base.excl.run_id, other.excl && other.excl.run_id);
-        // Link a non-zero figure to the drilldown that shows WHICH pages differ and why.
         const bh = base.incl && base.incl.run_id, oh = other.incl && other.incl.run_id;
-        const link = v => {
+        // Link a non-zero figure to the drilldown that shows WHICH pages differ and why.
+        const link = (v, anchor) => {
           if (v == null) return "—";
           if (!v || !bh || !oh) return fmtInt(v);
-          const href = `/categories/${CID}/performance/diff?base=${encodeURIComponent(bh)}&other=${encodeURIComponent(oh)}`;
+          const href = `/categories/${CID}/performance/diff?base=${encodeURIComponent(bh)}&other=${encodeURIComponent(oh)}${anchor || ""}`;
           return `<a href="${href}" title="See which pages differ from Run 1, and why">${fmtInt(v)}</a>`;
         };
         cell("dis-p1", col).innerHTML = link(d1);
         cell("dis-p2", col).innerHTML = link(d2);
         cell("dis", col).innerHTML = (d1 == null && d2 == null) ? "—" : link((d1 || 0) + (d2 || 0));
+        // Final-shortlist variability: total (linked to the list) + the two directions.
+        const fd = await finalDiffCounts(bh, oh);
+        if (fd == null) { ["final-dis", "final-dis-in", "final-dis-out"].forEach(m => cell(m, col).textContent = "—"); }
+        else {
+          cell("final-dis", col).innerHTML = link(fd.count, "#final-diffs");
+          cell("final-dis-in", col).textContent = fmtInt(fd.base_only || 0);
+          cell("final-dis-out", col).textContent = fmtInt(fd.other_only || 0);
+        }
       }
     }
     function renderAll() { [0, 1, 2].forEach(renderColumn); renderComparisons(); }

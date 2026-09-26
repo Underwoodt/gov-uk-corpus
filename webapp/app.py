@@ -3910,6 +3910,27 @@ def api_compare(request: Request, cid: int, base: str = "", other: str = ""):
     return JSONResponse(out)
 
 
+@app.get("/api/categories/{cid}/final-diff")
+def api_final_diff(request: Request, cid: int, base: str = "", other: str = ""):
+    """Variability in the FINAL shortlist between two run-chains (base=Run 1, other=Run 2), over
+    pages both evaluated. `base`/`other` are the inclusion run ids; the chains' exclusion phases
+    are resolved here. Returns the total that differ plus the two directions."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    conn = connect()
+    try:
+        b_incl, b_excl = _chain_of(conn, base)
+        o_incl, o_excl = _chain_of(conn, other)
+        diffs = evaluate.final_outcome_diffs(
+            conn, b_incl and b_incl["run_id"], b_excl and b_excl["run_id"],
+            o_incl and o_incl["run_id"], o_excl and o_excl["run_id"])
+        base_only = sum(1 for d in diffs if d["base_final"] and not d["other_final"])
+        other_only = sum(1 for d in diffs if not d["base_final"] and d["other_final"])
+        return JSONResponse({"count": len(diffs), "base_only": base_only, "other_only": other_only})
+    finally:
+        conn.close()
+
+
 def _dl_stamp() -> str:
     """UTC timestamp for download filenames: yy-mm-dd-hr-min."""
     return time.strftime("%y-%m-%d-%H-%M", time.gmtime())
