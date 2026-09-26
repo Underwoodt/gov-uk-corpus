@@ -7,11 +7,13 @@
 
   <h1 style="margin:20px 0 5px;">Download shortlist</h1>
   <p class="secondary" style="margin:0 0 25px;">{{ category.display_name }}
-    (<span class="mono">{{ category.slug or '' }}</span>){% if stage_label %} · stage:
+    (<span class="mono">{{ category.slug or '' }}</span>){% if run_name %} · run:
+    <strong>{{ run_name }}</strong>{% endif %}{% if stage_label %} · stage:
     <strong>{{ stage_label }}</strong>{% endif %}{% if total is not none %} · {{ '{:,}'.format(total) }} pages{% endif %}</p>
 
   <form method="get" action="{{ url_for('export_category', cid=category.id) }}">
     <input type="hidden" name="stage" value="{{ stage or 'keyword' }}">
+    {% if run %}<input type="hidden" name="run" value="{{ run }}">{% endif %}
     {% for f in preselect %}<input type="hidden" name="fields" value="{{ f }}">{% endfor %}
 
     <div class="field" style="max-width:440px;">

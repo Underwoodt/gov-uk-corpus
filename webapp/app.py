@@ -4043,10 +4043,12 @@ def _field_label(k: str) -> str:
     return _VIRTUAL_FIELDS[k] if k in _VIRTUAL_FIELDS else shortlist.EXPORT_FIELDS[k][1]
 
 
-def _enrich_audit_rows(conn, cid: int, rows: list, keys: list, stage: str = None) -> None:
+def _enrich_audit_rows(conn, cid: int, rows: list, keys: list, stage: str = None,
+                       run: str = None) -> None:
     """Add the category/run-scoped virtual columns (matched keywords, inclusion/exclusion
     reason, stage, decision) to each row in place, for whichever are in `keys`. Reasons come
-    from the shortlist's latest inclusion run and its exclusion run; pages not evaluated get ''.
+    from the inclusion run and its exclusion run; pages not evaluated get ''. `run` (an inclusion
+    run id) scopes those to that specific run-chain; None uses the category's latest/active run.
     `stage` is the audit stage KEY (drives the stage label and which run the decision reads)."""
     need = [k for k in keys if k in _VIRTUAL_FIELDS]
     if "stage" in need:                          # constant per view — tags each row with its stage
@@ -4107,7 +4109,7 @@ def _enrich_audit_rows(conn, cid: int, rows: list, keys: list, stage: str = None
                    "inclusion_raw_reply": "raw_reply", "exclusion_raw_reply": "raw_reply",
                    "primary_topic": "primary_topic", "where_hit": "where_hit", "evidence": "evidence"}
     if any(k in need for k in _phase_cols):
-        inc = evaluate.latest_inclusion_run(conn, cid)
+        inc = run or evaluate.latest_inclusion_run(conn, cid)
         exc = evaluate.latest_exclusion_run(conn, inc) if inc else None
         for field, col in _phase_cols.items():
             if field not in need:
@@ -4125,7 +4127,7 @@ def _enrich_audit_rows(conn, cid: int, rows: list, keys: list, stage: str = None
         # The AI verdict for each page — Keep / Drop / Unscored (a row with keep = NULL) — from
         # the run relevant to the stage: the inclusion run for include/excl_include, the exclusion
         # run for final/excl_final, and the page's furthest disposition on a deterministic stage.
-        inc = evaluate.latest_inclusion_run(conn, cid)
+        inc = run or evaluate.latest_inclusion_run(conn, cid)
         exc = evaluate.latest_exclusion_run(conn, inc) if inc else None
         inc_keep = _map(f"SELECT url, keep AS val FROM evaluation_results WHERE run_id = {P}", inc) if inc else {}
         exc_keep = _map(f"SELECT url, keep AS val FROM evaluation_results WHERE run_id = {P}", exc) if exc else {}
@@ -4144,7 +4146,7 @@ def _enrich_audit_rows(conn, cid: int, rows: list, keys: list, stage: str = None
                 r["decision"] = _verdict(exc_keep, u) if u in exc_keep else _verdict(inc_keep, u)
     if "confidence" in need:
         # Confidence label from the inclusion score (pass 1 is the only phase that scores).
-        inc = evaluate.latest_inclusion_run(conn, cid)
+        inc = run or evaluate.latest_inclusion_run(conn, cid)
         sc = _map(f"SELECT url, score AS val FROM evaluation_results WHERE run_id = {P}", inc) if inc else {}
         for r in rows:
             s = sc.get(r.get("url"))
@@ -4154,7 +4156,7 @@ def _enrich_audit_rows(conn, cid: int, rows: list, keys: list, stage: str = None
         # The furthest funnel stage each page actually reached — independent of the selected
         # view — read from the inclusion/exclusion keep decisions. Cumulative ladder:
         # Final shortlist ⊃ Reached exclusion ⊃ Reached inclusion ⊃ Keyword only.
-        inc = evaluate.latest_inclusion_run(conn, cid)
+        inc = run or evaluate.latest_inclusion_run(conn, cid)
         exc = evaluate.latest_exclusion_run(conn, inc) if inc else None
         inc_keep = _map(f"SELECT url, keep AS val FROM evaluation_results WHERE run_id = {P}", inc) if inc else {}
         exc_keep = _map(f"SELECT url, keep AS val FROM evaluation_results WHERE run_id = {P}", exc) if exc else {}
@@ -4287,10 +4289,11 @@ _AUDIT_STAGE_KEYS = [k for k, _ in _AUDIT_STAGES] + [
 _AUDIT_DEFAULT_FIELDS = [k for _, fs in _DOWNLOAD_SECTIONS for (k, l, d, dis, w) in fs if d]
 
 
-def _stage_query(conn, category, stage):
+def _stage_query(conn, category, stage, run=None):
     """Filters for export_rows/count at an audit stage, or None if an LLM stage has
     no run yet. Deterministic stages drop the later filters; LLM stages restrict the
-    content rows to the URLs their run kept."""
+    content rows to the URLs their run kept. `run` (an inclusion run id) scopes the LLM
+    stages to that specific run-chain; None uses the category's latest/active run."""
     eff = _effective_filters(conn, category)
     if stage == "dept":
         return dict(organisations=eff["organisations"], document_types=(), keywords=(), match=eff["match"])
@@ -4299,7 +4302,7 @@ def _stage_query(conn, category, stage):
                     keywords=(), match=eff["match"])
     if stage == "keyword":
         return dict(eff)
-    inc = evaluate.latest_inclusion_run(conn, category["id"])
+    inc = run or evaluate.latest_inclusion_run(conn, category["id"])
     if not inc:
         return None
     exc = evaluate.latest_exclusion_run(conn, inc)
@@ -4396,7 +4399,7 @@ def api_audit_shortlist(request: Request, cid: int, stage: str = "keyword",
 
 @app.get("/categories/{cid}/download", response_class=HTMLResponse)
 def download_page(request: Request, cid: int, stage: str = "keyword",
-                  fields: List[str] = Query(default=[])):
+                  fields: List[str] = Query(default=[]), run: str = ""):
     if not authed(request):
         return login_redirect(request)
     conn = connect()
@@ -4405,9 +4408,13 @@ def download_page(request: Request, cid: int, stage: str = "keyword",
         conn.close()
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
     category["display_name"] = cat.display_name(category)
+    # Optional run scope: an inclusion run of THIS category. Ignore anything else.
+    run_row = evaluate.get_run(conn, run) if run else None
+    if run and (not run_row or str(run_row.get("category_id")) != str(cid)):
+        run, run_row = "", None
     if stage not in _AUDIT_STAGE_KEYS:
         stage = "keyword"
-    sq = _stage_query(conn, category, stage)
+    sq = _stage_query(conn, category, stage, run=run or None)
     total = None
     if sq is not None:
         try:
@@ -4420,6 +4427,7 @@ def download_page(request: Request, cid: int, stage: str = "keyword",
     resp = templates.TemplateResponse("download.html", ctx(
         conn, request, category=category, total=total,
         stage=stage, stage_label=dict(_AUDIT_STAGES).get(stage, stage),
+        run=run, run_name=(run_row.get("name") or run_row.get("run_id") if run_row else ""),
         preselect=preselect, default_filename=f"gov-uk-audit-shortlist-{_dl_stamp()}"))
     conn.close()
     return resp
@@ -4427,9 +4435,10 @@ def download_page(request: Request, cid: int, stage: str = "keyword",
 
 @app.get("/categories/{cid}/export")
 def export_category(request: Request, cid: int, format: str = "csv", stage: str = "keyword",
-                    filename: str = "", fields: List[str] = Query(default=[])):
+                    filename: str = "", fields: List[str] = Query(default=[]), run: str = ""):
     """Build the chosen-format, chosen-field export for an audit stage. Sync route ->
-    runs in a threadpool so a large export doesn't block the event loop."""
+    runs in a threadpool so a large export doesn't block the event loop. `run` (an inclusion
+    run of this category) scopes the LLM stages + AI-decision columns to that run-chain."""
     if not authed(request):
         return login_redirect(request)
     conn = connect()
@@ -4437,16 +4446,19 @@ def export_category(request: Request, cid: int, format: str = "csv", stage: str 
     if not category:
         conn.close()
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
+    run_row = evaluate.get_run(conn, run) if run else None
+    if run and (not run_row or str(run_row.get("category_id")) != str(cid)):
+        run = ""
     if stage not in _AUDIT_STAGE_KEYS:
         stage = "keyword"
-    sq = _stage_query(conn, category, stage)
+    sq = _stage_query(conn, category, stage, run=run or None)
     if sq is None:
         conn.close()
         return RedirectResponse(url=str(request.url_for("download_page", cid=cid)), status_code=303)
     wanted = [f for f in fields if f in _all_audit_fields()] or list(_AUDIT_DEFAULT_FIELDS)
     real = [k for k in wanted if k in shortlist.EXPORT_FIELDS]
     keys, rows = shortlist.export_rows(conn, real, **_merge_extra(sq, ""))   # keys: real, url-first
-    _enrich_audit_rows(conn, cid, rows, wanted, stage=stage)   # kw + reasons + stage + decision
+    _enrich_audit_rows(conn, cid, rows, wanted, stage=stage, run=run or None)   # kw + reasons + stage + decision
     conn.close()
     # Columns: the real fields (url first) then any selected virtual fields, in selection order.
     keys = list(keys) + [k for k in wanted if k in _VIRTUAL_FIELDS and k not in keys]
