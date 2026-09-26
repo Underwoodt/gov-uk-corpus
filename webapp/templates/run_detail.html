@@ -13,9 +13,10 @@
 
   <a class="back" href="{{ url_for('ai_pipeline_page', cid=category.id) }}">‹ Back to Filter pipeline run</a>
   <a class="back" style="margin-left:18px;" href="{{ url_for('gold_page', cid=category.id) }}?run={{ (chain[0].run_id if chain else run.run_id) }}">Label gold from this run ›</a>
-  <a class="back" style="margin-left:18px;" href="{{ url_for('download_page', cid=category.id) }}?run={{ (chain[0].run_id if chain else run.run_id) }}&amp;stage=final" title="Download this run's final shortlist (choose columns/format on the download page)">Download this run ›</a>
-
-  <h1 id="run-title" style="margin:18px 0 4px;">Run Details for {{ run.name or run.run_id }}</h1>
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:18px 0 4px;">
+    <h1 id="run-title" style="margin:0;">Run Details for {{ run.name or run.run_id }}</h1>
+    <a class="btn" style="white-space:nowrap;" href="{{ url_for('download_page', cid=category.id) }}?run={{ (chain[0].run_id if chain else run.run_id) }}&amp;stage=final" title="Download this run's final shortlist (choose columns/format on the download page)">Download this run</a>
+  </div>
   <p class="secondary" style="margin:0 0 18px;">{{ category.display_name }}
     (<span class="mono">{{ category.slug or '' }}</span>) · run <span class="mono">{{ run.run_id }}</span></p>
 
@@ -129,6 +130,10 @@
       <select id="pr-filter" style="font:inherit;padding:3px 6px;border:2px solid var(--black);border-radius:4px;margin-left:4px;">
         <option value="">All</option><option value="1">Kept</option><option value="0">Dropped</option>
       </select></label>
+    <label class="secondary" style="font-size:14px;">Per page
+      <select id="pr-page-size" style="font:inherit;padding:3px 6px;border:2px solid var(--black);border-radius:4px;margin-left:4px;">
+        <option value="20" selected>20</option><option value="100">100</option><option value="all">All</option>
+      </select></label>
     <span id="pr-summary" class="secondary"></span>
   </div>
   <div class="table-wrap">
@@ -139,6 +144,11 @@
       </tr></thead>
       <tbody><tr><td colspan="8" class="secondary" style="padding:10px 6px;"><span class="spinner"></span></td></tr></tbody>
     </table>
+  </div>
+  <div id="pr-pager" class="controls" style="align-items:center;gap:12px;margin-top:10px;" hidden>
+    <button class="btn secondary-btn" id="pr-prev" type="button" style="padding:5px 12px;">‹ Prev</button>
+    <span id="pr-range" class="secondary"></span>
+    <button class="btn secondary-btn" id="pr-next" type="button" style="padding:5px 12px;">Next ›</button>
   </div>
 
   <h2 style="margin-top:30px;">Run commentary</h2>
@@ -267,17 +277,37 @@
     (function () {
       const tbody = document.querySelector("#pr-table tbody"), sum = document.getElementById("pr-summary");
       const filter = document.getElementById("pr-filter");
+      const sizeSel = document.getElementById("pr-page-size");
+      const pager = document.getElementById("pr-pager"), rangeEl = document.getElementById("pr-range");
+      const prevBtn = document.getElementById("pr-prev"), nextBtn = document.getElementById("pr-next");
       const esc = s => { const d = document.createElement("div"); d.textContent = s == null ? "" : s; return d.innerHTML; };
-      let all = [];
+      let all = [], page = 0;
+      const pageSize = () => { const v = sizeSel ? sizeSel.value : "20"; return v === "all" ? Infinity : (parseInt(v, 10) || 20); };
       function render() {
         const f = filter.value;
         const rows = f === "" ? all : all.filter(r => String(r.keep) === f);
         sum.textContent = `${rows.length} of ${all.length} page${all.length === 1 ? "" : "s"}`;
+        const size = pageSize();
+        const nPages = Math.max(1, Math.ceil(rows.length / (size === Infinity ? (rows.length || 1) : size)));
+        if (page >= nPages) page = nPages - 1;
+        if (page < 0) page = 0;
+        const start = size === Infinity ? 0 : page * size;
+        const slice = size === Infinity ? rows : rows.slice(start, start + size);
         if (!rows.length) {
           tbody.innerHTML = '<tr><td colspan="8" class="secondary" style="padding:10px 6px;">No pages.</td></tr>';
+          if (pager) pager.hidden = true;
           return;
         }
-        tbody.innerHTML = rows.map(r => {
+        if (pager) {
+          if (size === Infinity || rows.length <= size) { pager.hidden = true; }
+          else {
+            pager.hidden = false;
+            rangeEl.textContent = `${start + 1}–${Math.min(start + size, rows.length)} of ${rows.length}`;
+            prevBtn.disabled = page === 0;
+            nextBtn.disabled = page >= nPages - 1;
+          }
+        }
+        tbody.innerHTML = slice.map(r => {
           const verdict = r.keep === 1 ? '<span style="color:var(--green,#00703c);font-weight:700;">Keep</span>'
                         : r.keep === 0 ? '<span style="color:var(--red,#d4351c);font-weight:700;">Drop</span>'
                         : '<span class="secondary">Unscored</span>';
@@ -295,7 +325,10 @@
           </tr>`;
         }).join("");
       }
-      filter.addEventListener("change", render);
+      filter.addEventListener("change", () => { page = 0; render(); });
+      if (sizeSel) sizeSel.addEventListener("change", () => { page = 0; render(); });
+      if (prevBtn) prevBtn.addEventListener("click", () => { if (page > 0) { page--; render(); } });
+      if (nextBtn) nextBtn.addEventListener("click", () => { page++; render(); });
       fetch(`/api/categories/${CID}/runs/${RUN_ID}/results`, { headers: { "Accept": "application/json" } })
         .then(r => r.json())
         .then(j => { all = (j && j.rows) || []; render(); })
