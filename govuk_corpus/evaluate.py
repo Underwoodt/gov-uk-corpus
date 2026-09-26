@@ -1150,6 +1150,35 @@ def run_disagreements(conn, base_run: str, other_run: str) -> List[dict]:
     return [dict(r) for r in conn.execute(sql, (base_run, other_run)).fetchall()]
 
 
+def _final_keep_map(conn, incl_run_id: str, excl_run_id: Optional[str]) -> dict:
+    """{url: bool} — a run-chain's FINAL shortlist outcome per page it evaluated.
+    Final keep = inclusion kept AND (no exclusion phase, or exclusion also kept). A page the
+    exclusion pass didn't re-score is treated as kept (exclusion only removes)."""
+    out = {r["url"]: (r["keep"] == 1)
+           for r in conn.execute(f"SELECT url, keep FROM evaluation_results WHERE run_id = {_P}",
+                                 (incl_run_id,)).fetchall()}
+    if excl_run_id:
+        excl = {r["url"]: (r["keep"] == 1)
+                for r in conn.execute(f"SELECT url, keep FROM evaluation_results WHERE run_id = {_P}",
+                                      (excl_run_id,)).fetchall()}
+        for url, inc_keep in list(out.items()):
+            out[url] = bool(inc_keep and excl.get(url, True))
+    return out
+
+
+def final_outcome_diffs(conn, base_incl_id: Optional[str], base_excl_id: Optional[str],
+                        other_incl_id: Optional[str], other_excl_id: Optional[str]) -> List[dict]:
+    """Pages that end with a DIFFERENT final shortlist result between the two run-chains — in one
+    chain's final shortlist but not the other's — over pages BOTH chains evaluated. Returns
+    [{url, base_final, other_final}] where the finals are booleans (in the final shortlist)."""
+    if not (base_incl_id and other_incl_id):
+        return []
+    b = _final_keep_map(conn, base_incl_id, base_excl_id)
+    o = _final_keep_map(conn, other_incl_id, other_excl_id)
+    return [{"url": url, "base_final": b[url], "other_final": o[url]}
+            for url in sorted(set(b) & set(o)) if b[url] != o[url]]
+
+
 def run_results_query(run_id: str, keep: Optional[int] = None, limit: Optional[int] = None,
                       source_run_id: Optional[str] = None):
     """(sql, params) for a run's per-page results — so the page can show the SQL it ran. When

@@ -2580,13 +2580,20 @@ def performance_diff_page(request: Request, cid: int, base: str = "", other: str
     p1_cards = [card(r["url"], "inclusion") for r in p1]
     p2_cards = [card(r["url"], "exclusion") for r in p2]
 
+    # Pages whose FINAL shortlist result differs between the two chains (end of pipeline),
+    # which is a subset/superset-independent view of the per-phase disagreements above.
+    final_diffs = evaluate.final_outcome_diffs(
+        conn, b_incl and b_incl["run_id"], b_excl and b_excl["run_id"],
+        o_incl and o_incl["run_id"], o_excl and o_excl["run_id"])
+
     trials = {"base": _run_trial(conn, b_incl["run_id"]) if b_incl else {},
               "other": _run_trial(conn, o_incl["run_id"]) if o_incl else {}}
     judge = _diff_judge_config(conn, o_excl or o_incl)
     ctxd = ctx(conn, request, category=category, base_head=base, other_head=other,
                base_incl=b_incl, base_excl=b_excl, other_incl=o_incl, other_excl=o_excl,
                base_has_excl=bool(b_excl), other_has_excl=bool(o_excl),
-               p1_cards=p1_cards, p2_cards=p2_cards, trials=trials, judged_count=len(adj),
+               p1_cards=p1_cards, p2_cards=p2_cards, final_diffs=final_diffs,
+               trials=trials, judged_count=len(adj),
                judge_label=f"{judge.get('provider','')} / {judge.get('model','')}")
     resp = templates.TemplateResponse("performance_diff.html", ctxd)
     conn.close()

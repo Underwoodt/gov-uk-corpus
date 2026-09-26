@@ -106,6 +106,28 @@
     </div>
   </div>
 
+  {# How many pages end with a DIFFERENT final shortlist result between the two runs, with a
+     click-to-list of exactly which pages and each run's final IN/OUT. #}
+  <details class="final-diff card" id="final-diffs"{% if final_diffs %} open{% endif %}>
+    <summary><strong>{{ final_diffs|length }}</strong> page{{ '' if final_diffs|length == 1 else 's' }}
+      end with a <strong>different final shortlist result</strong> between the two runs
+      {% if final_diffs %}<span class="muted-sm">— list</span>{% endif %}</summary>
+    {% if final_diffs %}
+    <table class="dc-table" style="margin-top:10px;">
+      <thead><tr><th>Page</th><th>Run 1 · baseline</th><th>Run 2</th></tr></thead>
+      <tbody>
+        {% for d in final_diffs %}
+        <tr>
+          <td><a class="dc-url" href="{{ d.url }}">{{ d.url }}</a></td>
+          <td>{% if d.base_final %}<span class="kd keep">IN</span>{% else %}<span class="kd drop">OUT</span>{% endif %}</td>
+          <td>{% if d.other_final %}<span class="kd keep">IN</span>{% else %}<span class="kd drop">OUT</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </details>
+
   <section class="phase-block" data-phase="inclusion">
     <div class="pb-head">
       <h2>Phase 1 — Inclusion disagreements <span class="count">{{ p1_cards|length }}</span></h2>
@@ -139,6 +161,8 @@
   {% endif %}
 
   <style>
+    .final-diff { margin:0 0 26px; }
+    .final-diff > summary { cursor:pointer; font-size:16px; }
     .runs-strip { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:18px 0 26px; }
     @media (max-width:640px){ .runs-strip { grid-template-columns:1fr; } }
     .run-col { border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px; background:var(--surface); }
