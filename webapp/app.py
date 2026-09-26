@@ -1972,13 +1972,17 @@ def _run_evaluation(cid: int, limit: int) -> dict:
                     # likely down — stop cleanly; the user re-executes to resume where it left off.
                     consec_err += 1
                     if consec_err >= MAX_CONSEC_EVAL_ERRORS:
-                        evaluate.mark_run_stopped(conn, run_id, "provider_errors")
+                        # A low-credit-balance error keeps failing every call; name it specifically.
+                        hint = evaluate.credit_balance_hint(res.get("error"))
+                        reason = "balance" if hint else "provider_errors"
+                        evaluate.mark_run_stopped(conn, run_id, reason)
+                        tail = hint or ("The provider may be down or rate-limiting — "
+                                        "re-execute to resume where it left off.")
                         fatal_return = {"error": f"Stopped after {consec_err} evaluation errors in a row "
-                                        f"(last: {res['error']}). The provider may be down or rate-limiting — "
-                                        f"re-execute to resume where it left off.",
+                                        f"(last: {res['error']}). {tail}",
                                         "run_id": run_id, "evaluated_this_run": done, "skipped": skipped,
                                         "cost_usd": round(cost, 6), "spent_today": round(spent, 4),
-                                        "budget": budget, "stopped": "errors", "stop_reason": "provider_errors"}
+                                        "budget": budget, "stopped": "errors", "stop_reason": reason}
                         break
                     # Isolated failure: record the page as unscored (so it's excluded next time and
                     # shows on the Run detail 'Not parsed' list) and carry on.
@@ -2100,8 +2104,9 @@ def _background_eval_loop(cid: int, stop_event: threading.Event, status: dict) -
         while not stop_event.is_set():
             res = _run_evaluation(cid, BG_EVAL_CHUNK)
             if res.get("error"):
-                status["error"] = res["error"]
-                status["stop_reason"] = res.get("stop_reason") or "error"
+                status["error"] = evaluate.augment_error(res["error"])
+                status["stop_reason"] = res.get("stop_reason") or (
+                    "balance" if evaluate.credit_balance_hint(res["error"]) else "error")
                 logging.getLogger("assistant").warning("background eval stopped (cid=%s): %s", cid, res["error"])
                 break
             status["done"] += res.get("evaluated_this_run", 0)

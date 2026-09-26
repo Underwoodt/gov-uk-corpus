@@ -999,18 +999,39 @@ def truncated_results(conn, run_ids: Sequence[str]) -> List[dict]:
     return [dict(r) for r in rows]
 
 
+CREDIT_BALANCE_HINT = "Check your Anthropic Credit Balance."
+
+
+def credit_balance_hint(error_text: Optional[str]) -> Optional[str]:
+    """When a provider error mentions 'balance' (e.g. Anthropic's 'Your credit balance is too
+    low to access the Anthropic API'), the user-facing hint to check their credit balance;
+    otherwise None. Case-insensitive substring match."""
+    return CREDIT_BALANCE_HINT if error_text and "balance" in str(error_text).lower() else None
+
+
+def augment_error(error_text: Optional[str]) -> Optional[str]:
+    """Append the credit-balance hint to a provider error that looks like a low-balance error
+    (idempotent — never doubles the hint). Leaves other errors unchanged."""
+    hint = credit_balance_hint(error_text)
+    if hint and hint not in (error_text or ""):
+        return (error_text or "").rstrip() + " " + hint
+    return error_text
+
+
 # A run's persisted stop_reason → the plain-English 'why it didn't finish' shown on guc-0006.
 _STOP_REASON_WHY = {
     "budget": "Stopped early because the daily AI budget was reached. Re-execute to continue where it left off.",
     "provider_errors": "Stopped after repeated provider errors in a row — the provider was likely down or "
                        "rate-limiting. Re-execute to resume where it left off.",
+    "balance": "Stopped — the provider rejected the calls for a low credit balance. "
+               + CREDIT_BALANCE_HINT + " Top up, then re-execute to resume where it left off.",
     "config": "Stopped because of a configuration problem — e.g. no API key set for this run's provider. "
               "Fix it in Settings, then re-execute.",
     "manual": "Stopped manually (you pressed Stop). Re-execute to continue where it left off.",
     "error": "Stopped after an unexpected error. Re-execute to continue where it left off.",
 }
 # Stop reasons that signal a real failure (red) vs benign pacing/manual (amber).
-_STOP_REASON_BAD = {"provider_errors", "config", "error"}
+_STOP_REASON_BAD = {"provider_errors", "balance", "config", "error"}
 
 
 def run_outcome(run_state: str, run_status: Optional[str], stop_reason: Optional[str],

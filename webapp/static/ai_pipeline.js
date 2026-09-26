@@ -43,6 +43,7 @@
   const STOP_CHIP = {
     budget:          { t: "budget reached",  cls: "stopped-warn" },
     provider_errors: { t: "provider errors", cls: "stopped-bad" },
+    balance:         { t: "low balance",     cls: "stopped-bad", title: "Stopped for a low credit balance — check your Anthropic Credit Balance" },
     config:          { t: "config error",    cls: "stopped-bad" },
     manual:          { t: "stopped manually", cls: "stopped-warn" },
     cap:             { t: "page cap",         cls: "stopped-warn" },
@@ -51,7 +52,7 @@
   function stopChip(r) {
     if (!r || r.run_status !== "stopped" || !r.stop_reason) return "";
     const m = STOP_CHIP[r.stop_reason] || { t: r.stop_reason, cls: "stopped-warn" };
-    return ` <span class="run-chip ${m.cls}" title="Stopped early — reason: ${esc(r.stop_reason)}">■ ${esc(m.t)}</span>`;
+    return ` <span class="run-chip ${m.cls}" title="${esc(m.title || ("Stopped early — reason: " + r.stop_reason))}">■ ${esc(m.t)}</span>`;
   }
   function statusPill(status) {
     const m = { complete: { t: "Complete", bg: "#cce2d8", c: "#005a30" },

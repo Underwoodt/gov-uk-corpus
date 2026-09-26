@@ -698,6 +698,32 @@ class TestRunOutcome(unittest.TestCase):
         self.assertIn("Exclusion", o["why"])
         self.assertIn("Re-execute", o["why"])
 
+    def test_partial_balance_is_bad_and_advises(self):
+        o = evaluate.run_outcome("partial", "stopped", "balance", None, 0, 0)
+        self.assertEqual(o["kind"], "bad")
+        self.assertIn("Anthropic Credit Balance", o["why"])
+
+
+class TestCreditBalanceHint(unittest.TestCase):
+    def test_detects_balance_case_insensitive(self):
+        msg = "BadRequestError: Your credit BALANCE is too low to access the Anthropic API"
+        self.assertEqual(evaluate.credit_balance_hint(msg), "Check your Anthropic Credit Balance.")
+
+    def test_none_when_absent_or_empty(self):
+        self.assertIsNone(evaluate.credit_balance_hint("RateLimitError: 429 too many requests"))
+        self.assertIsNone(evaluate.credit_balance_hint(""))
+        self.assertIsNone(evaluate.credit_balance_hint(None))
+
+    def test_augment_appends_once(self):
+        msg = "BadRequestError: credit balance too low"
+        once = evaluate.augment_error(msg)
+        self.assertTrue(once.endswith("Check your Anthropic Credit Balance."))
+        self.assertEqual(evaluate.augment_error(once), once)   # idempotent
+
+    def test_augment_leaves_other_errors(self):
+        msg = "TimeoutError: request timed out"
+        self.assertEqual(evaluate.augment_error(msg), msg)
+
 
 class TestStopReasonPersistence(unittest.TestCase):
     def setUp(self):
