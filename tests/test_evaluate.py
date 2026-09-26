@@ -352,6 +352,32 @@ class TestRunEvaluationMocked(unittest.TestCase):
         self.assertGreater(app._daily_spend(conn), 0)
         conn.close()
 
+    def test_balance_error_short_circuits_on_first(self):
+        import json
+        from govuk_corpus import settings as st
+        app, cid = self._app(n=5)
+        # Force a sequential run so "first error" == "first call" (concurrent waves fire together).
+        conn = app.connect()
+        rid = evaluate.create_run(conn, cid, "m", "anthropic",
+                                  prompt_spec=json.dumps({"concurrency": 1}))
+        st.set_setting(conn, f"active_run_{cid}", rid)
+        conn.close()
+        calls = {"n": 0}
+        def boom(cfg, system, prompt):
+            calls["n"] += 1
+            return {"error": "BadRequestError: Your credit balance is too low to access the Anthropic API"}
+        app._ai_reply = boom
+
+        result = app._run_evaluation(cid, 5)
+        self.assertEqual(result.get("stop_reason"), "balance")
+        self.assertIn("Anthropic Credit Balance", result["error"])
+        self.assertEqual(calls["n"], 1)                 # stopped on the FIRST error, not after 6
+        conn = app.connect()
+        run = evaluate.get_run(conn, rid)
+        self.assertEqual(run["run_status"], "stopped")
+        self.assertEqual(run["stop_reason"], "balance")
+        conn.close()
+
     def _bg_status(self, app):
         return {"running": True, "done": 0, "cost": 0.0, "phase": None, "remaining": None,
                 "run_id": None, "stopped": None, "error": None,

@@ -1968,6 +1968,16 @@ def _run_evaluation(cid: int, limit: int) -> dict:
                                         "cost_usd": round(cost, 6), "spent_today": round(spent, 4),
                                         "budget": budget, "stop_reason": "config"}
                         break
+                    # A low-credit-balance error will fail every call and won't self-heal, so stop
+                    # on the FIRST one rather than burning through the consecutive-error allowance.
+                    hint = evaluate.credit_balance_hint(res.get("error"))
+                    if hint:
+                        evaluate.mark_run_stopped(conn, run_id, "balance")
+                        fatal_return = {"error": f"Stopped — {res['error']} {hint}",
+                                        "run_id": run_id, "evaluated_this_run": done, "skipped": skipped,
+                                        "cost_usd": round(cost, 6), "spent_today": round(spent, 4),
+                                        "budget": budget, "stopped": "errors", "stop_reason": "balance"}
+                        break
                     # Transient (the SDK has already retried): if it keeps failing the provider is
                     # likely down — stop cleanly; the user re-executes to resume where it left off.
                     consec_err += 1
