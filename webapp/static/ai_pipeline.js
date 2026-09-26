@@ -82,9 +82,11 @@
             + ` · $${(s.cost || 0).toFixed(2)}`;
     if (s.spent_today != null) msg += ` · $${s.spent_today.toFixed(2)}/$${(s.budget || 0).toFixed(2)} today`;
     if (!s.running) {
-      if (s.error) msg = "⚠️ Stopped: " + s.error;
-      else if (s.stopped === "budget") msg += " · ⛔ stopped: daily budget reached";
-      else if (s.stopped === "cap") msg += " · ⏸ reached the per-run page limit — Execute again to continue";
+      if (s.stop_reason === "balance")
+        msg = "⛔ Stopped — low credit balance. Check your Anthropic Credit Balance.";
+      else if (s.error) msg = "⚠️ Stopped: " + s.error;
+      else if (s.stopped === "budget" || s.stop_reason === "budget") msg += " · ⛔ stopped: daily budget reached";
+      else if (s.stopped === "cap" || s.stop_reason === "cap") msg += " · ⏸ reached the per-run page limit — Execute again to continue";
       else msg += " · ✅ finished";
     }
     if (st) st.textContent = msg;
