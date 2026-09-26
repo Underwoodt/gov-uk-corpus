@@ -153,11 +153,34 @@
         <div id="review-text" style="font-size:14px;line-height:1.5;margin:8px 0 0;"></div>
       </div>
     </div>
+
+    {# Card 5: apply the accepted suggestions to the shortlist's Filter Parameters, then go to
+       the Active Run (guc-0004c1) to re-execute. Populated from the review above. #}
+    <div class="card" id="card-apply" hidden style="max-width:860px;padding:18px 22px;margin-top:16px;">
+      <h3 style="margin:0 0 4px;">Apply to shortlist</h3>
+      <p class="secondary" style="margin:0 0 12px;max-width:720px;">Tick the suggestions to accept, then apply them to this
+        shortlist's Filter Parameters and go to the Active Run to re-execute. Unticked suggestions are left unchanged.
+        The button is <strong style="color:#00703c;">green</strong> when the accepted set would change the current spec, and
+        white when nothing would change.</p>
+      <div id="apply-rows"></div>
+      <div class="controls" style="align-items:center;gap:12px;margin-top:14px;">
+        <button class="btn secondary-btn" id="apply-btn" type="button">Apply &amp; go to Active Run</button>
+        <span id="apply-status" class="secondary"></span>
+      </div>
+    </div>
   </div>
 
   <script>
     const CID = {{ category.id }};
     const LIST = "{{ url_for('analysis_list_page', cid=category.id) }}";
+    const AI_RUN_URL = "{{ url_for('ai_pipeline_page', cid=category.id) }}";
+    // Current shortlist criteria — to tell whether an accepted suggestion would change the spec.
+    const CUR = {
+      inclusion_context: {{ (category.inclusion_context or "") | tojson }},
+      exclusion_context: {{ (category.exclusion_context or "") | tojson }},
+      adjudication_hints_keep: {{ (category.adjudication_hints_keep or "") | tojson }},
+      adjudication_hints_drop: {{ (category.adjudication_hints_drop or "") | tojson }},
+    };
     let RUNS = [], byId = {};
     function fmtDate(s) { return s ? String(s).slice(0, 19).replace("T", " ") : "—"; }
     const fmtInt = n => Number(n || 0).toLocaleString();
@@ -367,6 +390,7 @@
         lastReview = j.review || "";
         document.getElementById("review-text").innerHTML = mdToHtml(lastReview || "_(no reply)_");
         document.getElementById("review-out").hidden = false;
+        renderSuggestions(lastReview);
       } catch (e) { document.getElementById("review-status").textContent = "Could not run the review."; }
       finally { reviewBtn.disabled = false; }
     });
@@ -374,6 +398,80 @@
     if (copyBtn) copyBtn.addEventListener("click", () => {
       navigator.clipboard.writeText(lastReview || "");
       copyBtn.textContent = "Copied"; setTimeout(() => copyBtn.textContent = "Copy markdown", 1500);
+    });
+
+    // ---- Apply to shortlist: turn the review's paste-ready blocks into accept/skip rows ------
+    const FIELD_LABEL = { inclusion_context: "Inclusion criteria", exclusion_context: "Exclusion criteria",
+      adjudication_hints_keep: "Keep examples", adjudication_hints_drop: "Drop examples" };
+    const SUGG = {};
+    const PRE = "white-space:pre-wrap;word-break:break-word;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin:6px 0 0;font-size:13px;";
+    const norm = s => String(s == null ? "" : s).trim();
+
+    // Extract each `### <heading>` section's first fenced block, mapped to its category field.
+    // A "No change …" section has no fenced block, so it is skipped.
+    function parseSuggestions(md) {
+      const heads = { "inclusion criteria": "inclusion_context", "exclusion criteria": "exclusion_context",
+        "keep examples": "adjudication_hints_keep", "drop examples": "adjudication_hints_drop" };
+      const out = {};
+      for (const part of String(md).split(/^###\s+/m).slice(1)) {
+        const nl = part.indexOf("\n");
+        const field = heads[norm(nl < 0 ? part : part.slice(0, nl)).toLowerCase()];
+        if (!field) continue;
+        const m = (nl < 0 ? "" : part.slice(nl + 1)).match(/```[^\n]*\n?([\s\S]*?)```/);
+        const val = m ? m[1].replace(/\n+$/, "").trim() : "";
+        if (val) out[field] = val;
+      }
+      return out;
+    }
+
+    const applyBtn = document.getElementById("apply-btn");
+    function specChanged() {
+      return [...document.querySelectorAll(".apply-ck")].some(ck =>
+        ck.checked && norm(SUGG[ck.dataset.field]) !== norm(CUR[ck.dataset.field]));
+    }
+    function refreshApplyBtn() {
+      const green = specChanged();
+      applyBtn.style.background = green ? "#00703c" : "";
+      applyBtn.style.color = green ? "#fff" : "";
+      applyBtn.style.borderColor = green ? "#00703c" : "";
+    }
+    function renderSuggestions(md) {
+      const parsed = parseSuggestions(md);
+      Object.keys(SUGG).forEach(k => delete SUGG[k]);
+      Object.assign(SUGG, parsed);
+      const rows = document.getElementById("apply-rows"); rows.innerHTML = "";
+      const keys = Object.keys(FIELD_LABEL).filter(k => k in SUGG);
+      const card = document.getElementById("card-apply");
+      if (!keys.length) { card.hidden = true; return; }
+      for (const k of keys) {
+        const differs = norm(SUGG[k]) !== norm(CUR[k]);
+        const row = document.createElement("label");
+        row.style.cssText = "display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--border);";
+        row.innerHTML = `<input type="checkbox" class="apply-ck" data-field="${k}" ${differs ? "checked" : ""} style="margin-top:4px;">`
+          + `<span style="flex:1;min-width:0;"><span style="font-weight:700;">${FIELD_LABEL[k]}</span>`
+          + `<span style="margin-left:8px;font-size:12px;color:${differs ? "#00703c" : "var(--text-muted,#505a5f)"};">`
+          + `${differs ? "changes the current value" : "same as current"}</span>`
+          + `<details style="margin-top:2px;"><summary class="secondary" style="cursor:pointer;font-size:13px;">preview</summary>`
+          + `<pre style="${PRE}"></pre></details></span>`;
+        row.querySelector("pre").textContent = SUGG[k];   // textContent = safe (AI text)
+        rows.appendChild(row);
+      }
+      rows.querySelectorAll(".apply-ck").forEach(ck => ck.addEventListener("change", refreshApplyBtn));
+      card.hidden = false;
+      refreshApplyBtn();
+    }
+    if (applyBtn) applyBtn.addEventListener("click", async () => {
+      const fields = {};
+      document.querySelectorAll(".apply-ck").forEach(ck => { if (ck.checked) fields[ck.dataset.field] = SUGG[ck.dataset.field]; });
+      const status = document.getElementById("apply-status");
+      if (!Object.keys(fields).length) { window.location = AI_RUN_URL; return; }  // nothing to apply → just go
+      applyBtn.disabled = true; status.textContent = "Applying…";
+      try {
+        const j = await (await fetch(`/api/categories/${CID}/analysis/apply-suggestions`,
+          { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fields }) })).json();
+        if (j.error) { status.textContent = "Error: " + j.error; applyBtn.disabled = false; return; }
+        window.location = j.redirect || AI_RUN_URL;
+      } catch (e) { status.textContent = "Could not apply."; applyBtn.disabled = false; }
     });
   </script>
 {% endblock %}

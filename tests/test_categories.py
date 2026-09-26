@@ -94,6 +94,38 @@ class TestCrud(unittest.TestCase):
         cid = cat.create_category(self.conn, _valid_data(only_use_extra_law_urls="Y"))
         self.assertEqual(cat.get_category(self.conn, cid)["only_use_extra_law_urls"], 1)
 
+    def test_update_criteria_partial_and_isolated(self):
+        cid = cat.create_category(self.conn, _valid_data(
+            exclusion_context="old exclude", adjudication_hints_keep="old keep"))
+        # Update only two criteria fields...
+        changed = cat.update_criteria(self.conn, cid, {
+            "exclusion_context": "new exclude", "adjudication_hints_drop": "new drop"})
+        self.assertEqual(sorted(changed), ["adjudication_hints_drop", "exclusion_context"])
+        got = cat.get_category(self.conn, cid)
+        self.assertEqual(got["exclusion_context"], "new exclude")
+        self.assertEqual(got["adjudication_hints_drop"], "new drop")
+        # ...leaving every other field (filter fields + untouched criteria) intact.
+        self.assertEqual(got["inclusion_context"], "storage and spreading rules")
+        self.assertEqual(got["adjudication_hints_keep"], "old keep")
+        self.assertEqual(got["dept_slugs"], "environment-agency, defra")
+        self.assertEqual(got["keywords"], "slurry\nnitrate")
+
+    def test_update_criteria_ignores_noncriteria_and_no_change(self):
+        cid = cat.create_category(self.conn, _valid_data(inclusion_context="keep me"))
+        # A non-criteria key is ignored; an identical value is not counted as a change.
+        changed = cat.update_criteria(self.conn, cid, {
+            "keywords": "HACK", "inclusion_context": "keep me"})
+        self.assertEqual(changed, [])
+        got = cat.get_category(self.conn, cid)
+        self.assertEqual(got["keywords"], "slurry\nnitrate")   # untouched
+        self.assertEqual(got["inclusion_context"], "keep me")
+
+    def test_update_criteria_blank_stores_null(self):
+        cid = cat.create_category(self.conn, _valid_data(adjudication_hints_keep="something"))
+        changed = cat.update_criteria(self.conn, cid, {"adjudication_hints_keep": "   "})
+        self.assertEqual(changed, ["adjudication_hints_keep"])
+        self.assertIsNone(cat.get_category(self.conn, cid)["adjudication_hints_keep"])
+
 
 if __name__ == "__main__":
     unittest.main()

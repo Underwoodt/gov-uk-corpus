@@ -151,6 +151,36 @@ def set_url_checklist(conn, cid: int, should_include_urls: str, should_exclude_u
     conn.commit()
 
 
+# The inference criteria fields the two AI phases fill their prompts from (see
+# evaluate.prompt_spec_json) — a subset of USER_FIELDS. NOT filter fields, so changing them
+# does not alter the shortlist membership, only what the next run's prompt says.
+CRITERIA_FIELDS = ("inclusion_context", "exclusion_context",
+                   "adjudication_hints_keep", "adjudication_hints_drop")
+
+
+def update_criteria(conn, cid: int, fields: Dict[str, Any]) -> List[str]:
+    """Update ONLY the criteria columns given in `fields`, leaving every other field untouched
+    (unlike update_category, which overwrites the whole form). Keys outside CRITERIA_FIELDS are
+    ignored; a blank value stores NULL. Returns the list of columns changed from their current
+    value (so the caller can tell whether anything actually moved). No shortlist rebuild is
+    needed — these are inference-only fields."""
+    row = conn.execute(f"SELECT * FROM categories WHERE id={_P}", (cid,)).fetchone()
+    if not row:
+        return []
+    current = dict(row)
+    updates = {k: ((str(fields[k]).strip() or None)) for k in CRITERIA_FIELDS if k in fields}
+    changed = [k for k, v in updates.items() if (current.get(k) or None) != v]
+    if not changed:
+        return []
+    sets = {k: updates[k] for k in changed}
+    sets["updated_at"] = now_iso()
+    assignments = ",".join(f"{k}={_P}" for k in sets)
+    conn.execute(f"UPDATE categories SET {assignments} WHERE id={_P}",
+                 tuple(sets.values()) + (cid,))
+    conn.commit()
+    return changed
+
+
 def delete_category(conn, cid: int) -> None:
     """Delete a shortlist and everything scoped to it — its AI runs and per-page results,
     the audit rows, the cached page counts, and the stored shortlist / GOV.UK-search

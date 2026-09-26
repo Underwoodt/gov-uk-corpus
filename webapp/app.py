@@ -4906,6 +4906,40 @@ async def api_analysis_prompt_review(request: Request, cid: int):
         conn.close()
 
 
+@app.post("/api/categories/{cid}/analysis/apply-suggestions")
+async def api_analysis_apply_suggestions(request: Request, cid: int):
+    """Apply the accepted AI-suggested criteria (inclusion/exclusion context + keep/drop
+    examples) to the shortlist's Filter Parameters, touching only those inference fields — no
+    shortlist rebuild. Returns the changed columns and the Active Run page to send the user to
+    so they can re-execute. Body: {"fields": {<criteria field>: <text>, ...}} (accepted only)."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    body = await request.json()
+    fields = body.get("fields") if isinstance(body.get("fields"), dict) else {}
+    # Keep only the criteria columns; validate lengths so we never over-run the stored limits.
+    clean, errors = {}, []
+    for k in cat.CRITERIA_FIELDS:
+        if k in fields and fields[k] is not None:
+            v = str(fields[k])
+            if len(v) > cat.MAX_LEN.get(k, 2000):
+                errors.append(f"{k} is too long ({len(v)} > {cat.MAX_LEN.get(k, 2000)} chars)")
+            else:
+                clean[k] = v
+    if errors:
+        return JSONResponse({"error": "; ".join(errors)}, status_code=400)
+    if not clean:
+        return JSONResponse({"error": "No suggestions selected."}, status_code=400)
+    conn = connect()
+    try:
+        if not cat.get_category(conn, cid):
+            return JSONResponse({"error": "not found"}, status_code=404)
+        changed = cat.update_criteria(conn, cid, clean)
+    finally:
+        conn.close()
+    return JSONResponse({"ok": True, "changed": changed,
+                         "redirect": str(request.url_for("ai_pipeline_page", cid=cid))})
+
+
 @app.get("/categories/{cid}/analysis/list", response_class=HTMLResponse)
 def analysis_list_page(request: Request, cid: int, context: str = "phase1", run: str = "", verdict: str = "all",
                        shared_with: str = "", baseline: str = "", comparison: str = ""):
