@@ -4798,17 +4798,16 @@ _PROMPT_REVIEW_SYSTEM = (
     "low-confidence pages, sharpen the EXCLUDE criteria with a single decisive, testable rule and add "
     "2–4 KEEP and DROP examples drawn from the flipping pages; only edit INCLUDE if the diagnosis "
     "blames Phase 1. If an edit changes what the shortlist MEANS (e.g. dropping incidental mentions), "
-    "call it out as an explicit editorial choice for the user to decide. "
-    "Reply in plain text, no code fences, in exactly this structure:\n"
-    "DIAGNOSIS: 1–3 sentences on what is driving the variance.\n"
-    "FAULT: which phase / prompt.\n"
-    "EXCLUDE CRITERIA — suggested: full revised text ready to paste (or 'no change').\n"
-    "KEEP EXAMPLES — suggested: (or 'no change').\n"
-    "DROP EXAMPLES — suggested: (or 'no change').\n"
-    "INCLUDE CRITERIA — suggested: (or 'no change').\n"
-    "WHY: bullet points tying each edit to the diagnosis and the pages.\n"
-    "EDITORIAL CHOICE: any decision the user must make (or 'none').\n"
-    "VERIFY: one line on how to confirm it worked.")
+    "call it out as an explicit editorial choice.\n\n"
+    "Reply in concise GitHub-flavored markdown, using EXACTLY this structure and nothing else:\n"
+    "## Diagnosis\n(1–2 sentences on the cause and which phase is at fault.)\n"
+    "## Paste-ready edits\n(For EACH field that changes, a `### Exclude criteria` / `### Keep examples` "
+    "/ `### Drop examples` / `### Include criteria` heading, then the full revised text in a fenced "
+    "```code block```. Omit any field that needs no change. One short bullet of rationale under each.)\n"
+    "## Editorial choice\n(Any decision the user must make, or 'none'.)\n"
+    "## Verify\n(One line on how to confirm it worked.)\n\n"
+    "Keep the prose tight — the fenced paste-ready blocks may be as long as needed, but all other "
+    "text combined must stay under the word limit stated in the user message.")
 
 
 @app.post("/api/categories/{cid}/analysis/prompt-review")
@@ -4819,6 +4818,11 @@ async def api_analysis_prompt_review(request: Request, cid: int):
         return JSONResponse({"error": "auth"}, status_code=401)
     body = await request.json()
     base = str(body.get("baseline") or ""); comp = str(body.get("comparison") or "")
+    try:
+        max_words = int(body.get("max_words") or 150)
+    except (ValueError, TypeError):
+        max_words = 150
+    max_words = max(40, min(max_words, 800))
     if not (base and comp):
         return JSONResponse({"error": "bad request"}, status_code=400)
     conn = connect()
@@ -4872,7 +4876,8 @@ async def api_analysis_prompt_review(request: Request, cid: int):
             f"DATA DIAGNOSIS (two identical-config runs):\n{diag}\n\n"
             f"FLIPPING BORDERLINE PAGES ({len(flipped)} total; lowest-confidence shown):\n"
             f"{chr(10).join(cases) or '(no final-outcome flips between these runs)'}\n\n"
-            "Explain the variance and propose the edits.")
+            f"COMMENTARY WORD LIMIT: {max_words} words (applies to prose only, not the fenced "
+            "paste-ready blocks).\n\nExplain the variance and propose the edits.")
         cfg = _ai_config_for_phase(conn, "exclusion")
         budget, spent = _budget(conn), _daily_spend(conn)
         if budget > 0 and spent >= budget:

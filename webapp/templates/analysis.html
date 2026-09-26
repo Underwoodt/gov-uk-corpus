@@ -137,16 +137,20 @@
       <p class="secondary" style="margin:0 0 10px;max-width:720px;">Ask the model to explain the run-to-run variance above and propose concrete, paste-ready edits to your
         include / exclude criteria and KEEP / DROP examples. It is given the diagnosis and the flipping pages. Suggest-only —
         nothing is applied. Uses API credit.</p>
-      <div class="controls" style="align-items:center;gap:12px;">
+      <div class="controls" style="align-items:center;gap:12px;flex-wrap:wrap;">
         <button class="btn" id="review-btn" type="button">Review the prompts</button>
+        <label class="secondary" style="font-size:14px;">Max words
+          <input id="review-words" type="number" min="40" max="800" step="10" value="150"
+            title="Word limit for the commentary (the paste-ready criteria blocks aren't capped)."
+            style="width:78px;font:inherit;padding:3px 6px;border:2px solid var(--black);border-radius:4px;margin-left:4px;"></label>
         <span id="review-status" class="secondary"></span>
       </div>
       <div id="review-out" hidden style="margin-top:14px;">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
           <span class="secondary" id="review-meta"></span>
-          <button class="btn secondary-btn" id="review-copy" type="button" style="padding:4px 12px;font-size:13px;">Copy</button>
+          <button class="btn secondary-btn" id="review-copy" type="button" style="padding:4px 12px;font-size:13px;">Copy markdown</button>
         </div>
-        <pre id="review-text" class="mono" style="white-space:pre-wrap;word-break:break-word;font-size:13px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:12px 14px;margin:8px 0 0;"></pre>
+        <div id="review-text" style="font-size:14px;line-height:1.5;margin:8px 0 0;"></div>
       </div>
     </div>
   </div>
@@ -316,6 +320,32 @@
     }
     load();
 
+    // Minimal, XSS-safe markdown → HTML (output is our own prompt-controlled markdown).
+    let lastReview = "";
+    function mdToHtml(md) {
+      const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      const blocks = [];
+      md = String(md).replace(/```[\w-]*\n?([\s\S]*?)```/g, (m, code) => { blocks.push(code.replace(/\n$/, "")); return `\u0000${blocks.length - 1}\u0000`; });
+      const inline = s => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>")
+        .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>");
+      const lines = md.split(/\r?\n/); let html = "", i = 0;
+      const codeStyle = "white-space:pre-wrap;word-break:break-word;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin:6px 0;font-size:13px;";
+      while (i < lines.length) {
+        const ln = lines[i], cb = ln.match(/^\u0000(\d+)\u0000$/);
+        if (cb) { html += `<pre style="${codeStyle}">${esc(blocks[+cb[1]])}</pre>`; i++; continue; }
+        if (/^\s*---\s*$/.test(ln)) { html += "<hr>"; i++; continue; }
+        const h = ln.match(/^(#{1,6})\s+(.*)$/);
+        if (h) { const lvl = Math.min(6, h[1].length + 3); html += `<h${lvl} style="margin:12px 0 4px;">${inline(h[2])}</h${lvl}>`; i++; continue; }
+        if (/^\s*[-*]\s+/.test(ln)) { html += "<ul style='margin:4px 0 4px 18px;'>"; while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) { html += `<li>${inline(lines[i].replace(/^\s*[-*]\s+/, ""))}</li>`; i++; } html += "</ul>"; continue; }
+        if (/^\s*\d+\.\s+/.test(ln)) { html += "<ol style='margin:4px 0 4px 20px;'>"; while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) { html += `<li>${inline(lines[i].replace(/^\s*\d+\.\s+/, ""))}</li>`; i++; } html += "</ol>"; continue; }
+        if (ln.trim() === "") { i++; continue; }
+        const para = [ln]; i++;
+        while (i < lines.length && lines[i].trim() !== "" && !/^\s*[-*]\s+/.test(lines[i]) && !/^(#{1,6})\s/.test(lines[i]) && !/^\u0000\d+\u0000$/.test(lines[i]) && !/^\s*\d+\.\s/.test(lines[i])) { para.push(lines[i]); i++; }
+        html += `<p style="margin:6px 0;">${inline(para.join(" "))}</p>`;
+      }
+      return html;
+    }
+
     // Prompt review (AI) — critique the current prompts from the divergence + propose edits.
     const reviewBtn = document.getElementById("review-btn");
     if (reviewBtn) reviewBtn.addEventListener("click", async () => {
@@ -325,23 +355,25 @@
       document.getElementById("review-status").textContent = "Reviewing… (uses API credit)";
       document.getElementById("review-out").hidden = true;
       try {
+        const maxWords = parseInt(document.getElementById("review-words").value, 10) || 150;
         const j = await (await fetch(`/api/categories/${CID}/analysis/prompt-review`,
           { method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ baseline: base, comparison: comp }) })).json();
+            body: JSON.stringify({ baseline: base, comparison: comp, max_words: maxWords }) })).json();
         if (j.error) { document.getElementById("review-status").textContent = "Error: " + j.error; return; }
         document.getElementById("review-status").textContent = "";
         document.getElementById("review-meta").textContent =
           `from ${j.model || "model"} · reviewed ${fmtInt(j.flips)} flipping page${j.flips === 1 ? "" : "s"}`
           + (j.cost ? ` · $${Number(j.cost).toFixed(4)}` : "");
-        document.getElementById("review-text").textContent = j.review || "(no reply)";
+        lastReview = j.review || "";
+        document.getElementById("review-text").innerHTML = mdToHtml(lastReview || "_(no reply)_");
         document.getElementById("review-out").hidden = false;
       } catch (e) { document.getElementById("review-status").textContent = "Could not run the review."; }
       finally { reviewBtn.disabled = false; }
     });
     const copyBtn = document.getElementById("review-copy");
     if (copyBtn) copyBtn.addEventListener("click", () => {
-      navigator.clipboard.writeText(document.getElementById("review-text").textContent || "");
-      copyBtn.textContent = "Copied"; setTimeout(() => copyBtn.textContent = "Copy", 1500);
+      navigator.clipboard.writeText(lastReview || "");
+      copyBtn.textContent = "Copied"; setTimeout(() => copyBtn.textContent = "Copy markdown", 1500);
     });
   </script>
 {% endblock %}
