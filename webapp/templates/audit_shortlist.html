@@ -25,12 +25,6 @@
     .lx-panel li { margin:2px 0; word-break:break-all; }
     .lx-ext { font-size:11px; color:var(--muted); background:var(--surface-2); padding:1px 5px; border-radius:3px; margin-left:6px; }
     tr.lx-row > td { background:var(--surface-2); }
-    /* Column picker: sections flow into balanced columns and never split across one. */
-    .col-picker { column-count:3; column-gap:36px; margin-top:10px; }
-    .col-picker > div { break-inside:avoid; -webkit-column-break-inside:avoid; page-break-inside:avoid; margin:0 0 16px; }
-    .col-picker .check { display:block; font-size:14px; line-height:1.7; }
-    @media (max-width:900px) { .col-picker { column-count:2; } }
-    @media (max-width:560px) { .col-picker { column-count:1; } }
   </style>
 
   {{ crumbs([("Shortlists", url_for('list_categories_page')), (category.display_name, none)]) }}

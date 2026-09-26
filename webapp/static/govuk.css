@@ -86,6 +86,12 @@ h3 { font-size:17px; font-weight:700; margin:0; }
 .crumbs a { color:var(--blue); }
 .crumbs a:hover { color:var(--dark-blue,#003078); }
 .crumbs .current { color:var(--muted); }
+/* Column picker: field-selector sections flow into balanced columns and never split across one. */
+.col-picker { column-count:3; column-gap:36px; margin-top:10px; }
+.col-picker > div { break-inside:avoid; -webkit-column-break-inside:avoid; page-break-inside:avoid; margin:0 0 16px; }
+.col-picker .check { display:block; font-size:14px; line-height:1.7; }
+@media (max-width:900px) { .col-picker { column-count:2; } }
+@media (max-width:560px) { .col-picker { column-count:1; } }
 code, .mono { font-family:var(--mono); font-size:.92em; }
 
 /* ---- forms ---- */

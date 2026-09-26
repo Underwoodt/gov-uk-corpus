@@ -4446,13 +4446,12 @@ def download_page(request: Request, cid: int, stage: str = "keyword",
     # keys back to the page.
     preselect = [f for f in fields if f in _all_audit_fields()] or list(_AUDIT_DEFAULT_FIELDS)
     preselect = ["url"] + [f for f in preselect if f != "url"]
-    preselect_labels = [_field_label(k) for k in preselect]
     resp = templates.TemplateResponse("download.html", ctx(
         conn, request, category=category, total=total,
         stage=stage, stage_label=dict(_AUDIT_STAGES).get(stage, stage),
         run=run, run_name=(run_row.get("name") or run_row.get("run_id") if run_row else ""),
         runs=_incl_run_options(conn, cid),
-        preselect=preselect, preselect_labels=preselect_labels,
+        preselect=preselect, audit_sections=_DOWNLOAD_SECTIONS,
         default_filename=f"gov-uk-audit-shortlist-{_dl_stamp()}"))
     conn.close()
     return resp
