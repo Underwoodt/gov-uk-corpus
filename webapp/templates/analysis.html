@@ -99,6 +99,25 @@
       </div>
       <p class="secondary" style="margin:12px 0 0;" id="ov-note"></p>
     </div>
+
+    {# Card 4: AI prompt review — critique the prompts from the divergence + propose edits. #}
+    <div class="card" id="card-review" style="max-width:860px;padding:18px 22px;margin-top:16px;">
+      <h3 style="margin:0 0 4px;">Prompt review (AI)</h3>
+      <p class="secondary" style="margin:0 0 10px;max-width:720px;">Ask the model to explain the run-to-run variance above and propose concrete, paste-ready edits to your
+        include / exclude criteria and KEEP / DROP examples. It is given the diagnosis and the flipping pages. Suggest-only —
+        nothing is applied. Uses API credit.</p>
+      <div class="controls" style="align-items:center;gap:12px;">
+        <button class="btn" id="review-btn" type="button">Review the prompts</button>
+        <span id="review-status" class="secondary"></span>
+      </div>
+      <div id="review-out" hidden style="margin-top:14px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+          <span class="secondary" id="review-meta"></span>
+          <button class="btn secondary-btn" id="review-copy" type="button" style="padding:4px 12px;font-size:13px;">Copy</button>
+        </div>
+        <pre id="review-text" class="mono" style="white-space:pre-wrap;word-break:break-word;font-size:13px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:12px 14px;margin:8px 0 0;"></pre>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -178,7 +197,7 @@
       RUNS.forEach(r => byId[r.run_id] = r);
       const few = RUNS.length < 2;
       document.getElementById("an-empty").hidden = !few;
-      ["card-phase1", "card-phase2", "card-overall"].forEach(id => { const el = document.getElementById(id); if (el) el.hidden = few; });
+      ["card-phase1", "card-phase2", "card-overall", "card-review"].forEach(id => { const el = document.getElementById(id); if (el) el.hidden = few; });
       const q = new URLSearchParams(location.search);
       [["pick-base", q.get("baseline") || (RUNS[0] || {}).run_id], ["pick-comp", q.get("comparison") || (RUNS[1] || {}).run_id]].forEach(([id, def]) => {
         const sel = document.getElementById(id);
@@ -189,5 +208,33 @@
       if (!few) render();
     }
     load();
+
+    // Prompt review (AI) — critique the current prompts from the divergence + propose edits.
+    const reviewBtn = document.getElementById("review-btn");
+    if (reviewBtn) reviewBtn.addEventListener("click", async () => {
+      const base = document.getElementById("pick-base").value, comp = document.getElementById("pick-comp").value;
+      if (!base || !comp) return;
+      reviewBtn.disabled = true;
+      document.getElementById("review-status").textContent = "Reviewing… (uses API credit)";
+      document.getElementById("review-out").hidden = true;
+      try {
+        const j = await (await fetch(`/api/categories/${CID}/analysis/prompt-review`,
+          { method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ baseline: base, comparison: comp }) })).json();
+        if (j.error) { document.getElementById("review-status").textContent = "Error: " + j.error; return; }
+        document.getElementById("review-status").textContent = "";
+        document.getElementById("review-meta").textContent =
+          `from ${j.model || "model"} · reviewed ${fmtInt(j.flips)} flipping page${j.flips === 1 ? "" : "s"}`
+          + (j.cost ? ` · $${Number(j.cost).toFixed(4)}` : "");
+        document.getElementById("review-text").textContent = j.review || "(no reply)";
+        document.getElementById("review-out").hidden = false;
+      } catch (e) { document.getElementById("review-status").textContent = "Could not run the review."; }
+      finally { reviewBtn.disabled = false; }
+    });
+    const copyBtn = document.getElementById("review-copy");
+    if (copyBtn) copyBtn.addEventListener("click", () => {
+      navigator.clipboard.writeText(document.getElementById("review-text").textContent || "");
+      copyBtn.textContent = "Copied"; setTimeout(() => copyBtn.textContent = "Copy", 1500);
+    });
   </script>
 {% endblock %}

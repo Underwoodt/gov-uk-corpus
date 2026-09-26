@@ -4734,6 +4734,111 @@ def api_analysis_overall(request: Request, cid: int, baseline: str = "", compari
         conn.close()
 
 
+_PROMPT_REVIEW_SYSTEM = (
+    "You are a prompt engineer improving the REPEATABILITY of an LLM pipeline that shortlists "
+    "GOV.UK pages in two phases: Phase 1 INCLUSION scores each page 0.0–1.0 and keeps any positive "
+    "score; Phase 2 EXCLUSION re-checks the keeps and may only DROP. You are given the current "
+    "INCLUDE / EXCLUDE criteria and KEEP / DROP examples the team edits (the base template around "
+    "them is FIXED — do not rewrite it), a DATA DIAGNOSIS of how two identical-config runs diverged, "
+    "and concrete FLIPPING pages (kept by one run, dropped by the other) with each run's reason. "
+    "Explain what is driving the run-to-run variance and propose concrete, minimal, paste-ready edits "
+    "that would make future runs repeatable. Generalise — never hard-code URLs or overfit single "
+    "pages. Use the DIAGNOSIS to identify which phase is at fault: if the flips are in EXCLUSION on "
+    "low-confidence pages, sharpen the EXCLUDE criteria with a single decisive, testable rule and add "
+    "2–4 KEEP and DROP examples drawn from the flipping pages; only edit INCLUDE if the diagnosis "
+    "blames Phase 1. If an edit changes what the shortlist MEANS (e.g. dropping incidental mentions), "
+    "call it out as an explicit editorial choice for the user to decide. "
+    "Reply in plain text, no code fences, in exactly this structure:\n"
+    "DIAGNOSIS: 1–3 sentences on what is driving the variance.\n"
+    "FAULT: which phase / prompt.\n"
+    "EXCLUDE CRITERIA — suggested: full revised text ready to paste (or 'no change').\n"
+    "KEEP EXAMPLES — suggested: (or 'no change').\n"
+    "DROP EXAMPLES — suggested: (or 'no change').\n"
+    "INCLUDE CRITERIA — suggested: (or 'no change').\n"
+    "WHY: bullet points tying each edit to the diagnosis and the pages.\n"
+    "EDITORIAL CHOICE: any decision the user must make (or 'none').\n"
+    "VERIFY: one line on how to confirm it worked.")
+
+
+@app.post("/api/categories/{cid}/analysis/prompt-review")
+async def api_analysis_prompt_review(request: Request, cid: int):
+    """Ask the model to critique the inclusion/exclusion prompts using the run-to-run divergence
+    data + the flipping borderline pages, and propose paste-ready edits. Suggest-only."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    body = await request.json()
+    base = str(body.get("baseline") or ""); comp = str(body.get("comparison") or "")
+    if not (base and comp):
+        return JSONResponse({"error": "bad request"}, status_code=400)
+    conn = connect()
+    try:
+        if not (_own_run(conn, cid, base) and _own_run(conn, cid, comp)):
+            return JSONResponse({"error": "Pick two inclusion runs of this shortlist."}, status_code=400)
+        category = cat.get_category(conn, cid) or {}
+        p1 = _phase1_compare(conn, cid, base, comp)
+        p2 = _phase2_compare(conn, cid, base, comp)
+        ov = _overall_compare(conn, cid, base, comp)
+        _, b_excl = _chain_of(conn, base)
+        _, o_excl = _chain_of(conn, comp)
+        ib, io = _reasons_map(conn, base), _reasons_map(conn, comp)
+        eb = _reasons_map(conn, b_excl and b_excl["run_id"])
+        eo = _reasons_map(conn, o_excl and o_excl["run_id"])
+        fb = evaluate._final_keep_map(conn, base, b_excl and b_excl["run_id"])
+        fc = evaluate._final_keep_map(conn, comp, o_excl and o_excl["run_id"])
+        shared = sorted(set(fb) & set(fc))
+        flipped = [u for u in shared if fb[u] != fc[u]]
+        flipped.sort(key=lambda u: min(ib.get(u, {}).get("score") or 0, io.get(u, {}).get("score") or 0))
+        titles = {}
+        head = flipped[:12]
+        if head:
+            ph = ",".join([shortlist._P] * len(head))
+            for r in conn.execute(f"SELECT url, title FROM content WHERE url IN ({ph})", tuple(head)).fetchall():
+                d = dict(r); titles[d["url"]] = d.get("title") or ""
+        kd = lambda k: "KEEP" if k == 1 else ("DROP" if k == 0 else "—")
+        cases = []
+        for u in head:
+            sb, so, xb, xo = ib.get(u, {}), io.get(u, {}), eb.get(u, {}), eo.get(u, {})
+            cases.append(
+                f"- {(titles.get(u, '') or u)[:80]}\n"
+                f"  Phase-1 score: Run1 {sb.get('score')} / Run2 {so.get('score')}\n"
+                f"  Exclusion: Run1 {kd(xb.get('keep'))} — {xb.get('reason') or '(none)'}\n"
+                f"             Run2 {kd(xo.get('keep'))} — {xo.get('reason') or '(none)'}")
+        diag = (
+            f"Pages both runs evaluated: {ov['shared']}. Final agreement {ov['agree_pct']}%, "
+            f"{ov['sym_diff']} pages end differently.\n"
+            f"Phase 1 (inclusion): decisions differ on {p1['differences']['total']} pages; the scoring "
+            f"itself is stable (mean per-page score change {ov['score_mean_abs_delta']}).\n"
+            f"Phase 2 (exclusion): of {p2['excl_input']} pages both runs kept at Phase 1, "
+            f"{p2['flips']['total']} end differently and {p2['flips']['exclusion_driven']} of those are "
+            f"exclusion-driven.\nFlip rate by Phase-1 confidence band:\n"
+            + "\n".join(f"  {b['band']}: {b['flipped']}/{b['pages']} flipped" for b in p2['bands']))
+        prompt = (
+            f"TOPIC: {category.get('display_name') or ''}\n\n"
+            f"CURRENT INCLUDE CRITERIA:\n{category.get('inclusion_context') or '(none)'}\n\n"
+            f"CURRENT EXCLUDE CRITERIA:\n{category.get('exclusion_context') or '(none)'}\n\n"
+            f"CURRENT KEEP EXAMPLES:\n{category.get('adjudication_hints_keep') or '(none)'}\n\n"
+            f"CURRENT DROP EXAMPLES:\n{category.get('adjudication_hints_drop') or '(none)'}\n\n"
+            f"DATA DIAGNOSIS (two identical-config runs):\n{diag}\n\n"
+            f"FLIPPING BORDERLINE PAGES ({len(flipped)} total; lowest-confidence shown):\n"
+            f"{chr(10).join(cases) or '(no final-outcome flips between these runs)'}\n\n"
+            "Explain the variance and propose the edits.")
+        cfg = _ai_config_for_phase(conn, "exclusion")
+        budget, spent = _budget(conn), _daily_spend(conn)
+        if budget > 0 and spent >= budget:
+            return JSONResponse({"error": f"Daily AI budget of ${budget:.2f} reached "
+                                 f"(${spent:.4f} spent today)."}, status_code=402)
+        res = await run_in_threadpool(_ai_chat, cfg, _PROMPT_REVIEW_SYSTEM,
+                                      [{"role": "user", "content": prompt}], 1800)
+        if res.get("error") or res.get("fatal"):
+            return JSONResponse({"error": res.get("error") or "AI error"}, status_code=502)
+        _log_ai_usage(conn, res.get("cost_usd") or 0.0, res.get("input_tokens"),
+                      res.get("output_tokens"), "prompt-review")
+        return JSONResponse({"review": (res.get("reply") or "").strip(), "model": res.get("actual_model"),
+                             "cost": res.get("cost_usd"), "flips": len(flipped)})
+    finally:
+        conn.close()
+
+
 @app.get("/categories/{cid}/analysis/list", response_class=HTMLResponse)
 def analysis_list_page(request: Request, cid: int, context: str = "phase1", run: str = "", verdict: str = "all",
                        shared_with: str = "", baseline: str = "", comparison: str = ""):
