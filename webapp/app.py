@@ -4865,10 +4865,15 @@ _EXPLAIN_CARD_SYSTEM = (
     "Given the card's title and its numbers (computed from this shortlist's actual runs), write a "
     "short, plain-English read for a non-technical reviewer: what the numbers say about how "
     "repeatable this shortlist is, where any instability sits (which phase, which confidence band), "
-    "and the single most useful next step. Be concrete and specific to the numbers you are given — "
-    "if the runs look stable, say so plainly rather than inventing problems. No preamble, no "
-    "headings, 2–4 sentences, British English. Always say 'Inclusion Phase' / 'Exclusion Phase', "
-    "never 'Phase 1' or 'Phase 2'.")
+    "and the single most useful next step. You are also given a MODEL / PARAMETER CONFIG section: "
+    "ALWAYS check it first. If the runs used a different model, prompt template, body limit or "
+    "sampling setting, that configuration change is the most likely driver of the variability — say "
+    "so and name the specific difference, because comparing runs of different config does not measure "
+    "genuine repeatability. Only if the config is identical should you attribute the variability to "
+    "run-to-run non-determinism and point at sharper criteria/examples. Be concrete and specific to "
+    "the numbers you are given — if the runs look stable, say so plainly rather than inventing "
+    "problems. No preamble, no headings, 2–4 sentences, British English. Always say 'Inclusion "
+    "Phase' / 'Exclusion Phase', never 'Phase 1' or 'Phase 2'.")
 
 _PROMPT_REVIEW_SYSTEM = (
     "You are a prompt engineer improving the REPEATABILITY of an LLM pipeline that shortlists "
@@ -4993,6 +4998,67 @@ async def api_analysis_prompt_review(request: Request, cid: int):
         conn.close()
 
 
+def _chain_config(conn, incl_id: str) -> dict:
+    """Model + prompt/sampling config for a run-chain's Inclusion and Exclusion phases, so the
+    'explain' can attribute run-to-run variability to a config change vs genuine non-determinism."""
+    def one(row):
+        if not row:
+            return None
+        spec = {}
+        raw = row.get("prompt_spec")
+        if raw:
+            try:
+                spec = json.loads(raw) if isinstance(raw, str) else raw
+            except (ValueError, TypeError):
+                spec = {}
+        return {"model": row.get("actual_model") or row.get("model"),
+                "template_version": spec.get("template_version"),
+                "body_limit": spec.get("body_limit"),
+                "variant": spec.get("prompt_variant") or "current",
+                "temperature": spec.get("temperature"),
+                "thinking": spec.get("thinking")}
+    incl, excl = _chain_of(conn, incl_id)
+    return {"inclusion": one(incl), "exclusion": one(excl)}
+
+
+def _fmt_cfg(c: Optional[dict]) -> str:
+    if not c:
+        return "(no run)"
+    parts = [f"model {c.get('model') or '—'}", f"prompt v{c.get('template_version') or '?'}"]
+    if c.get("variant") and c["variant"] != "current":
+        parts.append(f"variant {c['variant']}")
+    if c.get("body_limit") is not None:
+        parts.append(f"body {c['body_limit']}")
+    parts.append(f"temp {c['temperature']}" if c.get("temperature") is not None else "temp default")
+    if c.get("thinking"):
+        parts.append("thinking on")
+    return ", ".join(parts)
+
+
+def _config_block(cfgs: List[tuple]) -> str:
+    """A CONFIG section comparing the runs' model/prompt/sampling, with an explicit verdict on
+    whether they are identical (→ variability is genuine non-determinism) or differ (→ name it).
+    `cfgs` is [(letter, chain_config), ...]."""
+    lines, diffs = [], []
+    for phase in ("inclusion", "exclusion"):
+        row = " | ".join(f"{letter}: {_fmt_cfg(c.get(phase))}" for letter, c in cfgs)
+        lines.append(f"{phase.capitalize()} Phase — {row}")
+        # Flag any field that is not the same across all runs for this phase.
+        for key, lbl in (("model", "model"), ("template_version", "prompt template"),
+                         ("variant", "variant"), ("temperature", "temperature"),
+                         ("thinking", "thinking"), ("body_limit", "body limit")):
+            vals = [((c.get(phase) or {}).get(key)) for _, c in cfgs]
+            if len(set(map(repr, vals))) > 1:
+                shown = ", ".join(f"{letter}={((c.get(phase) or {}).get(key))}" for letter, c in cfgs)
+                diffs.append(f"{phase} {lbl} ({shown})")
+    verdict = ("Config DIFFERS across the runs: " + "; ".join(diffs)
+               + " — treat this as a likely cause of the variability and name the specific change."
+               if diffs else
+               "Config is IDENTICAL across the runs (same models, prompt templates, body limit and "
+               "sampling), so any variability is genuine run-to-run non-determinism, not a config change.")
+    return "MODEL / PARAMETER CONFIG:\n" + "\n".join(lines) + "\n" + verdict
+
+
 @app.post("/api/categories/{cid}/analysis/explain-card")
 async def api_analysis_explain_card(request: Request, cid: int):
     """A short, on-demand AI read of ONE analysis card, grounded in that card's own numbers (recomputed
@@ -5022,17 +5088,19 @@ async def api_analysis_explain_card(request: Request, cid: int):
                     + (f", {d['top_share']}% of keeps piled on one score ({d['top_score']})"
                        if d.get("top_score") is not None else ""))
             title = "Score distribution across the last runs (Inclusion Phase scores)"
-            diag = "\n".join(parts)
+            cfgs = [(chr(65 + i), _chain_config(conn, rid)) for i, rid in enumerate(ids)]
+            diag = "\n".join(parts) + "\n\n" + _config_block(cfgs)
         elif card in ("inclusion", "exclusion", "overall"):
             if not (_own_run(conn, cid, base) and _own_run(conn, cid, comp)):
                 return JSONResponse({"error": "Pick two inclusion runs of this shortlist."}, status_code=400)
+            cfg_block = _config_block([("A", _chain_config(conn, base)), ("B", _chain_config(conn, comp))])
             if card == "inclusion":
                 p1 = _phase1_compare(conn, cid, base, comp); ov = _overall_compare(conn, cid, base, comp)
                 title = "Inclusion Phase (Recall): accepted vs rejected"
                 diag = (f"A vs B over {ov['shared']} shared pages: Inclusion Phase decisions differ on "
                         f"{p1['differences']['total']} pages; the scoring itself is "
                         f"{'stable' if ov['score_mean_abs_delta'] <= 0.05 else 'unstable'} "
-                        f"(mean per-page score change {ov['score_mean_abs_delta']}).")
+                        f"(mean per-page score change {ov['score_mean_abs_delta']}).\n\n{cfg_block}")
             elif card == "exclusion":
                 p2 = _phase2_compare(conn, cid, base, comp)
                 title = "Exclusion Phase (Precision): where the runs diverge"
@@ -5040,14 +5108,16 @@ async def api_analysis_explain_card(request: Request, cid: int):
                         f"{p2['flips']['total']} end with a different final result, "
                         f"{p2['flips']['exclusion_driven']} of those driven by the Exclusion Phase.\n"
                         f"Flip rate by Inclusion Phase confidence band:\n"
-                        + "\n".join(f"  {b['band']}: {b['flipped']}/{b['input']} flipped" for b in p2['bands']))
+                        + "\n".join(f"  {b['band']}: {b['flipped']}/{b['input']} flipped" for b in p2['bands'])
+                        + f"\n\n{cfg_block}")
             else:
                 ov = _overall_compare(conn, cid, base, comp); cf = ov.get("confusion", {})
                 title = "Overall run-to-run reliability"
                 diag = (f"A vs B over {ov['shared']} shared pages: final-shortlist agreement "
                         f"{ov['agree_pct']}%, {ov['sym_diff']} pages end differently, mean Inclusion Phase "
                         f"score change {ov['score_mean_abs_delta']}. Final in/out: both-in {cf.get('both_in')}, "
-                        f"A-only {cf.get('base_only')}, B-only {cf.get('comp_only')}, both-out {cf.get('both_out')}.")
+                        f"A-only {cf.get('base_only')}, B-only {cf.get('comp_only')}, both-out {cf.get('both_out')}."
+                        f"\n\n{cfg_block}")
         else:
             return JSONResponse({"error": "unknown card"}, status_code=400)
         prompt = (f"TOPIC: {category.get('display_name') or cat.display_name(category)}\n"
