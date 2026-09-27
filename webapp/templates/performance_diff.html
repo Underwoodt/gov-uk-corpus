@@ -111,7 +111,9 @@
   <details class="final-diff card" id="final-diffs"{% if final_diffs %} open{% endif %}>
     <summary><strong>{{ final_diffs|length }}</strong> page{{ '' if final_diffs|length == 1 else 's' }}
       end with a <strong>different final shortlist result</strong> between the two runs
-      {% if final_diffs %}<span class="muted-sm">— list</span>{% endif %}</summary>
+      {% if final_band %}<span class="muted-sm">in the <strong>{{ final_band }}</strong> band
+        (of {{ final_total }} total) · <a href="?base={{ base_head|urlencode }}&amp;other={{ other_head|urlencode }}#final-diffs">show all</a></span>
+      {% elif final_diffs %}<span class="muted-sm">— list</span>{% endif %}</summary>
     {% if final_diffs %}
     <table class="dc-table" style="margin-top:10px;">
       <thead><tr><th>Page</th><th>Run 1 · baseline</th><th>Run 2</th></tr></thead>

@@ -2584,9 +2584,11 @@ def _diff_judge_config(conn, run_row) -> dict:
 
 
 @app.get("/categories/{cid}/performance/diff", response_class=HTMLResponse)
-def performance_diff_page(request: Request, cid: int, base: str = "", other: str = ""):
+def performance_diff_page(request: Request, cid: int, base: str = "", other: str = "", band: str = ""):
     """Drilldown: pages where a run disagrees with the baseline (Run 1), per phase, with both
-    runs' inclusion & exclusion reasons side by side and an on-demand LLM difference verdict."""
+    runs' inclusion & exclusion reasons side by side and an on-demand LLM difference verdict.
+    `band` (a Phase-1 confidence band) restricts the final-shortlist-flip list to that band,
+    banded by min(base, other) inclusion score — matching the guc-0004c4 bands table."""
     if not authed(request):
         return login_redirect(request)
     conn = connect()
@@ -2625,6 +2627,15 @@ def performance_diff_page(request: Request, cid: int, base: str = "", other: str
     final_diffs = evaluate.final_outcome_diffs(
         conn, b_incl and b_incl["run_id"], b_excl and b_excl["run_id"],
         o_incl and o_incl["run_id"], o_excl and o_excl["run_id"])
+    # Optional band filter (from the guc-0004c4 bands table's Flipped link): keep only flips whose
+    # min(base, other) Phase-1 score falls in the requested band — the same banding the table uses.
+    final_total = len(final_diffs)
+    final_band = band if band in _BAND_ORDER else ""
+    if final_band:
+        bi_m, oi_m = maps["b_incl"], maps["o_incl"]
+        final_diffs = [d for d in final_diffs
+                       if _band(min(bi_m.get(d["url"], {}).get("score") or 0,
+                                    oi_m.get(d["url"], {}).get("score") or 0)) == final_band]
 
     trials = {"base": _run_trial(conn, b_incl["run_id"]) if b_incl else {},
               "other": _run_trial(conn, o_incl["run_id"]) if o_incl else {}}
@@ -2633,6 +2644,7 @@ def performance_diff_page(request: Request, cid: int, base: str = "", other: str
                base_incl=b_incl, base_excl=b_excl, other_incl=o_incl, other_excl=o_excl,
                base_has_excl=bool(b_excl), other_has_excl=bool(o_excl),
                p1_cards=p1_cards, p2_cards=p2_cards, final_diffs=final_diffs,
+               final_band=final_band, final_total=final_total,
                trials=trials, judged_count=len(adj),
                judge_label=f"{judge.get('provider','')} / {judge.get('model','')}")
     resp = templates.TemplateResponse("performance_diff.html", ctxd)
