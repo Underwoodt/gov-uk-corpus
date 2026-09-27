@@ -325,7 +325,7 @@
         const p2 = c.p2 || {};
         if (p2.error) return `<div style="flex:1 1 300px;min-width:280px;"><div style="font-size:13px;font-weight:700;">A vs ${c.letter}</div><p class="secondary" style="font-size:12px;">no data</p></div>`;
         const pct = p2.flips.total ? Math.round(100 * p2.flips.exclusion_driven / p2.flips.total) : 0;
-        const bands = (p2.bands || []).map(b => `<tr><td>${b.band}</td><td class="num">${fmtInt(b.pages)}</td><td class="num">${b.pages ? Math.round(100 * b.flipped / b.pages) : 0}%</td></tr>`).join("");
+        const bands = (p2.bands || []).map(b => `<tr><td>${b.band}</td><td class="num">${fmtInt(b.input)}</td><td class="num">${fmtInt(b.kept)}</td><td class="num">${fmtInt(b.flipped)}</td><td class="num">${b.input ? Math.round(100 * b.flipped / b.input) : 0}%</td></tr>`).join("");
         return `<div style="flex:1 1 300px;min-width:280px;max-width:380px;">`
           + `<div style="font-size:13px;font-weight:700;margin:0 0 2px;">A vs ${c.letter}</div>`
           + `<div class="secondary" style="font-size:12px;margin:0 0 6px;">${fmtInt(p2.excl_input)} kept by both at Phase 1</div>`
@@ -333,7 +333,7 @@
           + `<tr><td>A</td><td class="num">${fmtInt(p2.baseline.kept)}</td><td class="num">${fmtInt(p2.baseline.dropped)}</td></tr>`
           + `<tr><td>${c.letter}</td><td class="num">${fmtInt(p2.comparison.kept)}</td><td class="num">${fmtInt(p2.comparison.dropped)}</td></tr></tbody></table>`
           + `<div style="font-size:13px;margin:0 0 6px;"><strong>${fmtInt(p2.flips.total)}</strong> end different · <strong>${pct}%</strong> Phase-2 driven</div>`
-          + `<table style="font-size:12px;width:100%;"><thead><tr><th>Score</th><th class="num">Pages</th><th class="num">Flip</th></tr></thead><tbody>${bands}</tbody></table></div>`;
+          + `<table style="font-size:12px;width:100%;"><thead><tr><th>Score</th><th class="num">Input</th><th class="num">Kept</th><th class="num">Flipped</th><th class="num">Flip %</th></tr></thead><tbody>${bands}</tbody></table></div>`;
       }).join("");
       const arr = data.filter(c => c.p2 && c.p2.flips).map(c => c.p2.flips.total);
       const note = document.getElementById("p2-note");

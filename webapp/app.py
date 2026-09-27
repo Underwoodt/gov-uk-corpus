@@ -4668,14 +4668,22 @@ def _phase2_compare(conn, cid: int, baseline: str, comparison: str) -> dict:
 
     flips = [u for u in shared if fb.get(u) != fc.get(u)]
     excl_driven = sum(1 for u in flips if bi[u].get("keep") == ci[u].get("keep"))
+    input_set = set(excl_input)
     bands = {}
     hist = {b: {"pages": 0, "flipped": 0} for b in _SCORE_BUCKETS}
     for u in shared:
         sc = min(bi[u].get("score") or 0, ci[u].get("score") or 0)
         flip = 1 if fb.get(u) != fc.get(u) else 0
-        d = bands.setdefault(_band(sc), {"pages": 0, "flipped": 0})
-        d["pages"] += 1; d["flipped"] += flip
         h = hist[_score_bucket(sc)]; h["pages"] += 1; h["flipped"] += flip
+        # Bands are over the Phase-2 INPUT (pages both runs kept at Phase 1), stratified by
+        # Phase-1 score: how many entered, how many both kept at the final, how many flipped.
+        if u in input_set:
+            d = bands.setdefault(_band(sc), {"input": 0, "kept": 0, "flipped": 0})
+            d["input"] += 1
+            if flip:
+                d["flipped"] += 1
+            elif fb.get(u) and fc.get(u):
+                d["kept"] += 1
     return {
         "shared": len(shared), "excl_input": len(excl_input),
         "baseline": {"label": _run_label(evaluate.get_run(conn, baseline)), **ecount(be)},
