@@ -8,8 +8,8 @@
   <style>
     /* Side-by-side breakdown panels with compact bars. auto-fit lets a single
        visible panel (e.g. no keywords) expand to full width. */
-    .breakdowns { display:grid; grid-template-columns:repeat(auto-fit, minmax(230px, 1fr));
-      gap:10px 28px; margin-top:16px; align-items:start; }
+    .breakdowns { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));
+      gap:22px 28px; margin-top:16px; align-items:start; }
     .breakdowns > div { margin-top:0 !important; }
     .breakdowns table { margin-bottom:0; }
     .bd-name { max-width:190px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
@@ -78,9 +78,8 @@
         <p id="kw-empty" class="secondary" hidden>No keywords set for this shortlist.</p>
         {{ sql_panel("kw-sql") }}
       </div>
-    </div>
 
-    <div id="kw-venn" style="margin-top:26px;">
+      <div id="kw-venn">
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;">
         <h3 style="margin:0;font-size:15px;">Keyword overlap</h3>
         <label class="secondary" style="font-size:13px;">Keywords in diagram
@@ -95,6 +94,7 @@
       <div id="upset-svg" style="overflow-x:auto;"></div>
       <p id="venn-status" class="secondary" style="margin:8px 0 0;font-size:12px;"></p>
       {{ sql_panel("venn-sql") }}
+      </div>
     </div>
   </div>
 
