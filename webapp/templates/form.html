@@ -86,6 +86,101 @@
 
   {{ category_tabs(category, 'filters') }}
 
+  {% if is_edit %}
+  {# Prompt review (AI) — shown once a run has completed. Suggests paste-ready edits to the
+     criteria below (guc-0004c4 has the same review, driven off run-to-run divergence). #}
+  <div class="card" id="card-prompt-improve" hidden style="padding:18px 22px;margin:0 0 20px;">
+    <h3 style="margin:0 0 4px;">Do you want to try to improve your prompt with AI?</h3>
+    <p class="secondary" style="margin:0 0 10px;max-width:760px;">Ask the model to explain the run-to-run variance
+      and propose concrete, paste-ready edits to your include / exclude criteria and KEEP / DROP examples below. It is
+      given the diagnosis and the flipping pages. Suggest-only — nothing is applied. Uses API credit.</p>
+    <div class="controls" style="align-items:center;gap:12px;flex-wrap:wrap;">
+      <button class="btn" id="pi-btn" type="button">Review the prompts</button>
+      <label class="secondary" style="font-size:14px;">Max words
+        <input id="pi-words" type="number" min="40" max="800" step="10" value="150"
+          style="width:78px;font:inherit;padding:3px 6px;border:2px solid var(--black);border-radius:4px;margin-left:4px;"></label>
+      <span id="pi-status" class="secondary"></span>
+    </div>
+    <div id="pi-out" hidden style="margin-top:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+        <span class="secondary" id="pi-meta"></span>
+        <button class="btn secondary-btn" id="pi-copy" type="button" style="padding:4px 12px;font-size:13px;">Copy markdown</button>
+      </div>
+      <div id="pi-text" style="font-size:14px;line-height:1.5;margin:8px 0 0;"></div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const CID = {{ category.id }};
+      const card = document.getElementById("card-prompt-improve");
+      if (!card) return;
+      const fmtInt = n => Number(n || 0).toLocaleString();
+      let PAIR = null, lastReview = "";
+      // Minimal, XSS-safe markdown → HTML (the model output is our own prompt-controlled markdown).
+      function mdToHtml(md) {
+        const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const blocks = [];
+        md = String(md).replace(/```[^\n]*\n?([\s\S]*?)```/g, (m, code) => { blocks.push(code.replace(/\n$/, "")); return `\u0000${blocks.length - 1}\u0000`; });
+        const inline = s => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>")
+          .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>");
+        const lines = md.split(/\r?\n/); let html = "", i = 0;
+        const codeStyle = "white-space:pre-wrap;word-break:break-word;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin:6px 0;font-size:13px;";
+        while (i < lines.length) {
+          const ln = lines[i], cb = ln.match(/^\u0000(\d+)\u0000$/);
+          if (cb) { html += `<pre style="${codeStyle}">${esc(blocks[+cb[1]])}</pre>`; i++; continue; }
+          if (/^\s*---\s*$/.test(ln)) { html += "<hr>"; i++; continue; }
+          const h = ln.match(/^(#{1,6})\s+(.*)$/);
+          if (h) { const lvl = Math.min(6, h[1].length + 3); html += `<h${lvl} style="margin:12px 0 4px;">${inline(h[2])}</h${lvl}>`; i++; continue; }
+          if (/^\s*[-*]\s+/.test(ln)) { html += "<ul style='margin:4px 0 4px 18px;'>"; while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) { html += `<li>${inline(lines[i].replace(/^\s*[-*]\s+/, ""))}</li>`; i++; } html += "</ul>"; continue; }
+          if (/^\s*\d+\.\s+/.test(ln)) { html += "<ol style='margin:4px 0 4px 20px;'>"; while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) { html += `<li>${inline(lines[i].replace(/^\s*\d+\.\s+/, ""))}</li>`; i++; } html += "</ol>"; continue; }
+          if (ln.trim() === "") { i++; continue; }
+          const para = [ln]; i++;
+          while (i < lines.length && lines[i].trim() !== "" && !/^\s*[-*]\s+/.test(lines[i]) && !/^(#{1,6})\s/.test(lines[i]) && !/^\u0000\d+\u0000$/.test(lines[i]) && !/^\s*\d+\.\s/.test(lines[i])) { para.push(lines[i]); i++; }
+          html += `<p style="margin:6px 0;">${inline(para.join(" "))}</p>`;
+        }
+        return html;
+      }
+      // Only offer this once a run has completed; the review compares the two newest inclusion runs.
+      fetch(`/api/categories/${CID}/runs`).then(r => r.json()).then(j => {
+        const incl = (j.runs || []).filter(r => !r.source_run_id);
+        incl.sort((a, b) => String(b.started_at || "").localeCompare(String(a.started_at || "")));
+        if (!incl.some(r => r.run_status === "complete")) return;   // no completed run yet
+        card.hidden = false;
+        if (incl.length >= 2) { PAIR = { base: incl[0].run_id, comp: incl[1].run_id }; }
+        else {
+          document.getElementById("pi-status").textContent = "Run the pipeline again to compare two runs.";
+          document.getElementById("pi-btn").disabled = true;
+        }
+      }).catch(() => {});
+      document.getElementById("pi-btn").addEventListener("click", async () => {
+        if (!PAIR) return;
+        const btn = document.getElementById("pi-btn"), st = document.getElementById("pi-status");
+        btn.disabled = true; st.textContent = "Reviewing… (uses API credit)";
+        document.getElementById("pi-out").hidden = true;
+        try {
+          const maxWords = parseInt(document.getElementById("pi-words").value, 10) || 150;
+          const jj = await (await fetch(`/api/categories/${CID}/analysis/prompt-review`,
+            { method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ baseline: PAIR.base, comparison: PAIR.comp, max_words: maxWords }) })).json();
+          if (jj.error) { st.textContent = "Error: " + jj.error; return; }
+          st.textContent = "";
+          document.getElementById("pi-meta").textContent =
+            `from ${jj.model || "model"} · reviewed ${fmtInt(jj.flips)} flipping page${jj.flips === 1 ? "" : "s"}`
+            + (jj.cost ? ` · $${Number(jj.cost).toFixed(4)}` : "");
+          lastReview = jj.review || "";
+          document.getElementById("pi-text").innerHTML = mdToHtml(lastReview || "_(no reply)_");
+          document.getElementById("pi-out").hidden = false;
+        } catch (e) { st.textContent = "Could not run the review."; }
+        finally { btn.disabled = false; }
+      });
+      document.getElementById("pi-copy").addEventListener("click", () => {
+        navigator.clipboard.writeText(lastReview || "");
+        const c = document.getElementById("pi-copy"); c.textContent = "Copied"; setTimeout(() => c.textContent = "Copy markdown", 1500);
+      });
+    })();
+  </script>
+  {% endif %}
+
   <form class="tabpanel" method="post" action="{{ action }}">
       <input type="hidden" name="csrf" value="{{ csrf_token }}">
     <h2>Filter Parameters</h2>
