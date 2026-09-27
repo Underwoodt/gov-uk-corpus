@@ -357,8 +357,7 @@
       const pn = promptNumbering(rows.map(x => x.run));
       document.querySelector("#p1-table tbody").innerHTML = rows.map(x => {
         const d = x.d || {}, total = x.run.pages || d.scored || 0, scored = d.scored || 0;
-        const nm = (x.run.name || "").trim();
-        return `<tr><td><strong>${x.letter}</strong>${nm ? ` <span class="rlabel">${rcEsc(nm)}</span>` : ""}</td>`
+        return `<tr><td><strong>${x.letter}</strong></td>`
           + `<td class="dt">${rcEsc(fmtDateTime(x.run.started_at))}</td>`
           + `<td class="mono">${rcEsc(x.run.actual_model || x.run.model || "—")}</td><td>${pn.of(x.run)}</td>`
           + `<td class="num">${fmtInt(d.kept || 0)}</td><td class="num">${fmtInt(d.dropped || 0)}</td>`
