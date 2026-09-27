@@ -135,6 +135,17 @@ async def _force_password_change(request: Request, call_next):
     return await call_next(request)
 
 
+@app.middleware("http")
+async def _no_cache_html(request: Request, call_next):
+    """Never let a browser serve a stale HTML page — always revalidate, so a deploy shows up on the
+    next navigation. Static assets are untouched (they revalidate via ETag / Last-Modified)."""
+    resp = await call_next(request)
+    ct = resp.headers.get("content-type", "")
+    if ct.startswith("text/html") and not request.url.path.startswith("/static"):
+        resp.headers["Cache-Control"] = "no-store, must-revalidate"
+    return resp
+
+
 # ---- last-resort error page ---------------------------------------------
 # Best practice: never surface a traceback, SQL, or stack detail to the user —
 # it leaks internals and is a standard pentest finding. Instead we log the full
