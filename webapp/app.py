@@ -2637,14 +2637,67 @@ def performance_diff_page(request: Request, cid: int, base: str = "", other: str
                        if _band(min(bi_m.get(d["url"], {}).get("score") or 0,
                                     oi_m.get(d["url"], {}).get("score") or 0)) == final_band]
 
+    # Per-row display detail: page title (link text), the corpus keywords the page matched, and the
+    # model's grounding evidence (topic + verbatim quotes) from the baseline inclusion run, else other.
+    def _jlist(raw):
+        try:
+            v = json.loads(raw) if raw else []
+            return v if isinstance(v, list) else []
+        except (ValueError, TypeError):
+            return []
+    all_urls = list({*(c["url"] for c in p1_cards), *(c["url"] for c in p2_cards),
+                     *(d["url"] for d in final_diffs)})
+    titles, meta = {}, {}
+    if all_urls:
+        ph_a = ",".join([shortlist._P] * len(all_urls))
+        for r in conn.execute(f"SELECT url, title, content_id FROM content WHERE url IN ({ph_a})",
+                              tuple(all_urls)).fetchall():
+            rr = dict(r)
+            titles[rr["url"]] = rr.get("title") or ""
+            meta[rr["url"]] = {"content_id": rr.get("content_id")}
+    for c in p1_cards + p2_cards:
+        c["title"] = titles.get(c["url"]) or ""
+    fd_urls = [d["url"] for d in final_diffs]
+    kw = gold._matched_keywords(conn, cid, fd_urls, meta) if fd_urls else {}
+    ev = {}
+    if fd_urls:
+        ph_f = ",".join([shortlist._P] * len(fd_urls))
+        for rid in (b_incl and b_incl["run_id"], o_incl and o_incl["run_id"]):
+            if not rid:
+                continue
+            for r in conn.execute(
+                    f"SELECT url, evidence, where_hit, primary_topic FROM evaluation_results "
+                    f"WHERE run_id = {shortlist._P} AND url IN ({ph_f})", tuple([rid] + fd_urls)).fetchall():
+                rr = dict(r)
+                if rr["url"] in ev:
+                    continue
+                quotes, fields = _jlist(rr.get("evidence")), _jlist(rr.get("where_hit"))
+                if quotes or rr.get("primary_topic"):
+                    ev[rr["url"]] = {"quotes": quotes, "fields": fields, "topic": rr.get("primary_topic") or ""}
+    for d in final_diffs:
+        d["title"] = titles.get(d["url"]) or ""
+        d["keywords"] = kw.get(d["url"], [])
+        e = ev.get(d["url"]) or {}
+        d["evidence"], d["where_hit"], d["topic"] = e.get("quotes", []), e.get("fields", []), e.get("topic", "")
+
     trials = {"base": _run_trial(conn, b_incl["run_id"]) if b_incl else {},
               "other": _run_trial(conn, o_incl["run_id"]) if o_incl else {}}
+    # Model + prompt config per chain (Inclusion & Exclusion), and whether the two runs' prompts differ.
+    chip_base = _chain_config(conn, base) if b_incl else {"inclusion": None, "exclusion": None}
+    chip_other = _chain_config(conn, other) if o_incl else {"inclusion": None, "exclusion": None}
+
+    def _pk(c, phase):
+        p = (c or {}).get(phase) or {}
+        return (p.get("variant"), p.get("template_version"))
+    prompt_diffs = [lbl for phase, lbl in (("inclusion", "Inclusion"), ("exclusion", "Exclusion"))
+                    if _pk(chip_base, phase) != _pk(chip_other, phase)]
     judge = _diff_judge_config(conn, o_excl or o_incl)
     ctxd = ctx(conn, request, category=category, base_head=base, other_head=other,
                base_incl=b_incl, base_excl=b_excl, other_incl=o_incl, other_excl=o_excl,
                base_has_excl=bool(b_excl), other_has_excl=bool(o_excl),
                p1_cards=p1_cards, p2_cards=p2_cards, final_diffs=final_diffs,
                final_band=final_band, final_total=final_total,
+               chip_base=chip_base, chip_other=chip_other, prompt_diffs=prompt_diffs,
                trials=trials, judged_count=len(adj),
                judge_label=f"{judge.get('provider','')} / {judge.get('model','')}")
     resp = templates.TemplateResponse("performance_diff.html", ctxd)

@@ -27,7 +27,7 @@
   {% macro card(c, base_has_excl, other_has_excl) %}
     <div class="diff-card card" data-url="{{ c.url }}" data-phase="{{ c.phase }}">
       <div class="dc-head">
-        <a class="dc-url" href="{{ c.url }}" target="_blank" rel="noopener">{{ c.url }}</a>
+        <a class="dc-url" href="{{ c.url }}" target="_blank" rel="noopener" title="{{ c.url }}">{{ c.title or c.url }}</a>
         <span class="dc-phase {{ c.phase }}">diverged at {{ 'Inclusion' if c.phase == 'inclusion' else 'Exclusion' }}</span>
       </div>
       <div class="table-wrap">
@@ -89,20 +89,24 @@
     <div class="card"><p>Pick two runs on the <a href="{{ url_for('performance_page', cid=category.id) }}">Run performance</a>
       page, then click a “Decisions disagree with Run 1” figure to open this view.</p></div>
   {% else %}
+  {% macro cfg_lines(c) %}
+    <div class="rc-meta mono">Inclusion: {{ (c.inclusion.model if c.inclusion else none) or '—' }}{% if c.inclusion and c.inclusion.template_version %} · prompt v{{ c.inclusion.template_version }}{% endif %}</div>
+    <div class="rc-meta mono">Exclusion: {% if c.exclusion %}{{ c.exclusion.model or '—' }}{% if c.exclusion.template_version %} · prompt v{{ c.exclusion.template_version }}{% endif %}{% else %}none in this run{% endif %}</div>
+  {% endmacro %}
   <div class="runs-strip">
     <div class="run-col">
       <div class="rc-tag">Run 1 · baseline</div>
       <div class="rc-name">{{ base_incl.name or '—' }}</div>
       <div class="rc-meta">{{ (base_incl.started_at or '')[:19].replace('T',' ') }}</div>
-      <div class="rc-meta mono">{{ base_incl.provider }} / {{ base_incl.actual_model or base_incl.model }}</div>
-      <div class="rc-meta">variant {{ trials.base.variant or 'current' }} · v{{ trials.base.template_version if trials.base.template_version is not none else '?' }} · body {{ trials.base.body_limit or '?' }}</div>
+      {{ cfg_lines(chip_base) }}
     </div>
     <div class="run-col">
       <div class="rc-tag alt">Run 2</div>
       <div class="rc-name">{{ other_incl.name or '—' }}</div>
       <div class="rc-meta">{{ (other_incl.started_at or '')[:19].replace('T',' ') }}</div>
-      <div class="rc-meta mono">{{ other_incl.provider }} / {{ other_incl.actual_model or other_incl.model }}</div>
-      <div class="rc-meta">variant {{ trials.other.variant or 'current' }} · v{{ trials.other.template_version if trials.other.template_version is not none else '?' }} · body {{ trials.other.body_limit or '?' }}</div>
+      {{ cfg_lines(chip_other) }}
+      {% if prompt_diffs %}<div class="rc-meta" style="color:#d4351c;font-weight:600;">⚠ Different prompt from Run 1 ({{ prompt_diffs|join(', ') }})</div>
+      {% else %}<div class="rc-meta" style="color:var(--green-dark);">Same prompts as Run 1</div>{% endif %}
     </div>
   </div>
 
@@ -120,7 +124,17 @@
       <tbody>
         {% for d in final_diffs %}
         <tr>
-          <td><a class="dc-url" href="{{ d.url }}">{{ d.url }}</a></td>
+          <td>
+            <a class="dc-url" href="{{ d.url }}" target="_blank" rel="noopener" title="{{ d.url }}">{{ d.title or d.url }}</a>
+            {% if d.keywords %}<div class="fd-kw">{% for k in d.keywords %}<span class="kw-pill">{{ k }}</span>{% endfor %}</div>{% endif %}
+            {% if d.evidence or d.topic %}
+            <details class="fd-evid">
+              <summary>evidence</summary>
+              {% if d.topic %}<div class="muted-sm" style="margin:4px 0;">Topic: <strong>{{ d.topic }}</strong>{% if d.where_hit %} · found in {{ d.where_hit|join(', ') }}{% endif %}</div>{% endif %}
+              {% if d.evidence %}<ul style="margin:4px 0 0;padding-left:18px;">{% for q in d.evidence %}<li class="muted-sm">“{{ q }}”</li>{% endfor %}</ul>{% endif %}
+            </details>
+            {% endif %}
+          </td>
           <td>{% if d.base_final %}<span class="kd keep">IN</span>{% else %}<span class="kd drop">OUT</span>{% endif %}</td>
           <td>{% if d.other_final %}<span class="kd keep">IN</span>{% else %}<span class="kd drop">OUT</span>{% endif %}</td>
         </tr>
@@ -181,7 +195,12 @@
     .explain-all { margin-left:auto; padding:6px 12px; font-size:14px; }
     .diff-card { padding:14px 16px; margin:0 0 14px; }
     .dc-head { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:10px; }
-    .dc-url { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; word-break:break-all; color:var(--blue); }
+    .dc-url { font-size:14px; overflow-wrap:anywhere; color:var(--blue); font-weight:600; }
+    .fd-kw { margin:4px 0 0; display:flex; flex-wrap:wrap; gap:4px; }
+    .kw-pill { display:inline-block; font-size:11px; font-weight:600; padding:1px 8px; border-radius:999px; background:#e8f1f8; color:#0b3d6b; }
+    .fd-evid { margin:5px 0 0; }
+    .fd-evid > summary { cursor:pointer; font-size:12px; color:var(--blue); font-weight:600; }
+    .fd-evid li { margin:2px 0; }
     .dc-phase { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; padding:2px 8px; border-radius:999px; white-space:nowrap; }
     .dc-phase.inclusion { background:#e8f1fb; color:#1d4e89; }
     .dc-phase.exclusion { background:#fbeee8; color:#8a3a1a; }
