@@ -2343,12 +2343,14 @@ async def api_bg_eval_resume(request: Request, cid: int):
                          "already_running": bool(res.get("already_running")), "status": res["status"]})
 
 
-def _retry_unparsable(cid: int, cap: int = 300) -> dict:
-    """Re-evaluate the pages whose model reply couldn't be parsed (keep IS NULL) in the latest
-    inclusion run and its exclusion run — in place, in each page's own run/phase — so you can see
-    whether they clear on a retry (a transient blip) or fail again (a real problem). Deletes the
-    stale unparsable rows, re-asks the model, and recomputes run totals. Respects the daily budget.
-    """
+def _retry_unparsable(cid: int, cap: int = 300, run_id: Optional[str] = None) -> dict:
+    """Re-evaluate the pages whose model reply couldn't be parsed (keep IS NULL), in place, in each
+    page's own run/phase — so you can see whether they clear on a retry (a transient blip) or fail
+    again (a real problem). Deletes the stale unparsable rows, re-asks the model, recomputes run
+    totals. Respects the daily budget. Each page is re-asked with exponential backoff (1s, 2s, 4s)
+    on a transient provider error (e.g. a rate limit) before it is given up on.
+
+    `run_id` targets a specific run's chain (any run in it); otherwise the latest chain is used."""
     conn = connect()
     try:
         category = cat.get_category(conn, cid)
@@ -2358,7 +2360,13 @@ def _retry_unparsable(cid: int, cap: int = 300) -> dict:
         if budget > 0 and spent >= budget:
             return {"error": f"Daily AI budget of ${budget:.2f} reached (${spent:.4f} today) — "
                     f"raise it in Settings or try again tomorrow."}
-        inc = evaluate.latest_inclusion_run(conn, cid)
+        if run_id:
+            r0 = evaluate.get_run(conn, run_id)
+            if not r0 or str(r0.get("category_id")) != str(cid):
+                return {"error": "Run not found."}
+            inc = r0.get("source_run_id") or run_id        # the chain's inclusion (head) run
+        else:
+            inc = evaluate.latest_inclusion_run(conn, cid)
         if not inc:
             return {"error": "No AI run yet — nothing to retry."}
         exc = evaluate.latest_exclusion_run(conn, inc)
@@ -2401,11 +2409,18 @@ def _retry_unparsable(cid: int, cap: int = 300) -> dict:
                 row = {"url": url, "title": c.get("title"), "description": c.get("description"),
                        "body": c.get("body"), "content_hash": c.get("content_hash"),
                        "pass1_reason": pass1, "pass1_topic": pass1_topic}
-                res, ms, _prompt = _evaluate_one_page(cfg, is_excl, rt["prompt_variant"], rt["caching"],
-                                                      prompt_tmpl, inclusion, exclusion, name,
-                                                      keep_hints, drop_hints, row, rt["sampling"])
+                # Re-ask with exponential backoff on a transient error (rate limit / hiccup): 1s, 2s, 4s.
+                res = ms = None
+                for attempt in range(4):
+                    res, ms, _prompt = _evaluate_one_page(cfg, is_excl, rt["prompt_variant"], rt["caching"],
+                                                          prompt_tmpl, inclusion, exclusion, name,
+                                                          keep_hints, drop_hints, row, rt["sampling"])
+                    if not res.get("error") or res.get("fatal"):
+                        break
+                    if attempt < 3:
+                        time.sleep(min(8.0, 1.0 * (2 ** attempt)))
                 if res.get("error"):
-                    continue                                   # leave it unparsable; provider hiccup
+                    continue                                   # still failing after backoff — leave unparsable
                 conn.execute(f"DELETE FROM evaluation_results WHERE run_id = {P} AND url = {P}", (run_id, url))
                 decision, cost = evaluate_driver.persist_result(
                     conn, run_id, cid, row, res, ms, is_exclusion=is_excl, kind="retry-unparsable")
@@ -2438,11 +2453,12 @@ def _retry_unparsable(cid: int, cap: int = 300) -> dict:
 
 
 @app.post("/api/categories/{cid}/retry-unparsable")
-async def api_retry_unparsable(request: Request, cid: int):
-    """Re-evaluate the unparsable (keep IS NULL) pages of the latest run chain, in place."""
+async def api_retry_unparsable(request: Request, cid: int, run: str = ""):
+    """Re-evaluate the unparsable (keep IS NULL) pages of a run chain, in place, with per-page
+    backoff. `run` targets a specific run's chain (any run in it); otherwise the latest chain."""
     if not authed(request):
         return JSONResponse({"error": "auth"}, status_code=401)
-    result = await run_in_threadpool(_retry_unparsable, cid)
+    result = await run_in_threadpool(_retry_unparsable, cid, 300, run or None)
     return JSONResponse(result)
 
 

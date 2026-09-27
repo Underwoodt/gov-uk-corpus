@@ -188,6 +188,11 @@
   <p class="hint">The {{ unparsed|length }} page{{ '' if unparsed|length == 1 else 's' }} below returned a model
     reply that couldn't be parsed, so {{ 'it was' if unparsed|length == 1 else 'they were' }} left unscored
     (neither kept nor dropped).</p>
+  <p style="margin:0 0 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+    <button type="button" class="btn" id="retry-unparsable"
+      title="Re-ask the model for these pages, in this run's own phases, with exponential backoff on transient errors (e.g. rate limits). Uses API credit.">Reprocess failed rows</button>
+    <span id="retry-status" class="secondary"></span>
+  </p>
   <div class="table-wrap">
     <table style="font-size:14px;">
       <thead><tr><th>Phase</th><th>Page</th><th>Reason</th><th>Raw model reply</th></tr></thead>
@@ -370,6 +375,25 @@
     }
     document.getElementById("save-name").addEventListener("click", saveName);
     nameInput.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); saveName(); } });
+
+    // Reprocess the pages that failed to parse in this run (in place, with per-page backoff).
+    const retryBtn = document.getElementById("retry-unparsable");
+    if (retryBtn) retryBtn.addEventListener("click", async () => {
+      if (!confirm("Re-ask the model for the pages that failed to parse in this run, in its own "
+        + "inclusion/exclusion phases. It retries transient errors (e.g. rate limits) with backoff and "
+        + "uses API credit. Continue?")) return;
+      const st = document.getElementById("retry-status");
+      retryBtn.disabled = true; st.textContent = "Reprocessing… (this can take a moment with backoff)";
+      try {
+        const j = await (await fetch(`/api/categories/${CID}/retry-unparsable?run=${encodeURIComponent(RUN_ID)}`,
+          { method: "POST" })).json();
+        if (j.error) { st.textContent = "Error: " + j.error; retryBtn.disabled = false; return; }
+        if (!j.retried) { st.textContent = "Nothing to reprocess — no failed rows."; retryBtn.disabled = false; return; }
+        st.textContent = `Reprocessed ${j.retried}: ${j.now_parsed} now parsed, ${j.still_unparsable} still failing`
+          + ` ($${(j.cost_usd || 0).toFixed(2)}) — refreshing…`;
+        setTimeout(() => location.reload(), 1200);
+      } catch (e) { st.textContent = "Could not reprocess."; retryBtn.disabled = false; }
+    });
 
     // Start / continue this run: make it the active run, then run it in the background.
     const completeBtn = document.getElementById("complete-run");
