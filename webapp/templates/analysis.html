@@ -370,7 +370,13 @@
         const pct = p2.flips.total ? Math.round(100 * p2.flips.exclusion_driven / p2.flips.total) : 0;
         // Score | Input | Kept (agreed keep) | Dropped (agreed drop) | Flipped (disagreed) | Flip%.
         // Kept + Dropped + Flipped reconciles to Input, which sums to the Phase-1 kept-by-both total.
-        const bands = (p2.bands || []).map(b => `<tr><td>${b.band}</td><td class="num">${fmtInt(b.input)}</td><td class="num">${fmtInt(b.kept)}</td><td class="num">${fmtInt(b.dropped)}</td><td class="num">${fmtInt(b.flipped)}</td><td class="num">${b.input ? Math.round(100 * b.flipped / b.input) : 0}%</td></tr>`).join("");
+        // Flipped count links to the guc-0028 flipped-items comparison view for this pair
+        // (same URL shape as the Run performance page's final-shortlist drilldown).
+        const diffUrl = `/categories/${CID}/performance/diff?base=${encodeURIComponent(A.run_id)}&other=${encodeURIComponent(c.run.run_id)}#final-diffs`;
+        const bands = (p2.bands || []).map(b => {
+          const flip = b.flipped ? `<a href="${diffUrl}" title="List the pages whose final result flipped">${fmtInt(b.flipped)}</a>` : "0";
+          return `<tr><td>${b.band}</td><td class="num">${fmtInt(b.input)}</td><td class="num">${fmtInt(b.kept)}</td><td class="num">${fmtInt(b.dropped)}</td><td class="num">${flip}</td><td class="num">${b.input ? Math.round(100 * b.flipped / b.input) : 0}%</td></tr>`;
+        }).join("");
         return `<div class="cmp-tbl" style="min-width:0;--head:${PAIR_TINT[c.letter] || PAIR_TINT.A};">`
           + `<div style="font-size:13px;font-weight:700;margin:0 0 2px;">A vs ${c.letter}</div>`
           + `<div class="secondary" style="font-size:12px;margin:0 0 6px;">${fmtInt(p2.excl_input)} kept by both at Phase 1</div>`
