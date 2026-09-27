@@ -2197,12 +2197,16 @@ def _background_eval_loop(cid: int, stop_event: threading.Event, status: dict) -
             # No auto-advance and nothing left (or nothing progressed) -> the chain looks done.
             if not res.get("advanced") and (res.get("evaluated_this_run", 0) == 0
                                             or res.get("remaining") == 0):
-                # End-of-run cleanup: retry any unparsable (keep IS NULL) rows once the pipeline
-                # has otherwise finished. If that recovers pages — e.g. inclusion-keeps that were
-                # unparsable and so never reached exclusion — loop again so exclusion folds them
-                # in. Bounded (and stops when a pass recovers nothing) so it always terminates.
+                # End-of-run reprocess phase: once the pipeline has otherwise finished, retry any
+                # unparsable (keep IS NULL) rows. Each page is re-asked with per-page exponential
+                # backoff inside _retry_unparsable (1s, 2s, 4s) so a transient blip clears itself.
+                # If a pass recovers pages — e.g. inclusion-keeps that were unparsable and so never
+                # reached exclusion — re-drive so exclusion folds them in. If a pass recovers nothing
+                # but rows are still failing (often a longer rate-limit window), wait an escalating
+                # inter-pass backoff and try again. Bounded by MAX_CLEANUPS so it always terminates.
                 if cleanups < MAX_CLEANUPS:
                     cleanups += 1
+                    status["phase"] = f"Reprocessing failed rows (pass {cleanups}/{MAX_CLEANUPS})"
                     try:
                         cu = _retry_unparsable(cid)
                     except Exception as e:
@@ -2212,6 +2216,10 @@ def _background_eval_loop(cid: int, stop_event: threading.Event, status: dict) -
                     status["cleaned"] = status.get("cleaned", 0) + cu.get("now_parsed", 0)
                     if cu.get("now_parsed"):
                         continue   # recovered pages may create exclusion work — re-drive
+                    if cu.get("still_unparsable") and cleanups < MAX_CLEANUPS:
+                        stop_event.wait(min(30.0, 10.0 * cleanups))   # inter-pass backoff (interruptible)
+                        if not stop_event.is_set():
+                            continue   # the failures may have been a transient rate limit — try again
                 break
             # Per-run page cap: evaluate up to `cap` NEW pages this execution, then
             # stop cleanly so we actually run the full 600 (not nothing) and the user
