@@ -7,7 +7,6 @@
     {% if current == 'results' %}<span class="current">Results</span>{% else %}<a href="{{ url_for('shortlist_page', cid=category.id) }}">Results</a>{% endif %}
     {% if current == 'runs' %}<span class="current">Runs</span>{% else %}<a href="{{ url_for('ai_pipeline_page', cid=category.id) }}">Runs</a>{% endif %}
     {% if current == 'gds' %}<span class="current">GDS Compliance</span>{% else %}<a href="{{ url_for('gds_compliance_page', cid=category.id) }}">GDS Compliance</a>{% endif %}
-    {% if current == 'explain' %}<span class="current">Explainability</span>{% else %}<a href="{{ url_for('preview_category_page', cid=category.id) }}">Explainability</a>{% endif %}
     {% if current == 'urlcheck' %}<span class="current">URL check</span>{% else %}<a href="{{ url_for('url_check_page', cid=category.id) }}">URL check</a>{% endif %}
     {% if current == 'filters' %}<span class="current">Filter Parameters</span>{% else %}<a href="{{ url_for('edit_category_page', cid=category.id) }}">Filter Parameters</a>{% endif %}
   </div>

@@ -505,7 +505,7 @@
       const none = RUNS.length === 0, few = RUNS.length < 2;
       const empty = document.getElementById("an-empty");
       empty.hidden = !few;
-      empty.innerHTML = none ? "No runs yet — evaluate the shortlist on the Explainability tab first."
+      empty.innerHTML = none ? "No runs yet — evaluate the shortlist on the Runs tab first."
         : "Only one run so far — the pair-comparison cards below need two runs, but the score-distribution card above works now.";
       ["card-phase1", "card-phase2", "card-overall", "card-review"].forEach(id => { const el = document.getElementById(id); if (el) el.hidden = few; });
       // Baseline (A) selector: any run can be A; B/C/D are the runs immediately before it.
