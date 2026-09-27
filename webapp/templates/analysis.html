@@ -161,8 +161,9 @@
     function flipChartSVG(hist) {
       const W = 340, H = 240, L = 32, R = 8, T = 12, B = 38, pw = W - L - R, ph = H - T - B;
       let s = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:380px;height:auto;" role="img" aria-label="Final outcome by Phase-1 score: same versus flipped.">`;
-      const data = (hist || []).filter(d => d.pages > 0);
-      if (!data.length) return s + `<text x="${W / 2}" y="${H / 2}" text-anchor="middle" font-size="12" fill="#6f777b">no shared scored pages</text></svg>`;
+      // Keep every band (even empty ones) so the A-vs-B/C/D charts share one aligned x-axis.
+      const data = (hist || []);
+      if (!data.reduce((a, d) => a + (d.pages || 0), 0)) return s + `<text x="${W / 2}" y="${H / 2}" text-anchor="middle" font-size="12" fill="#6f777b">no shared scored pages</text></svg>`;
       const maxV = Math.max(...data.map(d => d.pages), 1);
       const step = maxV <= 10 ? 2 : maxV <= 20 ? 5 : maxV <= 50 ? 10 : maxV <= 120 ? 20 : 50;
       const yMax = Math.ceil(maxV / step) * step, y = v => T + ph - (v / yMax) * ph;

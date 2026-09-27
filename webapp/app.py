@@ -4639,6 +4639,10 @@ def _band(s) -> str:
 
 _BAND_ORDER = ["0 (wrong sense)", "0.01–0.35 (in passing)", "0.36–0.65 (moderate)", "0.66–1 (major)"]
 
+# Short axis labels for the flip chart, so its x-axis lines up with the bands table.
+_BAND_SHORT = {"0 (wrong sense)": "wrong sense", "0.01–0.35 (in passing)": "in passing",
+               "0.36–0.65 (moderate)": "moderate", "0.66–1 (major)": "major"}
+
 _SCORE_BUCKETS = ["0.0", "0.1", "0.15–0.2", "0.25–0.35", "0.4–0.65", "0.7–1.0"]
 
 
@@ -4687,11 +4691,13 @@ def _phase2_compare(conn, cid: int, baseline: str, comparison: str) -> dict:
     excl_driven = sum(1 for u in flips if bi[u].get("keep") == ci[u].get("keep"))
     input_set = set(excl_input)
     bands = {}
-    hist = {b: {"pages": 0, "flipped": 0} for b in _SCORE_BUCKETS}
+    # Flip chart is stratified by the SAME four bands as the table (not the 6 score buckets),
+    # and every band is always present, so the A-vs-B/C/D charts share one aligned x-axis.
+    hist = {b: {"pages": 0, "flipped": 0} for b in _BAND_ORDER}
     for u in shared:
         sc = min(bi[u].get("score") or 0, ci[u].get("score") or 0)
         flip = 1 if fb.get(u) != fc.get(u) else 0
-        h = hist[_score_bucket(sc)]; h["pages"] += 1; h["flipped"] += flip
+        h = hist[_band(sc)]; h["pages"] += 1; h["flipped"] += flip
         # Bands are over the Phase-2 INPUT (pages both runs kept at Phase 1), stratified by
         # Phase-1 score: how many entered, how many both kept at the final, how many flipped.
         if u in input_set:
@@ -4710,7 +4716,7 @@ def _phase2_compare(conn, cid: int, baseline: str, comparison: str) -> dict:
         "flips": {"total": len(flips), "exclusion_driven": excl_driven,
                   "inclusion_driven": len(flips) - excl_driven},
         "bands": [{"band": b, **bands[b]} for b in _BAND_ORDER if b in bands],
-        "score_hist": [{"label": b, **hist[b]} for b in _SCORE_BUCKETS],
+        "score_hist": [{"label": _BAND_SHORT[b], "band": b, **hist[b]} for b in _BAND_ORDER],
     }
 
 
