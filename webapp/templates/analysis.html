@@ -88,6 +88,7 @@
       <p class="secondary" style="margin:0 0 12px;">Of the pages <em>both</em> runs in each pair kept at Phase 1, how their exclusion passes judged them —
         A against each recent run, side by side.</p>
       <div id="p2-cols" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px;"></div>
+      <p class="secondary" style="font-size:12px;margin:8px 0 0;" id="p2-prompt-key"></p>
       <p class="secondary" style="font-size:13px;margin:12px 0 0;max-width:720px;" id="p2-note"></p>
     </div>
 
@@ -206,6 +207,11 @@
     function runTag(run, pn) {
       const model = rcEsc(run.actual_model || run.model || "—");
       return `<div class="secondary" style="font-size:11px;font-weight:400;line-height:1.3;">${model} · ${pn.of(run)}</div>`;
+    }
+    // Same, but from an explicit model + trial (used for the Phase-2 table, where the model
+    // and prompt shown must be the EXCLUSION run's, not the inclusion run's).
+    function runTagModel(model, trial, pn) {
+      return `<div class="secondary" style="font-size:11px;font-weight:400;line-height:1.3;">${rcEsc(model || "—")} · ${pn.of({ trial })}</div>`;
     }
     function renderGroupedChart(series) {
       const svg = document.getElementById("rc-chart");
@@ -327,8 +333,15 @@
         ]);
         return { ...c, p1, p2, ov };
       }));
+      // Phase-2 prompt numbering is over the EXCLUSION runs (A's exclusion once, then each
+      // comparison's), so the numerals in the Phase-2 table describe the exclusion prompt.
+      const p2runs = [];
+      const first = data.find(c => c.p2 && !c.p2.error);
+      if (first) p2runs.push({ trial: first.p2.baseline.trial });
+      data.forEach(c => { if (c.p2 && !c.p2.error) p2runs.push({ trial: c.p2.comparison.trial }); });
+      const pnP2 = promptNumbering(p2runs);
       renderP1Comparisons(A, data);
-      renderP2Comparisons(A, data, pn);
+      renderP2Comparisons(A, data, pnP2);
       renderOvComparisons(A, data, pn);
     }
     function renderP1Comparisons(A, data) {
@@ -346,7 +359,7 @@
       note.innerHTML = `A's final decision flipped on <strong>${lo === hi ? fmtInt(hi) : fmtInt(lo) + "–" + fmtInt(hi)}</strong> page${hi === 1 ? "" : "s"} versus the other run${data.length === 1 ? "" : "s"}. `
         + "Red is where the two runs' final outcome diverged — it concentrates in the low-confidence bands, so sharpening the exclusion criteria there is what makes runs repeatable.";
     }
-    function renderP2Comparisons(A, data, pn) {
+    function renderP2Comparisons(A, data, pnP2) {
       document.getElementById("p2-cols").innerHTML = data.map(c => {
         const p2 = c.p2 || {};
         if (p2.error) return `<div style="min-width:0;"><div style="font-size:13px;font-weight:700;">A vs ${c.letter}</div><p class="secondary" style="font-size:12px;">no data</p></div>`;
@@ -358,11 +371,13 @@
           + `<div style="font-size:13px;font-weight:700;margin:0 0 2px;">A vs ${c.letter}</div>`
           + `<div class="secondary" style="font-size:12px;margin:0 0 6px;">${fmtInt(p2.excl_input)} kept by both at Phase 1</div>`
           + `<table style="font-size:13px;width:100%;margin:0 0 8px;"><thead><tr><th>Run</th><th class="num">Kept</th><th class="num">Dropped</th></tr></thead><tbody>`
-          + `<tr><td><strong>A</strong>${runTag(A, pn)}</td><td class="num">${fmtInt(p2.baseline.kept)}</td><td class="num">${fmtInt(p2.baseline.dropped)}</td></tr>`
-          + `<tr><td><strong>${c.letter}</strong>${runTag(c.run, pn)}</td><td class="num">${fmtInt(p2.comparison.kept)}</td><td class="num">${fmtInt(p2.comparison.dropped)}</td></tr></tbody></table>`
+          + `<tr><td><strong>A</strong>${runTagModel(p2.baseline.model, p2.baseline.trial, pnP2)}</td><td class="num">${fmtInt(p2.baseline.kept)}</td><td class="num">${fmtInt(p2.baseline.dropped)}</td></tr>`
+          + `<tr><td><strong>${c.letter}</strong>${runTagModel(p2.comparison.model, p2.comparison.trial, pnP2)}</td><td class="num">${fmtInt(p2.comparison.kept)}</td><td class="num">${fmtInt(p2.comparison.dropped)}</td></tr></tbody></table>`
           + `<div style="font-size:13px;margin:0 0 6px;"><strong>${fmtInt(p2.flips.total)}</strong> end different · <strong>${pct}%</strong> Phase-2 driven</div>`
           + `<table style="font-size:12px;width:100%;"><thead><tr><th>Score</th><th class="num">Input</th><th class="num">Kept</th><th class="num">Dropped</th><th class="num">Flipped</th><th class="num">Flip%</th></tr></thead><tbody>${bands}</tbody></table></div>`;
       }).join("");
+      const keyEl = document.getElementById("p2-prompt-key");
+      if (keyEl) keyEl.innerHTML = pnP2 && pnP2.order.length ? promptKeyHtml(pnP2) : "";
       const arr = data.filter(c => c.p2 && c.p2.flips).map(c => c.p2.flips.total);
       const note = document.getElementById("p2-note");
       if (!arr.length) { note.textContent = ""; return; }

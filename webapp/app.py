@@ -4666,6 +4666,23 @@ def _phase2_compare(conn, cid: int, baseline: str, comparison: str) -> dict:
         dropped = sum(1 for u in excl_input if em.get(u, {}).get("keep") == 0)
         return {"kept": len(excl_input) - dropped, "dropped": dropped}
 
+    def excl_meta(excl):
+        # This card is about Phase 2, so surface the EXCLUSION run's model + prompt config
+        # (not the inclusion run's) for the RUN sub-labels.
+        if not excl:
+            return {"model": None, "trial": None}
+        model = excl.get("actual_model") or excl.get("model")
+        trial, spec = None, excl.get("prompt_spec")
+        if spec:
+            try:
+                s = json.loads(spec) if isinstance(spec, str) else spec
+                trial = {"variant": s.get("prompt_variant") or "current",
+                         "template_version": s.get("template_version"),
+                         "body_limit": s.get("body_limit")}
+            except (ValueError, TypeError):
+                trial = None
+        return {"model": model, "trial": trial}
+
     flips = [u for u in shared if fb.get(u) != fc.get(u)]
     excl_driven = sum(1 for u in flips if bi[u].get("keep") == ci[u].get("keep"))
     input_set = set(excl_input)
@@ -4688,8 +4705,8 @@ def _phase2_compare(conn, cid: int, baseline: str, comparison: str) -> dict:
                 d["dropped"] += 1       # both dropped at the final (agreed drop)
     return {
         "shared": len(shared), "excl_input": len(excl_input),
-        "baseline": {"label": _run_label(evaluate.get_run(conn, baseline)), **ecount(be)},
-        "comparison": {"label": _run_label(evaluate.get_run(conn, comparison)), **ecount(ce)},
+        "baseline": {"label": _run_label(evaluate.get_run(conn, baseline)), **ecount(be), **excl_meta(b_excl)},
+        "comparison": {"label": _run_label(evaluate.get_run(conn, comparison)), **ecount(ce), **excl_meta(c_excl)},
         "flips": {"total": len(flips), "exclusion_driven": excl_driven,
                   "inclusion_driven": len(flips) - excl_driven},
         "bands": [{"band": b, **bands[b]} for b in _BAND_ORDER if b in bands],
