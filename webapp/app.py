@@ -4872,8 +4872,8 @@ _EXPLAIN_CARD_SYSTEM = (
 
 _PROMPT_REVIEW_SYSTEM = (
     "You are a prompt engineer improving the REPEATABILITY of an LLM pipeline that shortlists "
-    "GOV.UK pages in two phases: Phase 1 INCLUSION scores each page 0.0–1.0 and keeps any positive "
-    "score; Phase 2 EXCLUSION re-checks the keeps and may only DROP. You are given the current "
+    "GOV.UK pages in two phases: an INCLUSION PHASE scores each page 0.0–1.0 and keeps any positive "
+    "score; an EXCLUSION PHASE re-checks the keeps and may only DROP. You are given the current "
     "INCLUDE / EXCLUDE criteria and KEEP / DROP examples the team edits (the base template around "
     "them is FIXED — do not rewrite it), a DATA DIAGNOSIS of how two identical-config runs diverged, "
     "and concrete FLIPPING pages (kept by one run, dropped by the other) with each run's reason. "
@@ -4882,8 +4882,9 @@ _PROMPT_REVIEW_SYSTEM = (
     "pages. Use the DIAGNOSIS to identify which phase is at fault: if the flips are in EXCLUSION on "
     "low-confidence pages, sharpen the EXCLUDE criteria with a single decisive, testable rule and add "
     "2–4 KEEP and DROP examples drawn from the flipping pages; only edit INCLUDE if the diagnosis "
-    "blames Phase 1. If an edit changes what the shortlist MEANS (e.g. dropping incidental mentions), "
-    "call it out as an explicit editorial choice.\n\n"
+    "blames the Inclusion Phase. If an edit changes what the shortlist MEANS (e.g. dropping incidental "
+    "mentions), call it out as an explicit editorial choice. Always say 'Inclusion Phase' / "
+    "'Exclusion Phase', never 'Phase 1' or 'Phase 2'.\n\n"
     "Reply in concise GitHub-flavored markdown, using EXACTLY this structure and nothing else:\n"
     "## Diagnosis\n(1–2 sentences on the cause and which phase is at fault.)\n"
     "## Suggested criteria\n"
@@ -4891,10 +4892,11 @@ _PROMPT_REVIEW_SYSTEM = (
     "one field, in a fenced code block. IMPORTANT: the fence is three backticks with NOTHING after "
     "them on that line — no language name, no 'code', no 'block'. One short bullet of rationale under "
     "each block.\n"
-    "### Inclusion criteria\n(The full inclusion criteria. If the diagnosis does NOT blame Phase 1, do "
-    "not reword it — instead write one line: 'No change — the current inclusion criteria work.')\n"
-    "### Exclusion criteria\n(The full exclusion criteria — usually the main fix when Phase 2 is at "
-    "fault.)\n"
+    "### Inclusion criteria\n(The full inclusion criteria. If the diagnosis does NOT blame the "
+    "Inclusion Phase, do not reword it — instead write one line: 'No change — the current inclusion "
+    "criteria work.')\n"
+    "### Exclusion criteria\n(The full exclusion criteria — usually the main fix when the Exclusion "
+    "Phase is at fault.)\n"
     "Then, ONLY if concrete few-shot examples would genuinely help, you may add `### Keep examples` "
     "and/or `### Drop examples` blocks. Every block is pasted verbatim into ONE field, so it must "
     "contain ONLY that field's content — no info string, no labels, no contrasting sections: Keep "
@@ -4951,17 +4953,17 @@ async def api_analysis_prompt_review(request: Request, cid: int):
             sb, so, xb, xo = ib.get(u, {}), io.get(u, {}), eb.get(u, {}), eo.get(u, {})
             cases.append(
                 f"- {(titles.get(u, '') or u)[:80]}\n"
-                f"  Phase-1 score: Run1 {sb.get('score')} / Run2 {so.get('score')}\n"
-                f"  Exclusion: Run1 {kd(xb.get('keep'))} — {xb.get('reason') or '(none)'}\n"
-                f"             Run2 {kd(xo.get('keep'))} — {xo.get('reason') or '(none)'}")
+                f"  Inclusion Phase score: Run1 {sb.get('score')} / Run2 {so.get('score')}\n"
+                f"  Exclusion Phase: Run1 {kd(xb.get('keep'))} — {xb.get('reason') or '(none)'}\n"
+                f"                   Run2 {kd(xo.get('keep'))} — {xo.get('reason') or '(none)'}")
         diag = (
             f"Pages both runs evaluated: {ov['shared']}. Final agreement {ov['agree_pct']}%, "
             f"{ov['sym_diff']} pages end differently.\n"
-            f"Phase 1 (inclusion): decisions differ on {p1['differences']['total']} pages; the scoring "
+            f"Inclusion Phase: decisions differ on {p1['differences']['total']} pages; the scoring "
             f"itself is stable (mean per-page score change {ov['score_mean_abs_delta']}).\n"
-            f"Phase 2 (exclusion): of {p2['excl_input']} pages both runs kept at Phase 1, "
+            f"Exclusion Phase: of {p2['excl_input']} pages both runs kept at the Inclusion Phase, "
             f"{p2['flips']['total']} end differently and {p2['flips']['exclusion_driven']} of those are "
-            f"exclusion-driven.\nFlip rate by Phase-1 confidence band:\n"
+            f"exclusion-driven.\nFlip rate by Inclusion Phase confidence band:\n"
             + "\n".join(f"  {b['band']}: {b['flipped']}/{b['pages']} flipped" for b in p2['bands']))
         prompt = (
             f"TOPIC: {category.get('display_name') or ''}\n\n"
