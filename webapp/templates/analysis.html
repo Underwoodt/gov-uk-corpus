@@ -22,16 +22,12 @@
       <a href="{{ url_for('performance_page', cid=category.id) }}" data-tabid="guc-0004c3" role="tab" data-level="advanced">Run performance</a>
       <span class="current" data-tabid="guc-0004c4">Data Analysis</span>
     </div>
-    <h2>Explain the difference between two runs</h2>
-    <p class="hint" style="margin-top:-20px;max-width:720px;">The <strong>baseline</strong> is the run you are comparing against; the
-      <strong>comparison</strong> is the run whose differences you want explained. Each card looks at one part of the pipeline.
-      Only pages present in <em>both</em> runs are compared, because a page in one run but not the other reflects a change
-      in the underlying data, not a change in the decisions.</p>
+    <h2>How repeatable are the last runs?</h2>
+    <p class="hint" style="margin-top:-20px;max-width:720px;">The newest run is the <strong>baseline (A)</strong>; the cards below
+      compare it against each of the next most recent runs (<strong>B, C, D</strong>), side by side. Each pair is compared only
+      over the pages present in <em>both</em> of those runs, because a page in one run but not the other reflects a change in the
+      underlying data, not a change in the decisions. See the key on the score-distribution card above for which run is which.</p>
 
-    <div class="controls" id="run-pickers">
-      <label>Baseline <select id="pick-base" class="run-pick"></select></label>
-      <label>Comparison <select id="pick-comp" class="run-pick"></select></label>
-    </div>
     <p id="an-empty" class="secondary" hidden></p>
 
     {# Card 0: the last (up to) 4 runs' Phase-1 score distributions, grouped side by side (A–D). #}
@@ -50,77 +46,42 @@
       <p class="secondary" style="font-size:12px;margin:8px 0 0;max-width:720px;" id="rc-key"></p>
     </div>
 
-    {# Card 1: Phase 1 (inclusion) decisions on the shared pages. #}
+    {# Card 1: Phase 1 (inclusion) — the last 4 runs' accept/reject, then A vs each recent run. #}
     <div class="card" id="card-phase1" style="max-width:860px;padding:18px 22px;margin-top:8px;">
       <h3 style="margin:0 0 4px;">Phase 1 – Inclusion (Recall): accepted vs rejected</h3>
-      <p class="secondary" style="margin:0 0 12px;">How each run decided the <strong id="p1-shared">…</strong> pages both runs evaluated.
-        <span id="p1-only" class="secondary"></span></p>
+      <p class="secondary" style="margin:0 0 12px;">Each run's Phase-1 verdicts over the pages it evaluated (A = newest). The charts below
+        compare A's <em>final</em> outcome against each recent run over the pages that pair shares.</p>
       <div class="table-wrap">
         <table id="p1-table" style="font-size:15px;">
           <thead><tr><th>Run</th><th class="num">Accepted</th><th class="num">Rejected</th><th class="num">Unscored</th><th class="num">Total</th></tr></thead>
-          <tbody>
-            <tr id="p1-base"><td></td><td class="num"></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
-            <tr id="p1-comp"><td></td><td class="num"></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>
-          </tbody>
-        </table>
-      </div>
-      <p style="margin:14px 0 0;font-size:15px;">
-        <strong id="p1-diff">…</strong> <span id="p1-diff-text">pages decided differently</span>
-        <span class="secondary" id="p1-diff-split"></span>
-        · <a id="p1-diff-link" href="#">Review the exceptions</a>
-      </p>
-      <div style="margin:18px 0 0;border-top:1px solid var(--border);padding-top:14px;">
-        <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--muted);margin:0 0 8px;">
-          <span style="font-weight:700;color:var(--ink,#0b0c0c);font-size:13px;">Final outcome by Phase-1 score</span>
-          <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:11px;height:11px;background:#1d70b8;border-radius:2px;"></span>Same in both runs</span>
-          <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:11px;height:11px;background:#d4351c;border-radius:2px;"></span>Flipped <span id="p1-chart-flips"></span></span>
-        </div>
-        <svg id="p1-chart" viewBox="0 0 680 300" style="width:100%;max-width:680px;height:auto;" role="img" aria-label="Pages by Phase-1 inclusion score, split into same versus flipped final outcome between the two runs; flips concentrate in the low-score band."></svg>
-        <p class="secondary" style="font-size:12px;margin:6px 0 0;max-width:680px;">Each bar is the pages at that Phase-1 confidence; red is where the two runs' <em>final</em> decision diverged — repeatability problems concentrate in the low-confidence band.</p>
-      </div>
-    </div>
-
-    {# Card 2: Phase 2 (exclusion) — where the runs diverge, stratified by Phase-1 confidence. #}
-    <div class="card" id="card-phase2" style="max-width:860px;padding:18px 22px;margin-top:16px;">
-      <h3 style="margin:0 0 4px;">Phase 2 – Exclusion (Precision): where the runs diverge</h3>
-      <p class="secondary" style="margin:0 0 12px;">Of the <strong id="p2-input">…</strong> pages <em>both</em> runs kept at Phase 1, how each run's exclusion pass judged them.</p>
-      <div class="table-wrap">
-        <table id="p2-table" style="font-size:15px;">
-          <thead><tr><th>Run</th><th class="num">Kept (final)</th><th class="num">Dropped</th></tr></thead>
-          <tbody>
-            <tr id="p2-base"><td></td><td class="num"></td><td class="num"></td></tr>
-            <tr id="p2-comp"><td></td><td class="num"></td><td class="num"></td></tr>
-          </tbody>
-        </table>
-      </div>
-      <p style="margin:14px 0 8px;font-size:15px;"><strong id="p2-flips">…</strong> pages end with a different final result — <strong id="p2-excl">…</strong> driven by Phase 2, not Phase 1.</p>
-      <p class="secondary" style="margin:0 0 6px;">Flip rate by Phase-1 confidence — variance concentrates in the low-confidence band:</p>
-      <div class="table-wrap">
-        <table id="p2-bands" style="font-size:14px;">
-          <thead><tr><th>Inclusion score</th><th class="num">Pages</th><th class="num">Flipped</th><th class="num">Flip rate</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
+      <div style="margin:18px 0 0;border-top:1px solid var(--border);padding-top:14px;">
+        <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--muted);margin:0 0 10px;">
+          <span style="font-weight:700;color:var(--ink,#0b0c0c);font-size:13px;">Final outcome by Phase-1 score — A vs each recent run</span>
+          <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:11px;height:11px;background:#1d70b8;border-radius:2px;"></span>Same in both</span>
+          <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:11px;height:11px;background:#d4351c;border-radius:2px;"></span>Flipped</span>
+        </div>
+        <div id="p1-charts" style="display:flex;flex-wrap:wrap;gap:20px;"></div>
+      </div>
+      <p class="secondary" style="font-size:13px;margin:12px 0 0;max-width:720px;" id="p1-note"></p>
     </div>
 
-    {# Card 3: Overall run-to-run reliability. #}
+    {# Card 2: Phase 2 (exclusion) — A vs each recent run, side by side. #}
+    <div class="card" id="card-phase2" style="max-width:860px;padding:18px 22px;margin-top:16px;">
+      <h3 style="margin:0 0 4px;">Phase 2 – Exclusion (Precision): where the runs diverge</h3>
+      <p class="secondary" style="margin:0 0 12px;">Of the pages <em>both</em> runs in each pair kept at Phase 1, how their exclusion passes judged them —
+        A against each recent run, side by side.</p>
+      <div id="p2-cols" style="display:flex;flex-wrap:wrap;gap:20px;"></div>
+      <p class="secondary" style="font-size:13px;margin:12px 0 0;max-width:720px;" id="p2-note"></p>
+    </div>
+
+    {# Card 3: Overall run-to-run reliability — A vs each recent run, side by side. #}
     <div class="card" id="card-overall" style="max-width:860px;padding:18px 22px;margin-top:16px;">
       <h3 style="margin:0 0 4px;">Overall performance: run-to-run reliability</h3>
-      <p class="secondary" style="margin:0 0 12px;">The two final shortlists compared over the <strong id="ov-shared">…</strong> pages both runs evaluated.</p>
-      <div style="display:flex;gap:26px;flex-wrap:wrap;margin:0 0 14px;">
-        <div><div class="secondary" style="font-size:13px;">Final agreement</div><div style="font-size:26px;font-weight:700;" id="ov-agree">…</div></div>
-        <div><div class="secondary" style="font-size:13px;">Pages differing</div><div style="font-size:26px;font-weight:700;" id="ov-sym">…</div></div>
-        <div><div class="secondary" style="font-size:13px;">Phase-1 score |Δ| (mean)</div><div style="font-size:26px;font-weight:700;" id="ov-delta">…</div></div>
-      </div>
-      <div class="table-wrap">
-        <table id="ov-conf" style="font-size:14px;">
-          <thead><tr><th></th><th class="num">In comparison</th><th class="num">Out of comparison</th></tr></thead>
-          <tbody>
-            <tr><td>In baseline</td><td class="num" id="ov-bi"></td><td class="num" id="ov-bo"></td></tr>
-            <tr><td>Out of baseline</td><td class="num" id="ov-ob"></td><td class="num" id="ov-oo"></td></tr>
-          </tbody>
-        </table>
-      </div>
+      <p class="secondary" style="margin:0 0 12px;">A's final shortlist compared against each recent run, over the pages each pair shares.</p>
+      <div id="ov-cols" style="display:flex;flex-wrap:wrap;gap:20px;"></div>
       <p class="secondary" style="margin:12px 0 0;" id="ov-note"></p>
     </div>
 
@@ -175,46 +136,33 @@
       adjudication_hints_drop: {{ (category.adjudication_hints_drop or "") | tojson }},
     };
     let RUNS = [], byId = {};
+    let A_RUN = null, COMPS = [];   // A = newest run; COMPS = B/C/D (for the pair cards + review)
+    const DISC = {};                // run_id -> discriminability response (shared cache)
     function fmtDate(s) { return s ? String(s).slice(0, 19).replace("T", " ") : "—"; }
     const fmtInt = n => Number(n || 0).toLocaleString();
     function listUrl(params) { return LIST + "?" + new URLSearchParams(params).toString(); }
-    function cellLink(td, n, params) {
-      td.textContent = "";
-      const a = document.createElement("a"); a.href = listUrl(params); a.textContent = fmtInt(n); td.appendChild(a);
-    }
-    function rowFor(id, label, c, run, other) {
-      const tr = document.getElementById(id), tds = tr.querySelectorAll("td");
-      tds[0].textContent = label;
-      const base = { context: "phase1", run, shared_with: other };
-      cellLink(tds[1], c.accepted, { ...base, verdict: "keep" });
-      cellLink(tds[2], c.rejected, { ...base, verdict: "reject" });
-      tds[3].textContent = fmtInt(c.unscored);
-      cellLink(tds[4], c.total, { ...base, verdict: "all" });
-    }
-    function renderP1Chart(hist) {
-      const svg = document.getElementById("p1-chart");
-      if (!svg) return;
+    // Compact "final outcome by Phase-1 score" flip chart, returned as an SVG string so several
+    // can sit side by side (A vs B, A vs C, A vs D). Blue = same final outcome, red = flipped.
+    function flipChartSVG(hist) {
+      const W = 340, H = 240, L = 32, R = 8, T = 12, B = 38, pw = W - L - R, ph = H - T - B;
+      let s = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:340px;height:auto;" role="img" aria-label="Final outcome by Phase-1 score: same versus flipped.">`;
       const data = (hist || []).filter(d => d.pages > 0);
-      if (!data.length) { svg.innerHTML = ""; return; }
-      const W = 680, H = 300, L = 44, R = 12, T = 16, B = 44, pw = W - L - R, ph = H - T - B;
+      if (!data.length) return s + `<text x="${W / 2}" y="${H / 2}" text-anchor="middle" font-size="12" fill="#6f777b">no shared scored pages</text></svg>`;
       const maxV = Math.max(...data.map(d => d.pages), 1);
-      const step = maxV <= 20 ? 5 : maxV <= 50 ? 10 : maxV <= 120 ? 20 : maxV <= 300 ? 50 : 100;
-      const yMax = Math.ceil(maxV / step) * step;
-      const y = v => T + ph - (v / yMax) * ph;
-      const n = data.length, bw = (pw / n) * 0.66;
-      let s = "";
+      const step = maxV <= 10 ? 2 : maxV <= 20 ? 5 : maxV <= 50 ? 10 : maxV <= 120 ? 20 : 50;
+      const yMax = Math.ceil(maxV / step) * step, y = v => T + ph - (v / yMax) * ph;
+      const n = data.length, bw = (pw / n) * 0.64;
       for (let g = 0; g <= yMax; g += step) {
         s += `<line x1="${L}" y1="${y(g)}" x2="${W - R}" y2="${y(g)}" stroke="#e1e0d9" stroke-width="1"/>`;
-        s += `<text x="${L - 6}" y="${y(g) + 4}" text-anchor="end" font-size="11" fill="#6f777b">${g}</text>`;
+        s += `<text x="${L - 5}" y="${y(g) + 4}" text-anchor="end" font-size="10" fill="#6f777b">${g}</text>`;
       }
       data.forEach((d, i) => {
         const cx = L + pw * (i + 0.5) / n, x = cx - bw / 2, same = d.pages - d.flipped;
         s += `<rect x="${x}" y="${y(same)}" width="${bw}" height="${(T + ph) - y(same)}" fill="#1d70b8"/>`;
-        if (d.flipped) s += `<rect x="${x}" y="${y(d.pages)}" width="${bw}" height="${y(same) - y(d.pages)}" fill="#d4351c"/>`;
-        s += `<text x="${cx}" y="${H - B + 18}" text-anchor="middle" font-size="11" fill="#0b0c0c">${d.label}</text>`;
+        if (d.flipped) s += `<rect x="${x}" y="${y(d.pages)}" width="${bw}" height="${y(same) - y(d.pages)}" fill="#d4351c"><title>${d.label}: ${d.flipped} flipped of ${d.pages}</title></rect>`;
+        s += `<text x="${cx}" y="${H - B + 16}" text-anchor="middle" font-size="9" fill="#0b0c0c">${d.label}</text>`;
       });
-      s += `<text x="${L + pw / 2}" y="${H - 6}" text-anchor="middle" font-size="11" fill="#6f777b">Phase-1 inclusion score</text>`;
-      svg.innerHTML = s;
+      return s + "</svg>";
     }
     // ---- Last-4-runs grouped score distribution (A–D) ----
     const RC_COLORS = ["#1d70b8", "#f47738", "#00703c", "#6f2c91"];   // A, B, C, D
@@ -274,6 +222,7 @@
       const data = await Promise.all(runs.map(r =>
         fetch(`/api/categories/${CID}/analysis/discriminability?run=${encodeURIComponent(r.run_id)}`)
           .then(x => x.json()).catch(() => null)));
+      runs.forEach((r, i) => { DISC[r.run_id] = data[i]; });   // cache for the pair cards' 4-run table
       const series = [];
       runs.forEach((r, i) => { if (data[i] && data[i].score_hist) series.push({ letter: RC_LETTERS[i], color: RC_COLORS[i], run: r, hist: data[i].score_hist, d: data[i] }); });
       if (!series.length) { card.hidden = true; return; }
@@ -307,58 +256,103 @@
       if (empties.length) msg += ` <span class="secondary">(${empties.map(s => s.letter).join(", ")} scored no pages.)</span>`;
       note.innerHTML = msg;
     }
-    async function render() {
-      const base = document.getElementById("pick-base").value, comp = document.getElementById("pick-comp").value;
-      if (!base || !comp) return;
-      const j = await (await fetch(`/api/categories/${CID}/analysis/phase1?baseline=${encodeURIComponent(base)}&comparison=${encodeURIComponent(comp)}`)).json();
-      if (j.error) { document.getElementById("p1-shared").textContent = j.error; return; }
-      document.getElementById("p1-shared").textContent = fmtInt(j.shared);
-      document.getElementById("p1-only").textContent = (j.only_baseline || j.only_comparison)
-        ? `(${fmtInt(j.only_baseline)} only in the baseline and ${fmtInt(j.only_comparison)} only in the comparison are left out.)` : "";
-      rowFor("p1-base", "Baseline · " + j.baseline.label, j.baseline, base, comp);
-      rowFor("p1-comp", "Comparison · " + j.comparison.label, j.comparison, comp, base);
-      document.getElementById("p1-diff").textContent = fmtInt(j.differences.total);
-      document.getElementById("p1-diff-text").textContent = j.differences.total === 1 ? "page decided differently" : "pages decided differently";
-      const d = j.differences;
-      document.getElementById("p1-diff-split").textContent =
-        `(${fmtInt(d.accepted_to_rejected)} accepted by the baseline but rejected by the comparison · ${fmtInt(d.rejected_to_accepted)} the other way` +
-        (d.involving_unscored ? ` · ${fmtInt(d.involving_unscored)} involving an unscored page` : "") + ")";
-      document.getElementById("p1-diff-link").href = listUrl({ context: "phase1_diff", baseline: base, comparison: comp });
-
-      // Phase 2 — exclusion divergence, stratified by confidence.
-      const p2 = await (await fetch(`/api/categories/${CID}/analysis/phase2?baseline=${encodeURIComponent(base)}&comparison=${encodeURIComponent(comp)}`)).json();
-      if (!p2.error) {
-        document.getElementById("p2-input").textContent = fmtInt(p2.excl_input);
-        const p2row = (id, pre, r) => { const t = document.getElementById(id).querySelectorAll("td");
-          t[0].textContent = pre + " · " + r.label; t[1].textContent = fmtInt(r.kept); t[2].textContent = fmtInt(r.dropped); };
-        p2row("p2-base", "Baseline", p2.baseline); p2row("p2-comp", "Comparison", p2.comparison);
-        document.getElementById("p2-flips").textContent = fmtInt(p2.flips.total);
+    // Pair-comparison cards: A (newest) vs each of B/C/D, side by side.
+    async function renderComparisons() {
+      const A = RUNS[0];
+      if (!A) return;
+      A_RUN = A;
+      COMPS = RUNS.slice(1, 4).map((r, i) => ({ letter: RC_LETTERS[i + 1], run: r }));
+      // Phase-1 4-run table (each run's own full-run verdicts) from cached discriminability + pages.
+      const shown = [{ letter: "A", run: A }, ...COMPS];
+      const rows = await Promise.all(shown.map(async x => {
+        if (!(x.run.run_id in DISC)) {
+          DISC[x.run.run_id] = await fetch(`/api/categories/${CID}/analysis/discriminability?run=${encodeURIComponent(x.run.run_id)}`).then(r => r.json()).catch(() => null);
+        }
+        return { ...x, d: DISC[x.run.run_id] };
+      }));
+      document.querySelector("#p1-table tbody").innerHTML = rows.map(x => {
+        const d = x.d || {}, total = x.run.pages || d.scored || 0, scored = d.scored || 0;
+        return `<tr><td><strong>${x.letter}</strong> ${rcEsc((x.run.name || "").trim() || fmtDate(x.run.started_at))}</td>`
+          + `<td class="num">${fmtInt(d.kept || 0)}</td><td class="num">${fmtInt(d.dropped || 0)}</td>`
+          + `<td class="num">${fmtInt(Math.max(0, total - scored))}</td><td class="num">${fmtInt(total)}</td></tr>`;
+      }).join("");
+      if (!COMPS.length) {
+        document.getElementById("p1-charts").innerHTML = "";
+        ["p1-note", "p2-note", "ov-note"].forEach(id => document.getElementById(id).textContent = "");
+        document.getElementById("p2-cols").innerHTML = ""; document.getElementById("ov-cols").innerHTML = "";
+        return;
+      }
+      const data = await Promise.all(COMPS.map(async c => {
+        const [p1, p2, ov] = await Promise.all([
+          fetch(`/api/categories/${CID}/analysis/phase1?baseline=${A.run_id}&comparison=${c.run.run_id}`).then(x => x.json()).catch(() => ({ error: 1 })),
+          fetch(`/api/categories/${CID}/analysis/phase2?baseline=${A.run_id}&comparison=${c.run.run_id}`).then(x => x.json()).catch(() => ({ error: 1 })),
+          fetch(`/api/categories/${CID}/analysis/overall?baseline=${A.run_id}&comparison=${c.run.run_id}`).then(x => x.json()).catch(() => ({ error: 1 })),
+        ]);
+        return { ...c, p1, p2, ov };
+      }));
+      renderP1Comparisons(A, data);
+      renderP2Comparisons(A, data);
+      renderOvComparisons(A, data);
+    }
+    function renderP1Comparisons(A, data) {
+      document.getElementById("p1-charts").innerHTML = data.map(c => {
+        const p2 = c.p2 || {}, flips = (p2.flips && p2.flips.total) || 0;
+        const link = listUrl({ context: "phase1_diff", baseline: A.run_id, comparison: c.run.run_id });
+        return `<div style="flex:1 1 300px;min-width:280px;max-width:360px;">`
+          + `<div style="font-size:13px;font-weight:700;margin:0 0 4px;">A vs ${c.letter} <span class="secondary" style="font-weight:400;">· ${fmtInt(flips)} flip${flips === 1 ? "" : "s"} · <a href="${link}">exceptions</a></span></div>`
+          + (p2.error ? `<p class="secondary" style="font-size:12px;">no data</p>` : flipChartSVG(p2.score_hist)) + `</div>`;
+      }).join("");
+      const arr = data.filter(c => c.p2 && c.p2.flips).map(c => c.p2.flips.total);
+      const note = document.getElementById("p1-note");
+      if (!arr.length) { note.textContent = ""; return; }
+      const lo = Math.min(...arr), hi = Math.max(...arr);
+      note.innerHTML = `A's final decision flipped on <strong>${lo === hi ? fmtInt(hi) : fmtInt(lo) + "–" + fmtInt(hi)}</strong> page${hi === 1 ? "" : "s"} versus the other run${data.length === 1 ? "" : "s"}. `
+        + "Red is where the two runs' final outcome diverged — it concentrates in the low-confidence bands, so sharpening the exclusion criteria there is what makes runs repeatable.";
+    }
+    function renderP2Comparisons(A, data) {
+      document.getElementById("p2-cols").innerHTML = data.map(c => {
+        const p2 = c.p2 || {};
+        if (p2.error) return `<div style="flex:1 1 300px;min-width:280px;"><div style="font-size:13px;font-weight:700;">A vs ${c.letter}</div><p class="secondary" style="font-size:12px;">no data</p></div>`;
         const pct = p2.flips.total ? Math.round(100 * p2.flips.exclusion_driven / p2.flips.total) : 0;
-        document.getElementById("p2-excl").textContent = `${fmtInt(p2.flips.exclusion_driven)} (${pct}%)`;
-        document.querySelector("#p2-bands tbody").innerHTML = p2.bands.map(b =>
-          `<tr><td>${b.band}</td><td class="num">${fmtInt(b.pages)}</td><td class="num">${fmtInt(b.flipped)}</td>`
-          + `<td class="num">${b.pages ? Math.round(100 * b.flipped / b.pages) : 0}%</td></tr>`).join("");
-        renderP1Chart(p2.score_hist);
-        const cf = document.getElementById("p1-chart-flips"); if (cf) cf.textContent = `(${fmtInt(p2.flips.total)})`;
-      }
-
-      // Overall — final-shortlist reliability.
-      const ov = await (await fetch(`/api/categories/${CID}/analysis/overall?baseline=${encodeURIComponent(base)}&comparison=${encodeURIComponent(comp)}`)).json();
-      if (!ov.error) {
-        document.getElementById("ov-shared").textContent = fmtInt(ov.shared);
-        document.getElementById("ov-agree").textContent = ov.agree_pct + "%";
-        document.getElementById("ov-sym").textContent = fmtInt(ov.sym_diff);
-        document.getElementById("ov-delta").textContent = ov.score_mean_abs_delta;
-        const c = ov.confusion;
-        document.getElementById("ov-bi").textContent = fmtInt(c.both_in);
-        document.getElementById("ov-bo").textContent = fmtInt(c.base_only);
-        document.getElementById("ov-ob").textContent = fmtInt(c.comp_only);
-        document.getElementById("ov-oo").textContent = fmtInt(c.both_out);
-        document.getElementById("ov-note").innerHTML = "Phase-1 scores are "
-          + (ov.score_mean_abs_delta <= 0.05 ? "<strong>highly</strong>" : "only moderately")
-          + ` repeatable (mean per-page score change = <strong>${ov.score_mean_abs_delta}</strong>). `
-          + "Low final agreement with a small score change means the variance is coming from Phase 2, not the scoring.";
-      }
+        const bands = (p2.bands || []).map(b => `<tr><td>${b.band}</td><td class="num">${fmtInt(b.pages)}</td><td class="num">${b.pages ? Math.round(100 * b.flipped / b.pages) : 0}%</td></tr>`).join("");
+        return `<div style="flex:1 1 300px;min-width:280px;max-width:380px;">`
+          + `<div style="font-size:13px;font-weight:700;margin:0 0 2px;">A vs ${c.letter}</div>`
+          + `<div class="secondary" style="font-size:12px;margin:0 0 6px;">${fmtInt(p2.excl_input)} kept by both at Phase 1</div>`
+          + `<table style="font-size:13px;width:100%;margin:0 0 8px;"><thead><tr><th>Run</th><th class="num">Kept</th><th class="num">Dropped</th></tr></thead><tbody>`
+          + `<tr><td>A</td><td class="num">${fmtInt(p2.baseline.kept)}</td><td class="num">${fmtInt(p2.baseline.dropped)}</td></tr>`
+          + `<tr><td>${c.letter}</td><td class="num">${fmtInt(p2.comparison.kept)}</td><td class="num">${fmtInt(p2.comparison.dropped)}</td></tr></tbody></table>`
+          + `<div style="font-size:13px;margin:0 0 6px;"><strong>${fmtInt(p2.flips.total)}</strong> end different · <strong>${pct}%</strong> Phase-2 driven</div>`
+          + `<table style="font-size:12px;width:100%;"><thead><tr><th>Score</th><th class="num">Pages</th><th class="num">Flip</th></tr></thead><tbody>${bands}</tbody></table></div>`;
+      }).join("");
+      const arr = data.filter(c => c.p2 && c.p2.flips).map(c => c.p2.flips.total);
+      const note = document.getElementById("p2-note");
+      if (!arr.length) { note.textContent = ""; return; }
+      const lo = Math.min(...arr), hi = Math.max(...arr);
+      note.innerHTML = `Final-result flips ran <strong>${lo === hi ? fmtInt(hi) : fmtInt(lo) + "–" + fmtInt(hi)}</strong> pages across the comparisons, concentrated in the low-confidence bands — that's Phase-2 (exclusion) instability. Add decisive KEEP / DROP examples for those bands to stabilise it.`;
+    }
+    function renderOvComparisons(A, data) {
+      document.getElementById("ov-cols").innerHTML = data.map(c => {
+        const ov = c.ov || {};
+        if (ov.error) return `<div style="flex:1 1 240px;min-width:240px;"><div style="font-size:13px;font-weight:700;">A vs ${c.letter}</div><p class="secondary" style="font-size:12px;">no data</p></div>`;
+        const cf = ov.confusion || {};
+        return `<div style="flex:1 1 240px;min-width:240px;max-width:340px;">`
+          + `<div style="font-size:13px;font-weight:700;margin:0 0 6px;">A vs ${c.letter}</div>`
+          + `<div style="display:flex;gap:16px;flex-wrap:wrap;margin:0 0 8px;">`
+          + `<div><div class="secondary" style="font-size:12px;">Final agreement</div><div style="font-size:22px;font-weight:700;">${ov.agree_pct}%</div></div>`
+          + `<div><div class="secondary" style="font-size:12px;">Pages differing</div><div style="font-size:22px;font-weight:700;">${fmtInt(ov.sym_diff)}</div></div>`
+          + `<div><div class="secondary" style="font-size:12px;">Score |Δ|</div><div style="font-size:22px;font-weight:700;">${ov.score_mean_abs_delta}</div></div></div>`
+          + `<table style="font-size:12px;width:100%;"><thead><tr><th></th><th class="num">in ${c.letter}</th><th class="num">out</th></tr></thead><tbody>`
+          + `<tr><td>in A</td><td class="num">${fmtInt(cf.both_in)}</td><td class="num">${fmtInt(cf.base_only)}</td></tr>`
+          + `<tr><td>out A</td><td class="num">${fmtInt(cf.comp_only)}</td><td class="num">${fmtInt(cf.both_out)}</td></tr></tbody></table></div>`;
+      }).join("");
+      const ok = data.filter(c => c.ov && !c.ov.error);
+      const note = document.getElementById("ov-note");
+      if (!ok.length) { note.textContent = ""; return; }
+      const ags = ok.map(c => c.ov.agree_pct), lo = Math.min(...ags), hi = Math.max(...ags);
+      const repeatable = Math.max(...ok.map(c => c.ov.score_mean_abs_delta)) <= 0.05;
+      note.innerHTML = `Final-shortlist agreement with A ran <strong>${lo === hi ? hi : lo + "–" + hi}%</strong>. Phase-1 scores are `
+        + (repeatable ? "<strong>highly</strong>" : "only moderately")
+        + " repeatable; low agreement with a small score change means the variance is coming from Phase 2, not the scoring.";
     }
     async function load() {
       const j = await (await fetch(`/api/categories/${CID}/runs`)).json();
@@ -371,16 +365,8 @@
       empty.innerHTML = none ? "No runs yet — evaluate the shortlist on the Explainability tab first."
         : "Only one run so far — the pair-comparison cards below need two runs, but the score-distribution card above works now.";
       ["card-phase1", "card-phase2", "card-overall", "card-review"].forEach(id => { const el = document.getElementById(id); if (el) el.hidden = few; });
-      if (!none) loadRunGroups();   // last-4-runs grouped score distribution (A–D)
-      // Pair pickers.
-      const q = new URLSearchParams(location.search);
-      [["pick-base", q.get("baseline") || (RUNS[0] || {}).run_id], ["pick-comp", q.get("comparison") || (RUNS[1] || {}).run_id]].forEach(([id, def]) => {
-        const sel = document.getElementById(id);
-        sel.innerHTML = opts;
-        if (def && byId[def]) sel.value = def;
-        sel.addEventListener("change", render);
-      });
-      if (!few) render();
+      if (!none) loadRunGroups();      // last-4-runs grouped score distribution (A–D)
+      if (!few) renderComparisons();   // pair cards: A vs B/C/D
     }
     load();
 
@@ -413,8 +399,8 @@
     // Prompt review (AI) — critique the current prompts from the divergence + propose edits.
     const reviewBtn = document.getElementById("review-btn");
     if (reviewBtn) reviewBtn.addEventListener("click", async () => {
-      const base = document.getElementById("pick-base").value, comp = document.getElementById("pick-comp").value;
-      if (!base || !comp) return;
+      const base = A_RUN && A_RUN.run_id, comp = COMPS[0] && COMPS[0].run.run_id;   // A vs B (primary pair)
+      if (!base || !comp) { document.getElementById("review-status").textContent = "Need at least two runs to review."; return; }
       reviewBtn.disabled = true;
       document.getElementById("review-status").textContent = "Reviewing… (uses API credit)";
       document.getElementById("review-out").hidden = true;
