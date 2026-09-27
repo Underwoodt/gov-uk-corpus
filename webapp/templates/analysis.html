@@ -17,6 +17,14 @@
     .cmp-tbl td.num { white-space:nowrap; }   /* numbers themselves never wrap */
     .cmp-tbl th:first-child, .cmp-tbl td:first-child { padding-left:2px; }
     .cmp-tbl thead th { background:var(--head, var(--surface-2)); }
+
+    /* Numeric Results Tables: the compact run-summary tables (small text, tight number columns). */
+    .numeric-results { font-size:13px; }
+    .numeric-results th, .numeric-results td { padding:7px 10px; }
+    .numeric-results th { font-size:11px; letter-spacing:.02em; }
+    .numeric-results th.num, .numeric-results td.num { padding-left:6px; padding-right:10px; white-space:nowrap; }
+    .numeric-results td.mono, .numeric-results td.dt { font-size:12px; white-space:nowrap; }
+    .numeric-results .rlabel { font-size:12px; color:var(--muted); font-weight:400; }
   </style>
 
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Shortlists</a>
@@ -65,13 +73,7 @@
       <div id="rc-legend" style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:0 0 6px;"></div>
       <svg id="rc-chart" viewBox="0 0 680 324" style="width:100%;max-width:680px;height:auto;" role="img" aria-label="Inclusion Phase score distribution for the last four runs, grouped side by side per score band."></svg>
       <p class="secondary" style="font-size:13px;margin:8px 0 0;max-width:720px;" id="rc-note"></p>
-      <div class="table-wrap" style="margin-top:12px;">
-        <table id="rc-table" style="font-size:14px;">
-          <thead><tr><th>Run</th><th>Date</th><th>Time</th><th>Model</th><th title="Distinct prompt configs, named i–iv (see key)">Prompt</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-      <p class="secondary" style="font-size:12px;margin:8px 0 0;max-width:720px;" id="rc-key"></p>
+      <p class="secondary" style="font-size:12px;margin:8px 0 0;">Run details (date, model, prompt) and per-run counts are in the Numeric Results table below.</p>
     </div>
 
     {# Card 1: Phase 1 (inclusion) — the last 4 runs' accept/reject, then A vs each recent run. #}
@@ -85,8 +87,9 @@
         <div class="explain-out" id="explain-out-inclusion" hidden style="font-size:14px;line-height:1.5;margin:10px 0 0;border-left:4px solid var(--blue);background:var(--surface-2);padding:8px 12px;border-radius:0 5px 5px 0;max-width:760px;"></div>
       </div>
       <div class="table-wrap">
-        <table id="p1-table" style="font-size:15px;">
-          <thead><tr><th>Run</th><th>Model</th><th title="Distinct prompt configs, named i–iv (see key below)">Prompt</th><th class="num">Accepted</th><th class="num">Rejected</th><th class="num">Unscored</th><th class="num">Total</th></tr></thead>
+        <table id="p1-table" class="numeric-results">
+          <caption style="text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700;padding:0 0 6px;">Numeric results — runs A–D</caption>
+          <thead><tr><th>Run</th><th>Date / time</th><th>Model</th><th title="Distinct prompt configs, named i–iv (see key below)">Prompt</th><th class="num">Accepted</th><th class="num">Rejected</th><th class="num">Unscored</th><th class="num">Total</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -187,6 +190,11 @@
     function windowRuns() { return RUNS.slice(START, START + 4); }
     const DISC = {};                // run_id -> discriminability response (shared cache)
     function fmtDate(s) { return s ? String(s).slice(0, 19).replace("T", " ") : "—"; }
+    // Compact combined stamp, MM/DD/YY hh:mm, read straight off the stored ISO string (no timezone shift).
+    function fmtDateTime(s) {
+      const m = String(s || "").match(/(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+      return m ? `${m[2]}/${m[3]}/${m[1].slice(2)} ${m[4]}:${m[5]}` : (s ? fmtDate(s) : "—");
+    }
     const fmtInt = n => Number(n || 0).toLocaleString();
     function listUrl(params) { return LIST + "?" + new URLSearchParams(params).toString(); }
     // Compact "final outcome by Phase-1 score" flip chart, returned as an SVG string so several
@@ -285,16 +293,10 @@
       svg.innerHTML = s;
     }
     function renderRunTable(series) {
+      // Just the coloured chart key now — run detail + counts live in the merged Numeric Results
+      // table under the Inclusion Phase card.
       document.getElementById("rc-legend").innerHTML = series.map(se =>
         `<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:11px;height:11px;background:${se.color};border-radius:2px;"></span><strong>${se.letter}</strong> ${rcEsc((se.run.name || "").trim() || fmtDate(se.run.started_at))}</span>`).join("");
-      // Distinct prompt configs → i–iv, so the table shows only which runs differ.
-      const pn = promptNumbering(series.map(se => se.run));
-      document.querySelector("#rc-table tbody").innerHTML = series.map(se => {
-        const dt = se.run.started_at || "";
-        return `<tr><td><strong>${se.letter}</strong></td><td>${rcEsc(dt.slice(0, 10))}</td><td>${rcEsc(dt.slice(11, 19))}</td>`
-          + `<td class="mono">${rcEsc(se.run.actual_model || se.run.model || "—")}</td><td>${pn.of(se.run)}</td></tr>`;
-      }).join("");
-      document.getElementById("rc-key").innerHTML = promptKeyHtml(pn);
     }
     async function loadRunGroups() {
       const card = document.getElementById("card-runcompare");
@@ -355,7 +357,9 @@
       const pn = promptNumbering(rows.map(x => x.run));
       document.querySelector("#p1-table tbody").innerHTML = rows.map(x => {
         const d = x.d || {}, total = x.run.pages || d.scored || 0, scored = d.scored || 0;
-        return `<tr><td><strong>${x.letter}</strong> ${rcEsc((x.run.name || "").trim() || fmtDate(x.run.started_at))}</td>`
+        const nm = (x.run.name || "").trim();
+        return `<tr><td><strong>${x.letter}</strong>${nm ? ` <span class="rlabel">${rcEsc(nm)}</span>` : ""}</td>`
+          + `<td class="dt">${rcEsc(fmtDateTime(x.run.started_at))}</td>`
           + `<td class="mono">${rcEsc(x.run.actual_model || x.run.model || "—")}</td><td>${pn.of(x.run)}</td>`
           + `<td class="num">${fmtInt(d.kept || 0)}</td><td class="num">${fmtInt(d.dropped || 0)}</td>`
           + `<td class="num">${fmtInt(Math.max(0, total - scored))}</td><td class="num">${fmtInt(total)}</td></tr>`;
