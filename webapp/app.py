@@ -4678,12 +4678,14 @@ def _phase2_compare(conn, cid: int, baseline: str, comparison: str) -> dict:
         # Bands are over the Phase-2 INPUT (pages both runs kept at Phase 1), stratified by
         # Phase-1 score: how many entered, how many both kept at the final, how many flipped.
         if u in input_set:
-            d = bands.setdefault(_band(sc), {"input": 0, "kept": 0, "flipped": 0})
+            d = bands.setdefault(_band(sc), {"input": 0, "kept": 0, "dropped": 0, "flipped": 0})
             d["input"] += 1
             if flip:
                 d["flipped"] += 1
             elif fb.get(u) and fc.get(u):
-                d["kept"] += 1
+                d["kept"] += 1          # both kept at the final (agreed keep)
+            else:
+                d["dropped"] += 1       # both dropped at the final (agreed drop)
     return {
         "shared": len(shared), "excl_input": len(excl_input),
         "baseline": {"label": _run_label(evaluate.get_run(conn, baseline)), **ecount(be)},

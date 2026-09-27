@@ -3,6 +3,19 @@
 {% block title %}{{ category.display_name }} — data analysis{% endblock %}
 {% block content %}
 
+  <style>
+    /* Comparison-pair tables (A vs B/C/D): the shared table padding (12–18px) is far too
+       generous for these narrow 3-across cards, so numbers sit miles from their labels.
+       Tighten every cell, pull the numeric columns in tight, and give each pair a distinct
+       header tint via the --head custom property set on the card wrapper. */
+    .cmp-tbl table { margin:0 0 8px; }
+    .cmp-tbl th, .cmp-tbl td { padding:6px 7px; font-size:12px; }
+    .cmp-tbl th { font-size:11px; letter-spacing:0; }
+    .cmp-tbl th.num, .cmp-tbl td.num { padding-left:4px; padding-right:7px; white-space:nowrap; }
+    .cmp-tbl th:first-child, .cmp-tbl td:first-child { padding-left:2px; }
+    .cmp-tbl thead th { background:var(--head, var(--surface-2)); }
+  </style>
+
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Shortlists</a>
   <h1 style="margin:20px 0 20px;">{{ category.display_name }}</h1>
 
@@ -181,6 +194,19 @@
       return "Prompt key: " + pn.order.map(s => `<strong>${pn.num[s]}</strong> = ${rcEsc(promptDescribe(s))}`).join(" · ")
         + (pn.order.length === 1 ? " — all runs shown used the same prompt config." : "");
     }
+    // Subtle, theme-aware header tint per comparison letter, so each pair's tables read as
+    // an obviously distinct group. A stays neutral; B/C/D get a low-saturation accent wash.
+    const PAIR_TINT = {
+      A: "var(--surface-2)",
+      B: "color-mix(in srgb, var(--blue) 15%, var(--surface-2))",
+      C: "color-mix(in srgb, var(--green) 15%, var(--surface-2))",
+      D: "color-mix(in srgb, var(--visited) 16%, var(--surface-2))",
+    };
+    // "model · iii" sub-label for a run in the RUN column (which model + prompt config it used).
+    function runTag(run, pn) {
+      const model = rcEsc(run.actual_model || run.model || "—");
+      return `<div class="secondary" style="font-size:11px;font-weight:400;line-height:1.3;">${model} · ${pn.of(run)}</div>`;
+    }
     function renderGroupedChart(series) {
       const svg = document.getElementById("rc-chart");
       if (!svg) return;
@@ -302,8 +328,8 @@
         return { ...c, p1, p2, ov };
       }));
       renderP1Comparisons(A, data);
-      renderP2Comparisons(A, data);
-      renderOvComparisons(A, data);
+      renderP2Comparisons(A, data, pn);
+      renderOvComparisons(A, data, pn);
     }
     function renderP1Comparisons(A, data) {
       document.getElementById("p1-charts").innerHTML = data.map(c => {
@@ -320,20 +346,22 @@
       note.innerHTML = `A's final decision flipped on <strong>${lo === hi ? fmtInt(hi) : fmtInt(lo) + "–" + fmtInt(hi)}</strong> page${hi === 1 ? "" : "s"} versus the other run${data.length === 1 ? "" : "s"}. `
         + "Red is where the two runs' final outcome diverged — it concentrates in the low-confidence bands, so sharpening the exclusion criteria there is what makes runs repeatable.";
     }
-    function renderP2Comparisons(A, data) {
+    function renderP2Comparisons(A, data, pn) {
       document.getElementById("p2-cols").innerHTML = data.map(c => {
         const p2 = c.p2 || {};
         if (p2.error) return `<div style="min-width:0;"><div style="font-size:13px;font-weight:700;">A vs ${c.letter}</div><p class="secondary" style="font-size:12px;">no data</p></div>`;
         const pct = p2.flips.total ? Math.round(100 * p2.flips.exclusion_driven / p2.flips.total) : 0;
-        const bands = (p2.bands || []).map(b => `<tr><td>${b.band}</td><td class="num">${fmtInt(b.input)}</td><td class="num">${fmtInt(b.kept)}</td><td class="num">${fmtInt(b.flipped)}</td><td class="num">${b.input ? Math.round(100 * b.flipped / b.input) : 0}%</td></tr>`).join("");
-        return `<div style="min-width:0;">`
+        // Score | Input | Kept (agreed keep) | Dropped (agreed drop) | Flipped (disagreed) | Flip%.
+        // Kept + Dropped + Flipped reconciles to Input, which sums to the Phase-1 kept-by-both total.
+        const bands = (p2.bands || []).map(b => `<tr><td>${b.band}</td><td class="num">${fmtInt(b.input)}</td><td class="num">${fmtInt(b.kept)}</td><td class="num">${fmtInt(b.dropped)}</td><td class="num">${fmtInt(b.flipped)}</td><td class="num">${b.input ? Math.round(100 * b.flipped / b.input) : 0}%</td></tr>`).join("");
+        return `<div class="cmp-tbl" style="min-width:0;--head:${PAIR_TINT[c.letter] || PAIR_TINT.A};">`
           + `<div style="font-size:13px;font-weight:700;margin:0 0 2px;">A vs ${c.letter}</div>`
           + `<div class="secondary" style="font-size:12px;margin:0 0 6px;">${fmtInt(p2.excl_input)} kept by both at Phase 1</div>`
           + `<table style="font-size:13px;width:100%;margin:0 0 8px;"><thead><tr><th>Run</th><th class="num">Kept</th><th class="num">Dropped</th></tr></thead><tbody>`
-          + `<tr><td>A</td><td class="num">${fmtInt(p2.baseline.kept)}</td><td class="num">${fmtInt(p2.baseline.dropped)}</td></tr>`
-          + `<tr><td>${c.letter}</td><td class="num">${fmtInt(p2.comparison.kept)}</td><td class="num">${fmtInt(p2.comparison.dropped)}</td></tr></tbody></table>`
+          + `<tr><td><strong>A</strong>${runTag(A, pn)}</td><td class="num">${fmtInt(p2.baseline.kept)}</td><td class="num">${fmtInt(p2.baseline.dropped)}</td></tr>`
+          + `<tr><td><strong>${c.letter}</strong>${runTag(c.run, pn)}</td><td class="num">${fmtInt(p2.comparison.kept)}</td><td class="num">${fmtInt(p2.comparison.dropped)}</td></tr></tbody></table>`
           + `<div style="font-size:13px;margin:0 0 6px;"><strong>${fmtInt(p2.flips.total)}</strong> end different · <strong>${pct}%</strong> Phase-2 driven</div>`
-          + `<table style="font-size:12px;width:100%;"><thead><tr><th>Score</th><th class="num">Input</th><th class="num">Kept</th><th class="num">Flipped</th><th class="num">Flip %</th></tr></thead><tbody>${bands}</tbody></table></div>`;
+          + `<table style="font-size:12px;width:100%;"><thead><tr><th>Score</th><th class="num">Input</th><th class="num">Kept</th><th class="num">Dropped</th><th class="num">Flipped</th><th class="num">Flip%</th></tr></thead><tbody>${bands}</tbody></table></div>`;
       }).join("");
       const arr = data.filter(c => c.p2 && c.p2.flips).map(c => c.p2.flips.total);
       const note = document.getElementById("p2-note");
@@ -341,12 +369,12 @@
       const lo = Math.min(...arr), hi = Math.max(...arr);
       note.innerHTML = `Final-result flips ran <strong>${lo === hi ? fmtInt(hi) : fmtInt(lo) + "–" + fmtInt(hi)}</strong> pages across the comparisons, concentrated in the low-confidence bands — that's Phase-2 (exclusion) instability. Add decisive KEEP / DROP examples for those bands to stabilise it.`;
     }
-    function renderOvComparisons(A, data) {
+    function renderOvComparisons(A, data, pn) {
       document.getElementById("ov-cols").innerHTML = data.map(c => {
         const ov = c.ov || {};
-        if (ov.error) return `<div style="min-width:0;"><div style="font-size:13px;font-weight:700;">A vs ${c.letter}</div><p class="secondary" style="font-size:12px;">no data</p></div>`;
+        if (ov.error) return `<div class="cmp-tbl" style="min-width:0;--head:${PAIR_TINT[c.letter] || PAIR_TINT.A};"><div style="font-size:13px;font-weight:700;">A vs ${c.letter}</div><p class="secondary" style="font-size:12px;">no data</p></div>`;
         const cf = ov.confusion || {};
-        return `<div style="min-width:0;">`
+        return `<div class="cmp-tbl" style="min-width:0;--head:${PAIR_TINT[c.letter] || PAIR_TINT.A};">`
           + `<div style="font-size:13px;font-weight:700;margin:0 0 6px;">A vs ${c.letter}</div>`
           + `<div style="display:flex;gap:16px;flex-wrap:wrap;margin:0 0 8px;">`
           + `<div><div class="secondary" style="font-size:12px;">Final agreement</div><div style="font-size:22px;font-weight:700;">${ov.agree_pct}%</div></div>`
