@@ -53,10 +53,11 @@
         compare A's <em>final</em> outcome against each recent run over the pages that pair shares.</p>
       <div class="table-wrap">
         <table id="p1-table" style="font-size:15px;">
-          <thead><tr><th>Run</th><th class="num">Accepted</th><th class="num">Rejected</th><th class="num">Unscored</th><th class="num">Total</th></tr></thead>
+          <thead><tr><th>Run</th><th>Model</th><th title="Distinct prompt configs, named i–iv (see key below)">Prompt</th><th class="num">Accepted</th><th class="num">Rejected</th><th class="num">Unscored</th><th class="num">Total</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
+      <p class="secondary" style="font-size:12px;margin:6px 0 0;" id="p1-prompt-key"></p>
       <div style="margin:18px 0 0;border-top:1px solid var(--border);padding-top:14px;">
         <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--muted);margin:0 0 10px;">
           <span style="font-weight:700;color:var(--ink,#0b0c0c);font-size:13px;">Final outcome by Phase-1 score — A vs each recent run</span>
@@ -168,6 +169,18 @@
     const RC_COLORS = ["#1d70b8", "#f47738", "#00703c", "#6f2c91"];   // A, B, C, D
     const RC_LETTERS = ["A", "B", "C", "D"];
     const rcEsc = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    // Distinct prompt configs across a set of runs → i, ii, iii… so a table shows only which runs differ.
+    function promptSig(r) { const t = r.trial || {}; return JSON.stringify([t.variant || "current", t.template_version == null ? "?" : t.template_version, t.body_limit == null ? "?" : t.body_limit]); }
+    function promptDescribe(sig) { const a = JSON.parse(sig); return `variant ${a[0]}, template v${a[1]}, body ${a[2]}`; }
+    function promptNumbering(runs) {
+      const roman = ["i", "ii", "iii", "iv", "v", "vi"], order = [], num = {};
+      runs.forEach(r => { const s = promptSig(r); if (!(s in num)) { order.push(s); num[s] = roman[order.length - 1] || ("#" + order.length); } });
+      return { order, num, of: r => num[promptSig(r)] };
+    }
+    function promptKeyHtml(pn) {
+      return "Prompt key: " + pn.order.map(s => `<strong>${pn.num[s]}</strong> = ${rcEsc(promptDescribe(s))}`).join(" · ")
+        + (pn.order.length === 1 ? " — all runs shown used the same prompt config." : "");
+    }
     function renderGroupedChart(series) {
       const svg = document.getElementById("rc-chart");
       if (!svg) return;
@@ -201,18 +214,13 @@
       document.getElementById("rc-legend").innerHTML = series.map(se =>
         `<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:11px;height:11px;background:${se.color};border-radius:2px;"></span><strong>${se.letter}</strong> ${rcEsc((se.run.name || "").trim() || fmtDate(se.run.started_at))}</span>`).join("");
       // Distinct prompt configs → i–iv, so the table shows only which runs differ.
-      const roman = ["i", "ii", "iii", "iv", "v", "vi"];
-      const order = [], num = {};
-      const sigOf = r => { const t = r.trial || {}; return JSON.stringify([t.variant || "current", t.template_version == null ? "?" : t.template_version, t.body_limit == null ? "?" : t.body_limit]); };
-      series.forEach(se => { const sig = sigOf(se.run); if (!(sig in num)) { order.push(sig); num[sig] = roman[order.length - 1] || ("#" + order.length); } });
+      const pn = promptNumbering(series.map(se => se.run));
       document.querySelector("#rc-table tbody").innerHTML = series.map(se => {
         const dt = se.run.started_at || "";
         return `<tr><td><strong>${se.letter}</strong></td><td>${rcEsc(dt.slice(0, 10))}</td><td>${rcEsc(dt.slice(11, 19))}</td>`
-          + `<td class="mono">${rcEsc(se.run.actual_model || se.run.model || "—")}</td><td>${num[sigOf(se.run)]}</td></tr>`;
+          + `<td class="mono">${rcEsc(se.run.actual_model || se.run.model || "—")}</td><td>${pn.of(se.run)}</td></tr>`;
       }).join("");
-      const describe = sig => { const a = JSON.parse(sig); return `variant ${a[0]}, template v${a[1]}, body ${a[2]}`; };
-      document.getElementById("rc-key").innerHTML = "Prompt key: " + order.map(sig => `<strong>${num[sig]}</strong> = ${rcEsc(describe(sig))}`).join(" · ")
-        + (order.length === 1 ? " — all runs shown used the same prompt config." : "");
+      document.getElementById("rc-key").innerHTML = promptKeyHtml(pn);
     }
     async function loadRunGroups() {
       const card = document.getElementById("card-runcompare");
@@ -270,12 +278,15 @@
         }
         return { ...x, d: DISC[x.run.run_id] };
       }));
+      const pn = promptNumbering(rows.map(x => x.run));
       document.querySelector("#p1-table tbody").innerHTML = rows.map(x => {
         const d = x.d || {}, total = x.run.pages || d.scored || 0, scored = d.scored || 0;
         return `<tr><td><strong>${x.letter}</strong> ${rcEsc((x.run.name || "").trim() || fmtDate(x.run.started_at))}</td>`
+          + `<td class="mono">${rcEsc(x.run.actual_model || x.run.model || "—")}</td><td>${pn.of(x.run)}</td>`
           + `<td class="num">${fmtInt(d.kept || 0)}</td><td class="num">${fmtInt(d.dropped || 0)}</td>`
           + `<td class="num">${fmtInt(Math.max(0, total - scored))}</td><td class="num">${fmtInt(total)}</td></tr>`;
       }).join("");
+      document.getElementById("p1-prompt-key").innerHTML = promptKeyHtml(pn);
       if (!COMPS.length) {
         document.getElementById("p1-charts").innerHTML = "";
         ["p1-note", "p2-note", "ov-note"].forEach(id => document.getElementById(id).textContent = "");
