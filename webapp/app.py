@@ -1368,10 +1368,28 @@ def ai_pipeline_page(request: Request, cid: int):
         conn.close()
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
     category["display_name"] = cat.display_name(category)
-    stages, ai_cost = _funnel_table_ctx(conn, category, cid)
     resp = templates.TemplateResponse("ai_pipeline_page.html", ctx(
-        conn, request, category=category, eval_max_docs=_max_docs(conn),
-        stages=stages, ai_cost=ai_cost))
+        conn, request, category=category, eval_max_docs=_max_docs(conn)))
+    conn.close()
+    return resp
+
+
+@app.get("/categories/{cid}/funnel", response_class=HTMLResponse)
+def funnel_page(request: Request, cid: int):
+    """Selection funnel (guc-0004c5) — the Sankey + funnel counts table showing how each filter
+    narrows the corpus, then the AI keep/drop. Its own tab in the pipeline area (moved out of the
+    Pipeline Runs page). The AI rows come from the runs feed fetched client-side."""
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    category = cat.get_category(conn, cid)
+    if not category:
+        conn.close()
+        return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
+    category["display_name"] = cat.display_name(category)
+    stages, ai_cost = _funnel_table_ctx(conn, category, cid)
+    resp = templates.TemplateResponse("funnel_page.html", ctx(
+        conn, request, category=category, stages=stages, ai_cost=ai_cost))
     conn.close()
     return resp
 

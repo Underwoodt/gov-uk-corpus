@@ -16,6 +16,7 @@
      Complete the run. Cross-links to the compare tabs only on the shortlist page. #}
   <div class="tabs" role="tablist" style="margin-bottom:20px;">
     <span class="current" data-tabid="{{ ai_ref }}1">Pipeline Runs</span>
+    {% if ai_ref == "guc-0004c" %}<a href="{{ url_for('funnel_page', cid=category.id) }}" data-tabid="{{ ai_ref }}5" role="tab">Selection funnel</a>{% endif %}
     {% if ai_ref == "guc-0004c" %}<a href="{{ url_for('keyword_matching_page', cid=category.id) }}" data-tabid="{{ ai_ref }}2" role="tab">Keyword Matching</a>{% endif %}
     {% if ai_ref == "guc-0004c" %}<a href="{{ url_for('performance_page', cid=category.id) }}" data-tabid="{{ ai_ref }}3" role="tab">Run performance</a>{% endif %}
     {% if ai_ref == "guc-0004c" %}<a href="{{ url_for('analysis_page', cid=category.id) }}" data-tabid="{{ ai_ref }}4" role="tab">Compare Runs</a>{% endif %}
