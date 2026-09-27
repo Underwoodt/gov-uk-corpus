@@ -374,7 +374,7 @@
           + `<tr><td><strong>A</strong>${runTagModel(p2.baseline.model, p2.baseline.trial, pnP2)}</td><td class="num">${fmtInt(p2.baseline.kept)}</td><td class="num">${fmtInt(p2.baseline.dropped)}</td></tr>`
           + `<tr><td><strong>${c.letter}</strong>${runTagModel(p2.comparison.model, p2.comparison.trial, pnP2)}</td><td class="num">${fmtInt(p2.comparison.kept)}</td><td class="num">${fmtInt(p2.comparison.dropped)}</td></tr></tbody></table>`
           + `<div style="font-size:13px;margin:0 0 6px;"><strong>${fmtInt(p2.flips.total)}</strong> end different · <strong>${pct}%</strong> Phase-2 driven</div>`
-          + `<table style="font-size:12px;width:100%;"><thead><tr><th>Score</th><th class="num">Input</th><th class="num">Kept</th><th class="num">Dropped</th><th class="num">Flipped</th><th class="num">Flip%</th></tr></thead><tbody>${bands}</tbody></table></div>`;
+          + `<table style="font-size:12px;width:100%;"><thead><tr><th>Score</th><th class="num">Input</th><th class="num">Both kept</th><th class="num">Both dropped</th><th class="num">Flipped</th><th class="num">Flip%</th></tr></thead><tbody>${bands}</tbody></table></div>`;
       }).join("");
       const keyEl = document.getElementById("p2-prompt-key");
       if (keyEl) keyEl.innerHTML = pnP2 && pnP2.order.length ? promptKeyHtml(pnP2) : "";
