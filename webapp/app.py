@@ -256,6 +256,39 @@ def corpus_meta(conn) -> str:
     return f"Newest snapshot · {n:,} pages" if n is not None else "Newest snapshot"
 
 
+_deepseek_balance_cache = {"ts": 0.0, "val": None}
+
+
+def _deepseek_balance():
+    """The DeepSeek account balance for the header strip, or None. Only attempted when a DeepSeek
+    key is configured; the result (including a failed None) is cached so it isn't fetched on every
+    page load, and any error is swallowed so the header never breaks."""
+    if not _provider_configured("deepseek"):
+        return None
+    c = _deepseek_balance_cache
+    now = time.time()
+    ttl = 300 if c["val"] is not None else 120     # refresh a good value every 5 min; retry a miss sooner
+    if now - c["ts"] < ttl:
+        return c["val"]
+    val = None
+    try:
+        req = urllib.request.Request(
+            "https://api.deepseek.com/user/balance",
+            headers={"Authorization": f"Bearer {_provider_key('deepseek')}", "Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=4) as r:
+            d = json.loads(r.read().decode())
+        infos = d.get("balance_infos") or []
+        pick = next((b for b in infos if str(b.get("currency") or "").upper() == "USD"), None) \
+            or (infos[0] if infos else None)
+        if pick and pick.get("total_balance") is not None:
+            val = {"currency": str(pick.get("currency") or ""), "total": str(pick.get("total_balance")),
+                   "available": bool(d.get("is_available", True))}
+    except Exception:
+        val = None
+    c["ts"], c["val"] = now, val
+    return val
+
+
 def ctx(conn, request: Request, **extra) -> dict:
     spent = _daily_spend(conn)
     budget = _budget(conn)
@@ -266,6 +299,7 @@ def ctx(conn, request: Request, **extra) -> dict:
     role = user["role"] if (AUTH_MODE == "accounts" and user) else roles.get_role(conn)
     base = {"request": request, "corpus_meta": corpus_meta(conn), "active_nav": "categories",
             "budget_bar": {"spent": round(spent, 4), "budget": budget, "pct": pct},
+            "deepseek_balance": _deepseek_balance(),
             # Effective role + a gate helper for templates:
             #   {% if can_use('Administrator') %}…{% endif %}
             "role": role, "can_use": lambda required=None: roles.allows(role, required),

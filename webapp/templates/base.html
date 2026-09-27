@@ -72,6 +72,12 @@
         <span class="budget-track" title="{{ '%.0f'|format(pct) }}% of today's ${{ '%.2f'|format(b.budget) }} budget"><span class="budget-fill" style="width:{{ fill }}%;background:{{ color }};"></span></span>{% else %}<span class="meta">· no budget set</span>{% endif %}
       </span>
       {% endif %}
+      {% if deepseek_balance and deepseek_balance.total %}
+      <span class="budget-inline" title="DeepSeek account balance (live)">
+        <span class="meta">DeepSeek balance</span>
+        <strong>{% if deepseek_balance.currency == 'USD' %}${{ deepseek_balance.total }}{% else %}{{ deepseek_balance.currency }} {{ deepseek_balance.total }}{% endif %}</strong>
+      </span>
+      {% endif %}
     </div>
     {% block content %}{% endblock %}
   </div>
