@@ -29,6 +29,8 @@ download, or fine-tune first.
 > Say: "From the Shortlist tab, hit Download. You get one screen: which version to export, which
 > columns, and which file type. Defaults are already chosen — tweak only what you care about."
 
+![Screenshot — the Download page: the Run selector, the field picker, and the Output type dropdown](screenshots/4-0-download-page.png)
+
 **Note — which run:** if you've run the AI more than once, a **Run** selector lets you export the
 list as a specific run judged it, so the file matches exactly the version you're talking about.
 
@@ -58,6 +60,8 @@ a whole theme at once:
 > reason. An analyst might add view counts and freshness. Someone loading it into another system
 > might take the raw JSON. Tick the groups you need — URL always comes along."
 
+![Screenshot — the grouped field picker with the groups (Content, Provenance, Popularity, Matching & AI, Ownership, Quality, Freshness); URL ticked and locked on](screenshots/4-1-field-picker.png)
+
 **Why the grouping:** the columns mirror the questions people ask of a shortlist — *what is it,
 where did it come from, is it read, did the AI keep it and why, who owns it, is it any good, is it
 current.* Grab a theme rather than hunting field by field.
@@ -78,6 +82,8 @@ The file extension is added for you.
 
 > Say: "CSV if in doubt — it opens anywhere. Excel if a person's going to live in the spreadsheet.
 > JSON if a machine's going to read it. Same data, three shapes."
+
+![Screenshot — the Output type dropdown open, showing CSV (.csv), Excel (.xlsx) and JSON (.json)](screenshots/4-2-formats.png)
 
 ---
 

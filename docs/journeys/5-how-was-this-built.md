@@ -37,6 +37,8 @@ were applied:
 > and makes the judgement calls. If a stage cuts far more or far less than you expected, that's your
 > clue something in the Filter Parameters needs a tweak."
 
+![Screenshot — the Selection funnel table on the Shortlist tab: counts for All pages → After organisation → After document-type → After keyword → the AI pass](screenshots/5-1-funnel.png)
+
 **Why it matters:** the funnel turns "trust me" into "look" — you can see which single filter did
 the heavy lifting, and whether the drop at each step matches your intent.
 
@@ -55,6 +57,8 @@ this page?" for any row.
 > a confidence score, and a one-line reason — 'kept: sets out slurry storage standards', 'dropped:
 > slurry here means concrete'. If you disagree with a call, you've just found something to fix in the
 > criteria."
+
+![Screenshot — a stage view on the Shortlist tab: rows of pages with keep/drop, score and a plain-English reason](screenshots/5-2-kept-dropped-rows.png)
 
 **Why it matters:** a shortlist you can audit row by row is one you can defend — and every
 disagreement you spot is a concrete edit for the include/exclude criteria or a new Keep/Drop example.
@@ -81,10 +85,14 @@ Active Run**, and use **Run History** to see every run. Open a run to reach its 
 **What you see in Run History:** each run with its status, and a chip if it stopped early (e.g. a
 red **"low balance"** chip) so you can tell a clean run from one that needs attention or a re-run.
 
+![Screenshot — the Run History table: several runs with status, cost, and a red "low balance" stop chip on one](screenshots/5-3a-run-history.png)
+
 > Say: "Running the AI is two passes: a generous first read that scores and keeps, then a strict
 > second read that only removes. Every run is kept in the history with its cost and outcome, and if
 > one stops short the page tells you plainly why — right down to 'top up your Anthropic credit'.
 > No guessing why a run didn't finish."
+
+![Screenshot — the Run details page: the Run outcome panel at the top (status + why it didn't complete + any failures) above the two LLM phases (Inclusion → Exclusion) with pages, keep/drop, tokens and cost](screenshots/5-3b-run-details.png)
 
 **Why it matters:** you're not trusting a single opaque score. You can see both passes, what each
 cost, whether the run actually finished, and exactly what failed if it didn't.
@@ -110,6 +118,8 @@ with an identical one.)
 > wording and the exact Keep/Drop examples that would settle the coin-flips. Tick the ones you like,
 > apply them, and it takes you straight back to re-run. The tool helps you ask a better question —
 > and then re-generates the shortlist from it."
+
+![Screenshot — the Data Analysis tab: the AI prompt-review output (diagnosis + suggested include/exclude criteria and Keep/Drop examples) and the "Apply to shortlist" card with accept/skip ticks](screenshots/5-4-prompt-review-apply.png)
 
 **Why it matters:** this closes the loop from Journey 3 — the coin-flip examples you could write by
 hand, the AI can now suggest from real evidence, so the shortlist gets steadier every pass.

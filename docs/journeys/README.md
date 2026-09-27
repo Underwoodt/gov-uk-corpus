@@ -52,3 +52,16 @@ don't pick pages by hand. Open a shortlist and you get a row of tabs:
 - Every step gets a `> Say:` line — one or two sentences, natural spoken English.
 - No jargon without a plain gloss the first time (e.g. "the *corpus* — our copy of GOV.UK").
 - Keep each journey readable in a couple of minutes.
+
+## Screenshots
+
+Every step carries a placeholder image:
+
+```
+![Screenshot — what to capture](screenshots/<journey>-<step>-<name>.png)
+```
+
+They point at `docs/journeys/screenshots/` (create it and drop the PNGs in — the filename in each
+placeholder is the one to save). Until an image exists, the renderer shows the **alt text**, which
+describes exactly what to capture, so the scripts read fine without the pictures. To find every shot
+still needed: `grep -rn "screenshots/" docs/journeys`.

@@ -34,6 +34,8 @@ the same shortlist every time. Save at the bottom and the tool generates (or reb
 > Say: "Notice the shape of the form — filters first, because they're cheap and certain, then the AI
 > criteria, because that's the judgement. The tool works in exactly that order."
 
+![Screenshot — the whole Filter Parameters form scrolled to show its order: Owner/Name, Pre-Inference Filtering (Organisations, Page Types, Keywords), then LLM Inference](screenshots/3-0-form-overview.png)
+
 ---
 
 ## 3.1 — Organisation *(Pre-Inference Filtering: 1)*
@@ -48,6 +50,8 @@ department's agencies as well as the department itself.
 > Say: "Start with *who owns it*. Pick DEFRA, or a specific agency — and if you want the whole
 > family, tick 'Include child organisations' to pull in its agencies too. The page counts next to
 > each one keep you honest about how much you're letting in."
+
+![Screenshot — the Organisations tree (Pre-Inference Filtering: 1): search box, a department expanded to its agencies with page counts, "Include child organisations" ticked](screenshots/3-1-organisations.png)
 
 **Why it's first:** ownership is the most reliable signal on GOV.UK and the biggest single cut — it
 takes you from *all of government* to *this organisation's pages* in one tick.
@@ -65,6 +69,8 @@ publications, and so on (searchable, like Organisations).
 > stories or consultation outcomes. Ticking the page types strips out the formats that aren't the
 > job."
 
+![Screenshot — the Page Types picker (Pre-Inference Filtering: 2): searchable list with "guidance" and "detailed guide" ticked](screenshots/3-2-page-types.png)
+
 **Why it matters:** the same words appear in very different formats. Filtering by page type removes
 whole categories of noise (press releases, transparency data) before the AI ever sees them.
 
@@ -81,6 +87,8 @@ the AI stage.
 > Say: "Finally, the words the page has to actually contain. This is a blunt instrument on purpose —
 > it's the cheap keyword net that catches the obvious candidates. It will over-catch, and that's
 > fine: the AI is about to sort the true matches from the passing mentions."
+
+![Screenshot — the Inclusion Keyword(s) box (Pre-Inference Filtering: 3) with "slurry" and "nitrate" entered](screenshots/3-3-keywords.png)
 
 **Why keep it blunt:** keywords are fast but literal — they can't tell *slurry* the manure from
 *slurry* the concrete. You *want* them to over-include here, because the next section is where the
@@ -105,6 +113,8 @@ against (0.0–1.0, keeping anything above zero).
 > livestock slurry and the rules around it.' That sentence is the ruler the AI measures every page
 > with."
 
+![Screenshot — the "What pages do you want to include?" box (LLM Inference) with a plain-English scope sentence typed in](screenshots/3-4a-include.png)
+
 ### What pages do you want to exclude from here?
 
 **What you do:** describe the look-alikes that should be dropped even though they passed the
@@ -116,6 +126,8 @@ pages and can only *remove*.
 > Say: "Then the traps. 'Slurry can mean coal or concrete — drop those. Drop sewage sludge and
 > biosolids.' This is a second, stricter read whose only job is to take out the impostors the first
 > pass let through."
+
+![Screenshot — the "What pages do you want to exclude from here?" box (LLM Inference) with the look-alike traps typed in](screenshots/3-4b-exclude.png)
 
 ### Examples of tricky pages — the coin-flips *(optional)*
 
@@ -134,6 +146,8 @@ time — the shortlist stops wobbling between runs.
 > A couple of 'keep this even though…' and 'drop this because…' examples turn a coin-flip into a
 > rule. This is the single biggest thing you can do to make runs repeatable."
 
+![Screenshot — the "Examples of tricky pages" section (LLM Inference, optional): the Keep and Drop boxes with one example each](screenshots/3-4c-tricky-keep-drop.png)
+
 **Why it's optional but powerful:** you don't need examples if your include/exclude criteria are
 already crisp. But when the same page keeps flipping between runs, a Keep/Drop example is the
 precise fix — and Journey 5.4 shows how the AI itself can *suggest* these for you.
@@ -150,6 +164,8 @@ getting the list *out* is [Journey 4](4-download-a-shortlist.md).
 
 > Say: "Save, and the tool generates the shortlist there and then. From here you can look at what it
 > produced, run the AI over it, and download it — which is exactly where we go next."
+
+![Screenshot — the Save button at the foot of the Filter Parameters form, then the generated Shortlist tab it lands on](screenshots/3-5-save-generated.png)
 
 ---
 

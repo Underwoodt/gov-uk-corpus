@@ -41,6 +41,8 @@ answer "why did the Filter Parameters keep (or drop) this page?"
 > saved, re-runnable definition — filters for the easy narrowing, an AI pass for the judgement —
 > and it always shows its working."
 
+![Screenshot — a Selection funnel on the Shortlist tab, page count dropping from All pages through the filters to the AI pass (illustrates filters → AI → shortlist)](screenshots/2-1-funnel-concept.png)
+
 ---
 
 ## What a shortlist is *for*
@@ -52,6 +54,8 @@ answer "why did the Filter Parameters keep (or drop) this page?"
 
 > Say: "The three things people use it for: get a clean list *out*, keep it *current*, and *share*
 > it so everyone's arguing from the same page — literally."
+
+![Screenshot — an exported shortlist open in a spreadsheet: URL, Title, AI keep/drop and reason columns](screenshots/2-2-exported-example.png)
 
 ---
 
@@ -70,6 +74,8 @@ follows:
 > Say: "This home page is just the shelf of saved questions. Open one and you get tabs: set the
 > parameters, see the shortlist they generated, and run the AI over it. That's the whole loop — and
 > we'll build one from scratch next."
+
+![Screenshot — the Shortlists home list plus a shortlist opened to show its tab row (Filter Parameters · Shortlist · Filter pipeline run · GDS Compliance · Explainability · URL check)](screenshots/2-3-shortlist-tabs.png)
 
 ---
 
