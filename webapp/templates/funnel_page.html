@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_category_tabs.html" import category_tabs with context %}
 {% set page_ref = "guc-0004c" %}
 {% block page_id %}{{ page_ref }}5{% endblock %}
 {% block title %}{{ category.display_name }} — selection funnel{% endblock %}
@@ -18,14 +19,7 @@
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Shortlists</a>
   <h1 style="margin:20px 0 20px;">{{ category.display_name }}</h1>
 
-  <div class="tabs">
-    <a href="{{ url_for('edit_category_page', cid=category.id) }}">Filter Parameters</a>
-    <a href="{{ url_for('shortlist_page', cid=category.id) }}">Shortlist</a>
-    <span class="current">Filter pipeline run</span>
-    <a href="{{ url_for('gds_compliance_page', cid=category.id) }}">GDS Compliance</a>
-    <a href="{{ url_for('preview_category_page', cid=category.id) }}">Explainability</a>
-    <a href="{{ url_for('url_check_page', cid=category.id) }}">URL check</a>
-  </div>
+  {{ category_tabs(category, 'runs') }}
 
   <div class="tabpanel">
     <div class="tabs" role="tablist" style="margin-bottom:20px;">

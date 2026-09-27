@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_category_tabs.html" import category_tabs with context %}
 {% block page_id %}guc-0002{% endblock %}
 {% block title %}{{ form_title if is_edit else 'Build shortlist' }}{% endblock %}
 {% block content %}
@@ -84,23 +85,7 @@
   </div>
   {% endif %}
 
-  <div class="tabs">
-    <span class="current">Filter Parameters</span>
-    {% if is_edit %}
-    <a href="{{ url_for('shortlist_page', cid=category.id) }}">Shortlist</a>
-    <a href="{{ url_for('ai_pipeline_page', cid=category.id) }}">Filter pipeline run</a>
-    <a href="{{ url_for('gds_compliance_page', cid=category.id) }}">GDS Compliance</a>
-    <a href="{{ url_for('preview_category_page', cid=category.id) }}">Explainability</a>
-    <a href="{{ url_for('url_check_page', cid=category.id) }}">URL check</a>
-    {% else %}
-    <a href="#" onclick="return false" style="color:#505a5f;cursor:default;">Shortlist</a>
-    <a href="#" onclick="return false" style="color:#505a5f;cursor:default;">Filter pipeline run</a>
-    <a href="#" onclick="return false" style="color:#505a5f;cursor:default;">GDS Compliance</a>
-    <a href="#" onclick="return false" style="color:#505a5f;cursor:default;">Explainability</a>
-    <a href="#" onclick="return false" style="color:#505a5f;cursor:default;" data-level="advanced">Run performance</a>
-    <a href="#" onclick="return false" style="color:#505a5f;cursor:default;">URL check</a>
-    {% endif %}
-  </div>
+  {{ category_tabs(category, 'filters') }}
 
   <form class="tabpanel" method="post" action="{{ action }}">
       <input type="hidden" name="csrf" value="{{ csrf_token }}">
