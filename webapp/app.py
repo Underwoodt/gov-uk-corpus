@@ -4858,6 +4858,18 @@ def api_analysis_discriminability(request: Request, cid: int, run: str = ""):
         conn.close()
 
 
+_EXPLAIN_CARD_SYSTEM = (
+    "You explain ONE card of a run-to-run reliability dashboard for a document-shortlisting "
+    "pipeline. The pipeline has two phases: an INCLUSION PHASE that scores each page 0.0–1.0 and "
+    "keeps any positive score, then an EXCLUSION PHASE that re-checks the keeps and may only drop. "
+    "Given the card's title and its numbers (computed from this shortlist's actual runs), write a "
+    "short, plain-English read for a non-technical reviewer: what the numbers say about how "
+    "repeatable this shortlist is, where any instability sits (which phase, which confidence band), "
+    "and the single most useful next step. Be concrete and specific to the numbers you are given — "
+    "if the runs look stable, say so plainly rather than inventing problems. No preamble, no "
+    "headings, 2–4 sentences, British English. Always say 'Inclusion Phase' / 'Exclusion Phase', "
+    "never 'Phase 1' or 'Phase 2'.")
+
 _PROMPT_REVIEW_SYSTEM = (
     "You are a prompt engineer improving the REPEATABILITY of an LLM pipeline that shortlists "
     "GOV.UK pages in two phases: Phase 1 INCLUSION scores each page 0.0–1.0 and keeps any positive "
@@ -4975,6 +4987,82 @@ async def api_analysis_prompt_review(request: Request, cid: int):
                       res.get("output_tokens"), "prompt-review")
         return JSONResponse({"review": (res.get("reply") or "").strip(), "model": res.get("actual_model"),
                              "cost": res.get("cost_usd"), "flips": len(flipped)})
+    finally:
+        conn.close()
+
+
+@app.post("/api/categories/{cid}/analysis/explain-card")
+async def api_analysis_explain_card(request: Request, cid: int):
+    """A short, on-demand AI read of ONE analysis card, grounded in that card's own numbers (recomputed
+    server-side from this shortlist's runs, so the explanation reflects this run set's quality). Cards:
+    distribution (runs=[ids]) | inclusion | exclusion | overall (baseline=&comparison=). Uses credit."""
+    if not authed(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    body = await request.json()
+    card = str(body.get("card") or "")
+    base = str(body.get("baseline") or ""); comp = str(body.get("comparison") or "")
+    runs = [str(r) for r in body.get("runs")] if isinstance(body.get("runs"), list) else []
+    conn = connect()
+    try:
+        category = cat.get_category(conn, cid)
+        if not category:
+            return JSONResponse({"error": "no such shortlist"}, status_code=404)
+        if card == "distribution":
+            ids = [r for r in runs[:4] if _own_run(conn, cid, r)] or ([base] if _own_run(conn, cid, base) else [])
+            if not ids:
+                return JSONResponse({"error": "No runs of this shortlist yet."}, status_code=400)
+            parts = []
+            for i, rid in enumerate(ids):
+                d = _discriminability(conn, cid, rid)
+                parts.append(
+                    f"Run {chr(65 + i)}: scored {d['scored']}, kept {d['kept']}, "
+                    f"low-confidence keeps (score<=0.35) {d['borderline_pct']}% of keeps"
+                    + (f", {d['top_share']}% of keeps piled on one score ({d['top_score']})"
+                       if d.get("top_score") is not None else ""))
+            title = "Score distribution across the last runs (Inclusion Phase scores)"
+            diag = "\n".join(parts)
+        elif card in ("inclusion", "exclusion", "overall"):
+            if not (_own_run(conn, cid, base) and _own_run(conn, cid, comp)):
+                return JSONResponse({"error": "Pick two inclusion runs of this shortlist."}, status_code=400)
+            if card == "inclusion":
+                p1 = _phase1_compare(conn, cid, base, comp); ov = _overall_compare(conn, cid, base, comp)
+                title = "Inclusion Phase (Recall): accepted vs rejected"
+                diag = (f"A vs B over {ov['shared']} shared pages: Inclusion Phase decisions differ on "
+                        f"{p1['differences']['total']} pages; the scoring itself is "
+                        f"{'stable' if ov['score_mean_abs_delta'] <= 0.05 else 'unstable'} "
+                        f"(mean per-page score change {ov['score_mean_abs_delta']}).")
+            elif card == "exclusion":
+                p2 = _phase2_compare(conn, cid, base, comp)
+                title = "Exclusion Phase (Precision): where the runs diverge"
+                diag = (f"A vs B: of {p2['excl_input']} pages both runs kept at the Inclusion Phase, "
+                        f"{p2['flips']['total']} end with a different final result, "
+                        f"{p2['flips']['exclusion_driven']} of those driven by the Exclusion Phase.\n"
+                        f"Flip rate by Inclusion Phase confidence band:\n"
+                        + "\n".join(f"  {b['band']}: {b['flipped']}/{b['input']} flipped" for b in p2['bands']))
+            else:
+                ov = _overall_compare(conn, cid, base, comp); cf = ov.get("confusion", {})
+                title = "Overall run-to-run reliability"
+                diag = (f"A vs B over {ov['shared']} shared pages: final-shortlist agreement "
+                        f"{ov['agree_pct']}%, {ov['sym_diff']} pages end differently, mean Inclusion Phase "
+                        f"score change {ov['score_mean_abs_delta']}. Final in/out: both-in {cf.get('both_in')}, "
+                        f"A-only {cf.get('base_only')}, B-only {cf.get('comp_only')}, both-out {cf.get('both_out')}.")
+        else:
+            return JSONResponse({"error": "unknown card"}, status_code=400)
+        prompt = (f"TOPIC: {category.get('display_name') or cat.display_name(category)}\n"
+                  f"CARD: {title}\n\nNUMBERS:\n{diag}\n\nExplain this card.")
+        cfg = _ai_config_for_phase(conn, "exclusion")
+        budget, spent = _budget(conn), _daily_spend(conn)
+        if budget > 0 and spent >= budget:
+            return JSONResponse({"error": f"Daily AI budget of ${budget:.2f} reached "
+                                 f"(${spent:.4f} spent today)."}, status_code=402)
+        res = await run_in_threadpool(_ai_chat, cfg, _EXPLAIN_CARD_SYSTEM,
+                                      [{"role": "user", "content": prompt}], 400)
+        if res.get("error") or res.get("fatal"):
+            return JSONResponse({"error": res.get("error") or "AI error"}, status_code=502)
+        _log_ai_usage(conn, res.get("cost_usd") or 0.0, res.get("input_tokens"),
+                      res.get("output_tokens"), "explain-card")
+        return JSONResponse({"explanation": (res.get("reply") or "").strip(),
+                             "model": res.get("actual_model"), "cost": res.get("cost_usd")})
     finally:
         conn.close()
 

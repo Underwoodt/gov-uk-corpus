@@ -49,9 +49,14 @@
     {# Card 0: the last (up to) 4 runs' Phase-1 score distributions, grouped side by side (A–D). #}
     <div class="card" id="card-runcompare" style="max-width:860px;padding:18px 22px;margin-top:8px;" hidden>
       <h3 style="margin:0 0 4px;">Score distribution across the last runs <span class="secondary" style="font-weight:400;font-size:14px;">— A–D, side by side</span></h3>
-      <p class="secondary" style="margin:0 0 12px;max-width:720px;">The Phase-1 inclusion-score spread for the most recent runs (newest = A), grouped by score band. Where the A–D bars differ a lot within a band, the scoring isn't repeatable there. Which run is which — and how they differ — is in the key below.</p>
+      <p class="secondary" style="margin:0 0 12px;max-width:720px;">The Inclusion Phase score spread for the most recent runs (newest = A), grouped by score band. Where the A–D bars differ a lot within a band, the scoring isn't repeatable there. Which run is which — and how they differ — is in the key below.</p>
+      <div class="explain-wrap" style="margin:0 0 12px;">
+        <button class="btn secondary-btn explain-btn" type="button" data-card="distribution" style="padding:4px 12px;font-size:13px;">Explain this (AI)</button>
+        <span class="secondary explain-status" id="explain-status-distribution" style="font-size:13px;margin-left:8px;"></span>
+        <div class="explain-out" id="explain-out-distribution" hidden style="font-size:14px;line-height:1.5;margin:10px 0 0;border-left:4px solid var(--blue);background:var(--surface-2);padding:8px 12px;border-radius:0 5px 5px 0;max-width:760px;"></div>
+      </div>
       <div id="rc-legend" style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:0 0 6px;"></div>
-      <svg id="rc-chart" viewBox="0 0 680 324" style="width:100%;max-width:680px;height:auto;" role="img" aria-label="Phase-1 inclusion score distribution for the last four runs, grouped side by side per score band."></svg>
+      <svg id="rc-chart" viewBox="0 0 680 324" style="width:100%;max-width:680px;height:auto;" role="img" aria-label="Inclusion Phase score distribution for the last four runs, grouped side by side per score band."></svg>
       <p class="secondary" style="font-size:13px;margin:8px 0 0;max-width:720px;" id="rc-note"></p>
       <div class="table-wrap" style="margin-top:12px;">
         <table id="rc-table" style="font-size:14px;">
@@ -64,9 +69,14 @@
 
     {# Card 1: Phase 1 (inclusion) — the last 4 runs' accept/reject, then A vs each recent run. #}
     <div class="card" id="card-phase1" style="max-width:1160px;padding:18px 22px;margin-top:8px;">
-      <h3 style="margin:0 0 4px;">Phase 1 – Inclusion (Recall): accepted vs rejected</h3>
-      <p class="secondary" style="margin:0 0 12px;">Each run's Phase-1 verdicts over the pages it evaluated (A = newest). The charts below
+      <h3 style="margin:0 0 4px;">Inclusion Phase (Recall): accepted vs rejected</h3>
+      <p class="secondary" style="margin:0 0 12px;">Each run's Inclusion Phase verdicts over the pages it evaluated (A = newest). The charts below
         compare A's <em>final</em> outcome against each recent run over the pages that pair shares.</p>
+      <div class="explain-wrap" style="margin:0 0 12px;">
+        <button class="btn secondary-btn explain-btn" type="button" data-card="inclusion" style="padding:4px 12px;font-size:13px;">Explain this (AI)</button>
+        <span class="secondary explain-status" id="explain-status-inclusion" style="font-size:13px;margin-left:8px;"></span>
+        <div class="explain-out" id="explain-out-inclusion" hidden style="font-size:14px;line-height:1.5;margin:10px 0 0;border-left:4px solid var(--blue);background:var(--surface-2);padding:8px 12px;border-radius:0 5px 5px 0;max-width:760px;"></div>
+      </div>
       <div class="table-wrap">
         <table id="p1-table" style="font-size:15px;">
           <thead><tr><th>Run</th><th>Model</th><th title="Distinct prompt configs, named i–iv (see key below)">Prompt</th><th class="num">Accepted</th><th class="num">Rejected</th><th class="num">Unscored</th><th class="num">Total</th></tr></thead>
@@ -76,7 +86,7 @@
       <p class="secondary" style="font-size:12px;margin:6px 0 0;" id="p1-prompt-key"></p>
       <div style="margin:18px 0 0;border-top:1px solid var(--border);padding-top:14px;">
         <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--muted);margin:0 0 10px;">
-          <span style="font-weight:700;color:var(--ink,#0b0c0c);font-size:13px;">Final outcome by Phase-1 score — A vs each recent run</span>
+          <span style="font-weight:700;color:var(--ink,#0b0c0c);font-size:13px;">Final outcome by Inclusion Phase score — A vs each recent run</span>
           <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:11px;height:11px;background:#1d70b8;border-radius:2px;"></span>Same in both</span>
           <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:11px;height:11px;background:#d4351c;border-radius:2px;"></span>Flipped</span>
         </div>
@@ -87,9 +97,14 @@
 
     {# Card 2: Phase 2 (exclusion) — A vs each recent run, side by side. #}
     <div class="card" id="card-phase2" style="max-width:1160px;padding:18px 22px;margin-top:16px;">
-      <h3 style="margin:0 0 4px;">Phase 2 – Exclusion (Precision): where the runs diverge</h3>
-      <p class="secondary" style="margin:0 0 12px;">Of the pages <em>both</em> runs in each pair kept at Phase 1, how their exclusion passes judged them —
+      <h3 style="margin:0 0 4px;">Exclusion Phase (Precision): where the runs diverge</h3>
+      <p class="secondary" style="margin:0 0 12px;">Of the pages <em>both</em> runs in each pair kept at the Inclusion Phase, how their Exclusion passes judged them —
         A against each recent run, side by side.</p>
+      <div class="explain-wrap" style="margin:0 0 12px;">
+        <button class="btn secondary-btn explain-btn" type="button" data-card="exclusion" style="padding:4px 12px;font-size:13px;">Explain this (AI)</button>
+        <span class="secondary explain-status" id="explain-status-exclusion" style="font-size:13px;margin-left:8px;"></span>
+        <div class="explain-out" id="explain-out-exclusion" hidden style="font-size:14px;line-height:1.5;margin:10px 0 0;border-left:4px solid var(--blue);background:var(--surface-2);padding:8px 12px;border-radius:0 5px 5px 0;max-width:760px;"></div>
+      </div>
       <div id="p2-cols" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px;"></div>
       <p class="secondary" style="font-size:12px;margin:8px 0 0;" id="p2-prompt-key"></p>
       <p class="secondary" style="font-size:13px;margin:12px 0 0;max-width:720px;" id="p2-note"></p>
@@ -99,6 +114,11 @@
     <div class="card" id="card-overall" style="max-width:1160px;padding:18px 22px;margin-top:16px;">
       <h3 style="margin:0 0 4px;">Overall performance: run-to-run reliability</h3>
       <p class="secondary" style="margin:0 0 12px;">A's final shortlist compared against each recent run, over the pages each pair shares.</p>
+      <div class="explain-wrap" style="margin:0 0 12px;">
+        <button class="btn secondary-btn explain-btn" type="button" data-card="overall" style="padding:4px 12px;font-size:13px;">Explain this (AI)</button>
+        <span class="secondary explain-status" id="explain-status-overall" style="font-size:13px;margin-left:8px;"></span>
+        <div class="explain-out" id="explain-out-overall" hidden style="font-size:14px;line-height:1.5;margin:10px 0 0;border-left:4px solid var(--blue);background:var(--surface-2);padding:8px 12px;border-radius:0 5px 5px 0;max-width:760px;"></div>
+      </div>
       <div id="ov-cols" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px;"></div>
       <p class="secondary" style="margin:12px 0 0;" id="ov-note"></p>
     </div>
@@ -163,7 +183,7 @@
     // can sit side by side (A vs B, A vs C, A vs D). Blue = same final outcome, red = flipped.
     function flipChartSVG(hist) {
       const W = 340, H = 240, L = 32, R = 8, T = 12, B = 38, pw = W - L - R, ph = H - T - B;
-      let s = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:380px;height:auto;" role="img" aria-label="Final outcome by Phase-1 score: same versus flipped.">`;
+      let s = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:380px;height:auto;" role="img" aria-label="Final outcome by Inclusion Phase score: same versus flipped.">`;
       // Keep every band (even empty ones) so the A-vs-B/C/D charts share one aligned x-axis.
       const data = (hist || []);
       if (!data.reduce((a, d) => a + (d.pages || 0), 0)) return s + `<text x="${W / 2}" y="${H / 2}" text-anchor="middle" font-size="12" fill="#6f777b">no shared scored pages</text></svg>`;
@@ -251,7 +271,7 @@
         // Second line: the named band this bucket rolls up into (wrong sense / in passing / …).
         s += `<text x="${cx}" y="${H - BM + 30}" text-anchor="middle" font-size="9" fill="#6f777b">${BUCKET_BAND[label] || ""}</text>`;
       });
-      s += `<text x="${L + pw / 2}" y="${H - 6}" text-anchor="middle" font-size="11" fill="#6f777b">Phase-1 inclusion score · band</text>`;
+      s += `<text x="${L + pw / 2}" y="${H - 6}" text-anchor="middle" font-size="11" fill="#6f777b">Inclusion Phase score · band</text>`;
       svg.innerHTML = s;
     }
     function renderRunTable(series) {
@@ -302,7 +322,7 @@
         msg = `Across the last ${withData.length} runs, kept pages ranged <strong>${fmtInt(minK)}–${fmtInt(maxK)}</strong>`
           + (maxK - minK > 0 ? ` (a spread of ${fmtInt(maxK - minK)})` : " — identical")
           + `; low-confidence keeps (score ≤ 0.35) ran <strong>${loB}–${hiB}%</strong> of keeps. `
-          + `Predicted run-to-run risk: <strong>${risk}</strong> — the bars diverge most in the low-confidence bands, where a Phase-2 re-decision flips pages. `
+          + `Predicted run-to-run risk: <strong>${risk}</strong> — the bars diverge most in the low-confidence bands, where an Exclusion Phase re-decision flips pages. `
           + "Sharpen the exclusion criteria / add examples for those bands to make runs repeatable.";
       }
       if (empties.length) msg += ` <span class="secondary">(${empties.map(s => s.letter).join(", ")} scored no pages.)</span>`;
@@ -388,11 +408,11 @@
         }).join("");
         return `<div class="cmp-tbl" style="min-width:0;--head:${PAIR_TINT[c.letter] || PAIR_TINT.A};">`
           + `<div style="font-size:13px;font-weight:700;margin:0 0 2px;">A vs ${c.letter}</div>`
-          + `<div class="secondary" style="font-size:12px;margin:0 0 6px;">${fmtInt(p2.excl_input)} kept by both at Phase 1</div>`
+          + `<div class="secondary" style="font-size:12px;margin:0 0 6px;">${fmtInt(p2.excl_input)} kept by both at the Inclusion Phase</div>`
           + `<table style="font-size:13px;width:100%;margin:0 0 8px;"><thead><tr><th>Run</th><th class="num">Kept</th><th class="num">Dropped</th></tr></thead><tbody>`
           + `<tr><td><strong>A</strong>${runTagModel(p2.baseline.model, p2.baseline.trial, pnP2)}</td><td class="num">${fmtInt(p2.baseline.kept)}</td><td class="num">${fmtInt(p2.baseline.dropped)}</td></tr>`
           + `<tr><td><strong>${c.letter}</strong>${runTagModel(p2.comparison.model, p2.comparison.trial, pnP2)}</td><td class="num">${fmtInt(p2.comparison.kept)}</td><td class="num">${fmtInt(p2.comparison.dropped)}</td></tr></tbody></table>`
-          + `<div style="font-size:13px;margin:0 0 6px;"><strong>${fmtInt(p2.flips.total)}</strong> end different · <strong>${pct}%</strong> Phase-2 driven</div>`
+          + `<div style="font-size:13px;margin:0 0 6px;"><strong>${fmtInt(p2.flips.total)}</strong> end different · <strong>${pct}%</strong> Exclusion Phase driven</div>`
           + `<table style="font-size:12px;width:100%;"><thead><tr><th>Score</th><th class="num">Input</th><th class="num">Both kept</th><th class="num">Both dropped</th><th class="num">Flipped</th><th class="num">Flip%</th></tr></thead><tbody>${bands}</tbody></table></div>`;
       }).join("");
       const keyEl = document.getElementById("p2-prompt-key");
@@ -401,7 +421,7 @@
       const note = document.getElementById("p2-note");
       if (!arr.length) { note.textContent = ""; return; }
       const lo = Math.min(...arr), hi = Math.max(...arr);
-      note.innerHTML = `Final-result flips ran <strong>${lo === hi ? fmtInt(hi) : fmtInt(lo) + "–" + fmtInt(hi)}</strong> pages across the comparisons, concentrated in the low-confidence bands — that's Phase-2 (exclusion) instability. Add decisive KEEP / DROP examples for those bands to stabilise it.`;
+      note.innerHTML = `Final-result flips ran <strong>${lo === hi ? fmtInt(hi) : fmtInt(lo) + "–" + fmtInt(hi)}</strong> pages across the comparisons, concentrated in the low-confidence bands — that's Exclusion Phase instability. Add decisive KEEP / DROP examples for those bands to stabilise it.`;
     }
     function renderOvComparisons(A, data, pn) {
       document.getElementById("ov-cols").innerHTML = data.map(c => {
@@ -423,9 +443,9 @@
       if (!ok.length) { note.textContent = ""; return; }
       const ags = ok.map(c => c.ov.agree_pct), lo = Math.min(...ags), hi = Math.max(...ags);
       const repeatable = Math.max(...ok.map(c => c.ov.score_mean_abs_delta)) <= 0.05;
-      note.innerHTML = `Final-shortlist agreement with A ran <strong>${lo === hi ? hi : lo + "–" + hi}%</strong>. Phase-1 scores are `
+      note.innerHTML = `Final-shortlist agreement with A ran <strong>${lo === hi ? hi : lo + "–" + hi}%</strong>. Inclusion Phase scores are `
         + (repeatable ? "<strong>highly</strong>" : "only moderately")
-        + " repeatable; low agreement with a small score change means the variance is coming from Phase 2, not the scoring.";
+        + " repeatable; low agreement with a small score change means the variance is coming from the Exclusion Phase, not the scoring.";
     }
     async function load() {
       const j = await (await fetch(`/api/categories/${CID}/runs`)).json();
@@ -494,6 +514,36 @@
       } catch (e) { document.getElementById("review-status").textContent = "Could not run the review."; }
       finally { reviewBtn.disabled = false; }
     });
+
+    // Per-card "Explain this (AI)": a short, data-driven plain-English read of one card, on demand.
+    // Uses the newest pair (A vs B) for the comparison cards, or the shown run set for distribution.
+    function explainPayload(card) {
+      if (card === "distribution") return { card, runs: RUNS.slice(0, 4).map(r => r.run_id) };
+      return { card, baseline: A_RUN && A_RUN.run_id, comparison: COMPS[0] && COMPS[0].run.run_id };
+    }
+    document.querySelectorAll(".explain-btn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const card = btn.dataset.card;
+        const status = document.getElementById("explain-status-" + card);
+        const out = document.getElementById("explain-out-" + card);
+        const p = explainPayload(card);
+        if (card === "distribution" ? !(p.runs || []).length : !(p.baseline && p.comparison)) {
+          status.textContent = "Need at least two runs."; return;
+        }
+        btn.disabled = true; status.textContent = "Thinking… (uses API credit)"; out.hidden = true;
+        try {
+          const j = await (await fetch(`/api/categories/${CID}/analysis/explain-card`,
+            { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })).json();
+          if (j.error) { status.textContent = "Error: " + j.error; return; }
+          status.textContent = "";
+          out.innerHTML = mdToHtml(j.explanation || "_(no reply)_")
+            + `<div class="secondary" style="font-size:11px;margin-top:6px;">from ${rcEsc(j.model || "model")}${j.cost ? " · $" + Number(j.cost).toFixed(4) : ""}</div>`;
+          out.hidden = false;
+        } catch (e) { status.textContent = "Could not run."; }
+        finally { btn.disabled = false; }
+      });
+    });
+
     const copyBtn = document.getElementById("review-copy");
     if (copyBtn) copyBtn.addEventListener("click", () => {
       navigator.clipboard.writeText(lastReview || "");
