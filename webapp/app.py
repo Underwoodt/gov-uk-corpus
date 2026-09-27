@@ -2561,10 +2561,34 @@ def _json_list(raw) -> list:
         return []
 
 
+# Quoted spans in prose: straight/curly double quotes, and single/curly-single quotes only when
+# they sit at word boundaries (so an apostrophe in "page's" / "it's" is not mistaken for a quote).
+_QUOTE_RE = re.compile(
+    r'"([^"\n]{2,200})"'
+    r'|“([^”\n]{2,200})”'
+    r"|(?<![A-Za-z0-9])['‘]([^'’\n]{2,200}?)['’](?![A-Za-z0-9])")
+
+
+def _quotes_from_text(text) -> list:
+    """Quoted phrases the model embedded in its prose (e.g. an exclusion reason that cites the one
+    place a term appears). Used to surface 'evidence' for the exclusion phase, which returns no
+    structured evidence field of its own."""
+    if not text:
+        return []
+    out, seen = [], set()
+    for m in _QUOTE_RE.finditer(str(text)):
+        q = (m.group(1) or m.group(2) or m.group(3) or "").strip(" .,:;")
+        k = q.lower()
+        if len(q) >= 2 and not q.isdigit() and k not in seen:
+            seen.add(k)
+            out.append(q)
+    return out
+
+
 def _reasons_map(conn, run_id) -> dict:
     """{url: {keep, score, reason, raw_reply, evidence[], where_hit[], topic}} for one phase-run.
-    The grounding fields (topic/where_hit/evidence) are written by the inclusion pass, so they are
-    populated on inclusion rows and empty on exclusion rows."""
+    The grounding fields (topic/where_hit/evidence) are written by the inclusion pass; for rows
+    without them (exclusion rows) we surface any quoted phrases from the reason instead."""
     if not run_id:
         return {}
     P = shortlist._P
@@ -2577,6 +2601,8 @@ def _reasons_map(conn, run_id) -> dict:
         d["evidence"] = _json_list(d.get("evidence"))
         d["where_hit"] = _json_list(d.get("where_hit"))
         d["topic"] = d.get("primary_topic") or ""
+        if not d["evidence"]:                       # no structured evidence (exclusion) → parse the reason
+            d["evidence"] = _quotes_from_text(d.get("reason"))
         out[d["url"]] = d
     return out
 
