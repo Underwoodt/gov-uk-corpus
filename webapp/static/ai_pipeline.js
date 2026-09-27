@@ -86,7 +86,7 @@
         msg = "⛔ Stopped — low credit balance. Check your Anthropic Credit Balance.";
       else if (s.error) msg = "⚠️ Stopped: " + s.error;
       else if (s.stopped === "budget" || s.stop_reason === "budget") msg += " · ⛔ stopped: daily budget reached";
-      else if (s.stopped === "cap" || s.stop_reason === "cap") msg += " · ⏸ reached the per-run page limit — Execute again to continue";
+      else if (s.stopped === "cap" || s.stop_reason === "cap") msg += " · ⏸ reached the per-run page limit — Complete the run to continue";
       else msg += " · ✅ finished";
     }
     if (st) st.textContent = msg;
@@ -107,25 +107,28 @@
   }
 
   async function loadActiveSummary() {
-    const box = $("active-summary");
+    // The per-phase active-run summary table moved to the run's own page (guc-0006). Here we only
+    // still poll live progress when the active run is being completed/resumed.
+    const box = $("active-summary");   // absent in the merged Pipeline Runs view
     let j;
     try { j = await (await fetch(`/api/categories/${CID}/active-run`)).json(); }
     catch (e) { return; }
-    if (!j || !j.run) { if (box) box.hidden = true; return; }
-    box.hidden = false;
-    $("as-name").textContent = j.run.name || j.run.run_id;
-    const p = statusPill(j.status), el = $("as-status");
-    el.textContent = p.t; el.style.background = p.bg; el.style.color = p.c;
-    $("as-rows").innerHTML = (j.chain || []).map(r =>
-      `<tr><td>${esc(r.phase || "—")}</td><td>${esc(r.provider || "—")}</td>`
-      + `<td class="mono">${esc(r.model || "—")}</td>`
-      + `<td class="num">${fmtInt(r.pages)}</td><td class="num">${fmtInt(r.kept)}</td>`
-      + `<td class="num">${fmtInt(r.dropped)}</td><td class="num">${fmtInt(r.in_tokens)}</td>`
-      + `<td class="num">${fmtInt(r.out_tokens)}</td><td class="num">$${(r.cost || 0).toFixed(2)}</td></tr>`).join("");
-    if (j.status === "in_progress") {
-      const run = $("run-bg"); if (run) run.disabled = true;
-      if (!bgTimer) beginBgPolling();
+    if (box) {
+      if (!j || !j.run) { box.hidden = true; }
+      else {
+        box.hidden = false;
+        $("as-name").textContent = j.run.name || j.run.run_id;
+        const p = statusPill(j.status), el = $("as-status");
+        el.textContent = p.t; el.style.background = p.bg; el.style.color = p.c;
+        $("as-rows").innerHTML = (j.chain || []).map(r =>
+          `<tr><td>${esc(r.phase || "—")}</td><td>${esc(r.provider || "—")}</td>`
+          + `<td class="mono">${esc(r.model || "—")}</td>`
+          + `<td class="num">${fmtInt(r.pages)}</td><td class="num">${fmtInt(r.kept)}</td>`
+          + `<td class="num">${fmtInt(r.dropped)}</td><td class="num">${fmtInt(r.in_tokens)}</td>`
+          + `<td class="num">${fmtInt(r.out_tokens)}</td><td class="num">$${(r.cost || 0).toFixed(2)}</td></tr>`).join("");
+      }
     }
+    if (j && j.run && j.status === "in_progress" && !bgTimer) beginBgPolling();
   }
 
   async function loadRuns() {
@@ -136,8 +139,8 @@
     const activeRun = j.active || null;
     const line = $("active-run-line");
     if (line) line.textContent = activeRun
-      ? `Active run: ${activeRun} (Execute Active Run adds to it; “Create New Run” to compare a different model).`
-      : "No active run — “Execute Active Run” starts one with the model set in Settings.";
+      ? `Active run: ${activeRun} — the run that “Complete the run” resumes if it stopped early. Use “New Run” to start a fresh run (e.g. a different model).`
+      : "No runs yet — click “New Run” to start one with the model set in Settings.";
     // Stalled banner (a run left running with no live driver).
     const banner = $("stalled-banner");
     if (banner) {
@@ -235,37 +238,18 @@
     await loadRuns();
   }
 
-  // Nested tabs inside the AI Pipeline: Active Run (controls) vs Run History (runs list).
-  // `which` defaults to the current choice (lets the host re-apply it when the pipeline tab
-  // becomes visible). pane-id is only claimed when the pipeline panel is actually showing.
-  function showNested(which) {
-    if (which === undefined) which = curNested;
-    curNested = which;
-    const btns = document.querySelectorAll(".subtab2");
-    btns.forEach(b => b.classList.toggle("current", b.dataset.subtab2 === which));
-    const a = $("tab2-active"), h = $("tab2-history");
-    if (a) a.hidden = which !== "active";
-    if (h) h.hidden = which !== "history";
-    const active = [...btns].find(b => b.dataset.subtab2 === which);
+  // Single 'Pipeline Runs' view now (Active Run + Run History merged). Kept so the host page can
+  // call it when the pipeline tab becomes visible, to claim the page-ref badge.
+  function showNested() {
     const pane = $("pane-id");
+    const tab = document.querySelector(".ai-pipeline .tabs .current[data-tabid]");
     const panel = document.querySelector(".ai-pipeline") && document.querySelector(".ai-pipeline").closest(".subpanel");
-    if (pane && active && panel && !panel.hidden) pane.textContent = active.dataset.tabid;
-    try { localStorage.setItem("ai-pipeline-subtab2-" + CID, which); } catch (e) {}
+    if (pane && tab && panel && !panel.hidden) pane.textContent = tab.dataset.tabid;
   }
 
   let wired = false;
   function wireOnce() {
     if (wired) return; wired = true;
-    document.querySelectorAll(".subtab2").forEach(b =>
-      b.addEventListener("click", e => { e.preventDefault(); showNested(b.dataset.subtab2); }));
-    const run = $("run-bg"); if (run) run.addEventListener("click", async () => {
-      run.disabled = true;
-      try {
-        const j = await (await fetch(`/api/categories/${CID}/evaluate-bg/start`, { method: "POST" })).json();
-        if (j.error) { $("eval-status").textContent = "Error: " + j.error; run.disabled = false; return; }
-        beginBgPolling();
-      } catch (e) { $("eval-status").textContent = "Could not start background run."; run.disabled = false; }
-    });
     const stop = $("stop-bg"); if (stop) stop.addEventListener("click", async () => {
       stop.disabled = true;
       try { await fetch(`/api/categories/${CID}/evaluate-bg/stop`, { method: "POST" }); } catch (e) {}
@@ -287,15 +271,12 @@
 
   window.AIPipeline = {
     loadRuns: () => loadRuns(),
-    showNested: (which) => showNested(which),
+    showNested: () => showNested(),
     init(cid, options) {
       CID = cid;
       hooks = options || {};
       wireOnce();
-      // Active Run is always the default; only an explicit #history hash (e.g. from the Run
-      // performance sub-tab bar) opens Run History on load.
-      const hash = (location.hash || "").replace("#", "");
-      showNested(hash === "history" ? "history" : "active");
+      showNested();
       loadRuns();
       // Resume showing progress if a background run is already going.
       (async () => {

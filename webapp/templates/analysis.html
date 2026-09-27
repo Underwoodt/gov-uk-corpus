@@ -41,10 +41,9 @@
 
   <div class="tabpanel">
     <div class="tabs" role="tablist" style="margin-bottom:20px;">
-      <a href="{{ url_for('ai_pipeline_page', cid=category.id) }}" data-tabid="guc-0004c1" role="tab">Active Run</a>
-      <a href="{{ url_for('ai_pipeline_page', cid=category.id) }}#history" data-tabid="guc-0004c2" role="tab" data-level="advanced">Run History</a>
+      <a href="{{ url_for('ai_pipeline_page', cid=category.id) }}" data-tabid="guc-0004c1" role="tab">Pipeline Runs</a>
       <a href="{{ url_for('performance_page', cid=category.id) }}" data-tabid="guc-0004c3" role="tab" data-level="advanced">Run performance</a>
-      <span class="current" data-tabid="guc-0004c4">Data Analysis</span>
+      <span class="current" data-tabid="guc-0004c4">Compare Runs</span>
     </div>
     <h2>How repeatable are the last runs?</h2>
     <p class="hint" style="margin-top:-20px;max-width:720px;">Pick the <strong>baseline (A)</strong> below; the cards
@@ -157,16 +156,16 @@
     </div>
 
     {# Card 5: apply the accepted suggestions to the shortlist's Filter Parameters, then go to
-       the Active Run (guc-0004c1) to re-execute. Populated from the review above. #}
+       Pipeline Runs (guc-0004c1) to start a new run. Populated from the review above. #}
     <div class="card" id="card-apply" hidden style="max-width:860px;padding:18px 22px;margin-top:16px;">
       <h3 style="margin:0 0 4px;">Apply to shortlist</h3>
       <p class="secondary" style="margin:0 0 12px;max-width:720px;">Tick the suggestions to accept, then apply them to this
-        shortlist's Filter Parameters and go to the Active Run to re-execute. Unticked suggestions are left unchanged.
+        shortlist's Filter Parameters and go to Pipeline Runs to start a new run. Unticked suggestions are left unchanged.
         The button is <strong style="color:#00703c;">green</strong> when the accepted set would change the current spec, and
         white when nothing would change.</p>
       <div id="apply-rows"></div>
       <div class="controls" style="align-items:center;gap:12px;margin-top:14px;">
-        <button class="btn secondary-btn" id="apply-btn" type="button">Apply &amp; go to Active Run</button>
+        <button class="btn secondary-btn" id="apply-btn" type="button">Apply &amp; go to Pipeline Runs</button>
         <span id="apply-status" class="secondary"></span>
       </div>
     </div>

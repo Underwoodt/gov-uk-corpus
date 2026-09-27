@@ -3,7 +3,7 @@
 {% block title %}{{ title }} — {{ category.display_name }}{% endblock %}
 {% block content %}
 
-  <a class="back" href="{{ url_for('analysis_page', cid=category.id) }}?baseline={{ baseline or '' }}&amp;comparison={{ comparison or '' }}">‹ Data Analysis</a>
+  <a class="back" href="{{ url_for('analysis_page', cid=category.id) }}?baseline={{ baseline or '' }}&amp;comparison={{ comparison or '' }}">‹ Compare Runs</a>
 
   <h1 style="margin:18px 0 4px;">{{ title }}</h1>
   <p class="secondary" style="margin:0 0 14px;">{{ category.display_name }}

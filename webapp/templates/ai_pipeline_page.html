@@ -29,7 +29,7 @@
 
   <div class="tabpanel">
     {# Selection funnel — Sankey + counts table showing how each filter narrows the corpus,
-       then the AI keep/drop. Shown above the Active Run / Run History tabs. #}
+       then the AI keep/drop. Shown above the Pipeline Runs tab. #}
     <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;">
       <h2 style="margin:0;">Selection funnel</h2>
       <button type="button" class="btn secondary-btn" id="refresh-funnel"
@@ -98,7 +98,7 @@
     </div>
     <p class="hint" id="ai-input-note" hidden style="margin:-10px 0 24px;max-width:640px;"></p>
 
-    {# The AI Pipeline (Active Run / Run History) — rendered in a visible .subpanel so the
+    {# The AI Pipeline (Pipeline Runs) — rendered in a visible .subpanel so the
        shared script claims the pane-id. #}
     <section class="subpanel" role="tabpanel">
       {% set ai_ref = page_ref %}
