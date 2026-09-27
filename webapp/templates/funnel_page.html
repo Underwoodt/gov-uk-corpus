@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_category_tabs.html" import category_tabs with context %}
+{% from "_sql.html" import sql_panel %}
 {% set page_ref = "guc-0004c" %}
 {% block page_id %}{{ page_ref }}5{% endblock %}
 {% block title %}{{ category.display_name }} — selection funnel{% endblock %}
@@ -14,6 +15,19 @@
     #funnel th { white-space:normal; }
     #funnel td { white-space:nowrap; }
     #funnel td .detail { white-space:normal; }
+    /* Keyword-matching breakdowns (below the funnel): compact side-by-side bars. */
+    .breakdowns { display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));
+      gap:10px 32px; margin-top:16px; align-items:start; max-width:900px; }
+    #kw-venn { max-width:900px; }
+    .breakdowns > div { margin-top:0 !important; }
+    .breakdowns table { margin-bottom:0; }
+    .bd-name { max-width:190px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+      font-size:12px; padding:1px 8px 1px 0; }
+    .bd-cell { width:100%; padding:1px 8px; }
+    .bd-track { background:#eef0f1; border-radius:999px; height:7px; }
+    .bd-fill { height:100%; background:var(--blue,#1d70b8); border-radius:999px; }
+    .bd-val { text-align:right; font-weight:700; font-size:12px; white-space:nowrap;
+      padding:1px 0; font-variant-numeric:tabular-nums; }
   </style>
 
   <a class="back" href="{{ url_for('list_categories_page') }}">‹ Shortlists</a>
@@ -25,7 +39,6 @@
     <div class="tabs" role="tablist" style="margin-bottom:20px;">
       <a href="{{ url_for('ai_pipeline_page', cid=category.id) }}" data-tabid="guc-0004c1" role="tab">Pipeline Runs</a>
       <span class="current" data-tabid="guc-0004c5">Selection funnel</span>
-      <a href="{{ url_for('keyword_matching_page', cid=category.id) }}" data-tabid="guc-0004c2" role="tab">Keyword Matching</a>
       <a href="{{ url_for('performance_page', cid=category.id) }}" data-tabid="guc-0004c3" role="tab">Run performance</a>
       <a href="{{ url_for('analysis_page', cid=category.id) }}" data-tabid="guc-0004c4" role="tab">Compare Runs</a>
     </div>
@@ -93,6 +106,63 @@
       </table>
     </div>
     <p class="hint" id="ai-input-note" hidden style="margin:-10px 0 24px;max-width:640px;"></p>
+
+    <h2 style="margin:26px 0 4px;border-top:1px solid var(--border);padding-top:22px;">Keyword Matching</h2>
+    <p class="hint" style="margin:0 0 6px;max-width:720px;">How the deterministic filters matched this shortlist — which
+      organisations and document types contributed, which keywords matched, and how those keywords overlap.</p>
+
+    <div class="breakdowns">
+      <div id="org-breakdown">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
+          <h3 style="margin:0;font-size:15px;">Which organisations matched</h3>
+          <a href="#" id="org-toggle" hidden style="font-size:13px;">Show all</a>
+        </div>
+        <p class="hint" style="margin:2px 0 6px;font-size:12px;">Pages per organisation (they overlap, so don't sum to the total).</p>
+        <table style="width:100%;"><tbody id="org-rows"><tr><td class="secondary" style="padding:8px 6px;"><span class="spinner"></span> Loading…</td></tr></tbody></table>
+        <p id="org-empty" class="secondary" hidden>No organisations set for this shortlist.</p>
+        {{ sql_panel("org-sql") }}
+      </div>
+
+      <div id="doc-breakdown">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
+          <h3 style="margin:0;font-size:15px;">Which document types matched</h3>
+          <a href="#" id="doc-toggle" hidden style="font-size:13px;">Show all</a>
+        </div>
+        <p class="hint" style="margin:2px 0 6px;font-size:12px;">Shortlist pages by document type (each page counts once).</p>
+        <table style="width:100%;"><tbody id="doc-rows"><tr><td class="secondary" style="padding:8px 6px;"><span class="spinner"></span> Loading…</td></tr></tbody></table>
+        <p id="doc-empty" class="secondary" hidden>No document types in this shortlist.</p>
+        {{ sql_panel("doc-sql") }}
+      </div>
+    </div>
+
+    <div id="kw-venn" style="margin-top:22px;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;">
+        <h3 style="margin:0;font-size:15px;">Keyword overlap</h3>
+        <label class="secondary" style="font-size:13px;">Keywords in diagram
+          <select id="venn-n" style="font:inherit;padding:3px 6px;border:2px solid var(--black);border-radius:4px;margin-left:4px;">
+            <option value="2">2</option><option value="3">3</option>
+            <option value="4">4</option><option value="5" selected>5</option>
+          </select>
+        </label>
+      </div>
+      <p class="hint" style="margin:2px 0 8px;font-size:12px;max-width:820px;">How the top keywords co-occur — each bar is a
+        combination of terms and the pages matching exactly that set; the dots show which terms it covers.</p>
+      <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start;">
+        <div id="upset-svg" style="overflow-x:auto;flex:2 1 380px;min-width:0;"></div>
+        <div id="kw-breakdown" style="flex:1 1 240px;min-width:220px;">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
+            <h3 style="margin:0;font-size:15px;">Which terms matched</h3>
+            <a href="#" id="kw-toggle" hidden style="font-size:13px;">Show all</a>
+          </div>
+          <p class="hint" style="margin:2px 0 6px;font-size:12px;">Pages containing each keyword (terms overlap, so don't sum to the total).</p>
+          <table style="width:100%;"><tbody id="kw-rows"><tr><td class="secondary" style="padding:8px 6px;"><span class="spinner"></span> Loading…</td></tr></tbody></table>
+          <p id="kw-empty" class="secondary" hidden>No keywords set for this shortlist.</p>
+          {{ sql_panel("kw-sql") }}
+        </div>
+      </div>
+      <p id="venn-status" class="secondary" style="margin:8px 0 0;font-size:12px;"></p>
+      {{ sql_panel("venn-sql") }}
+    </div>
   </div>
 
   <script>
@@ -289,5 +359,166 @@
         loadAiInput();
       } finally { btn.disabled = false; }
     });
+
+    // ---- Keyword Matching breakdowns (below the funnel) ----
+    function esc(s) { const d = document.createElement("div"); d.textContent = s == null ? "" : s; return d.innerHTML; }
+    const VENN_COLORS = ["#1d70b8", "#00703c", "#d4351c", "#4c2c92", "#28a197"];
+    function renderUpset(keywords, counts, cap){
+      var n=keywords.length, combos=[];
+      for (var m=1; m<(1<<n); m++){ if (counts[m]) combos.push({mask:m, count:counts[m]}); }
+      combos.sort(function(a,b){ return b.count-a.count; });
+      if (cap) combos=combos.slice(0, cap);
+      if (!combos.length) return "";
+      var max=Math.max.apply(null, combos.map(function(c){return c.count;}));
+      var leftW=180, colW=30, barH=110, padTop=16, rowH=24;
+      var matrixTop=padTop+barH+22, W=leftW+combos.length*colW+16, H=matrixTop+n*rowH+8;
+      var s=`<svg viewBox="0 0 ${W} ${H}" width="${W}" style="max-width:100%;" xmlns="http://www.w3.org/2000/svg">`;
+      for (var i=0;i<n;i++){ if (i%2===0) s+=`<rect x="0" y="${matrixTop+i*rowH}" width="${W}" height="${rowH}" fill="#f3f2f1"/>`; }
+      combos.forEach(function(c,j){ var x=leftW+j*colW+colW/2, h=Math.round(c.count/max*barH), y=padTop+barH-h;
+        s+=`<rect x="${x-9}" y="${y}" width="18" height="${Math.max(1,h)}" fill="var(--blue,#1d70b8)" rx="2"/>`
+          +`<text x="${x}" y="${y-4}" text-anchor="middle" font-size="11" font-weight="700" fill="#0b0c0c">${fmtInt(c.count)}</text>`; });
+      for (var i=0;i<n;i++){ var yr=matrixTop+i*rowH+rowH/2;
+        s+=`<rect x="8" y="${yr-6}" width="12" height="12" rx="3" fill="${VENN_COLORS[i]}"/>`
+          +`<text x="26" y="${yr}" dominant-baseline="central" font-size="13">${esc(keywords[i])}</text>`; }
+      combos.forEach(function(c,j){ var x=leftW+j*colW+colW/2, members=[];
+        for (var i=0;i<n;i++){ if (c.mask&(1<<i)) members.push(i); }
+        for (var i=0;i<n;i++){ var yr=matrixTop+i*rowH+rowH/2; s+=`<circle cx="${x}" cy="${yr}" r="5.5" fill="#cfd4d6"/>`; }
+        if (members.length>1){ s+=`<line x1="${x}" y1="${matrixTop+members[0]*rowH+rowH/2}" x2="${x}" y2="${matrixTop+members[members.length-1]*rowH+rowH/2}" stroke="#0b0c0c" stroke-width="2"/>`; }
+        members.forEach(function(i){ s+=`<circle cx="${x}" cy="${matrixTop+i*rowH+rowH/2}" r="5.5" fill="#0b0c0c"/>`; });
+      });
+      return s+`</svg>`;
+    }
+    async function loadVenn(){
+      var n = parseInt(document.getElementById("venn-n").value, 10) || 5;
+      var status=document.getElementById("venn-status");
+      var upset=document.getElementById("upset-svg");
+      upset.innerHTML = `<span class="spinner"></span>`;
+      try {
+        var j = await (await fetch(`/api/categories/${CID}/keyword-overlap?n=${n}`)).json();
+        if (window.setSqlPanel) setSqlPanel("venn-sql", j.sql);
+        if (j.pending){ upset.innerHTML=""; status.textContent="Shortlist not computed yet — it populates after the nightly refresh or when the shortlist is saved."; return; }
+        var kws = j.keywords || [];
+        if (kws.length < 2){ upset.innerHTML=""; status.textContent="Add at least two keywords to see their overlap."; return; }
+        var counts={}; (j.regions||[]).forEach(function(r){ counts[r.mask]=r.count; });
+        upset.innerHTML = renderUpset(kws, counts, 16);
+        status.textContent = (kws.length < n) ? `Only ${kws.length} keywords available.` : "";
+      } catch(e){ upset.innerHTML=""; status.textContent="Could not load the overlap diagram."; }
+    }
+    document.getElementById("venn-n").addEventListener("change", loadVenn);
+
+    const ORG_TOP = 8;
+    let orgExpanded = false, orgRows = [];
+    async function loadOrgBreakdown() {
+      document.getElementById("org-rows").innerHTML =
+        `<tr><td class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr>`;
+      let pending = false;
+      try {
+        const j = await (await fetch(`/api/categories/${CID}/org-breakdown`)).json();
+        orgRows = j.orgs || []; pending = !!j.pending;
+        if (window.setSqlPanel) setSqlPanel("org-sql", j.sql);
+      } catch (e) {
+        document.getElementById("org-rows").innerHTML = `<tr><td class="secondary" style="padding:10px 6px;">Could not load this breakdown.</td></tr>`; return;
+      }
+      if (pending) {
+        document.getElementById("org-rows").innerHTML = `<tr><td class="secondary" style="padding:10px 6px;">Shortlist not computed yet — it populates after the nightly refresh or when the shortlist is saved.</td></tr>`;
+        document.getElementById("org-toggle").hidden = true; return;
+      }
+      document.getElementById("org-empty").hidden = orgRows.length !== 0;
+      document.getElementById("org-toggle").hidden = orgRows.length <= ORG_TOP;
+      renderOrgRows();
+    }
+    function renderOrgRows() {
+      const max = Math.max(1, ...orgRows.map(o => o.count || 0));
+      const shown = orgExpanded ? orgRows : orgRows.slice(0, ORG_TOP);
+      document.getElementById("org-rows").innerHTML = shown.map(o => {
+        const pct = o.count == null ? 0 : Math.round((o.count / max) * 100);
+        return `<tr><td class="bd-name" title="${esc(o.organisation)}">${esc(o.organisation)}</td>`
+          + `<td class="bd-cell"><div class="bd-track"><div class="bd-fill" style="width:${pct}%;"></div></div></td>`
+          + `<td class="bd-val">${fmtInt(o.count)}</td></tr>`;
+      }).join("");
+    }
+    document.getElementById("org-toggle").addEventListener("click", e => {
+      e.preventDefault(); orgExpanded = !orgExpanded;
+      e.target.textContent = orgExpanded ? "Show top " + ORG_TOP : "Show all"; renderOrgRows();
+    });
+
+    const DOC_TOP = 8;
+    let docExpanded = false, docRows = [];
+    const docLabel = s => String(s || "").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+    async function loadDoctypeBreakdown() {
+      document.getElementById("doc-rows").innerHTML =
+        `<tr><td class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr>`;
+      let pending = false;
+      try {
+        const j = await (await fetch(`/api/categories/${CID}/doctype-breakdown`)).json();
+        docRows = j.types || []; pending = !!j.pending;
+        if (window.setSqlPanel) setSqlPanel("doc-sql", j.sql);
+      } catch (e) {
+        document.getElementById("doc-rows").innerHTML = `<tr><td class="secondary" style="padding:10px 6px;">Could not load this breakdown.</td></tr>`; return;
+      }
+      if (pending) {
+        document.getElementById("doc-rows").innerHTML = `<tr><td class="secondary" style="padding:10px 6px;">Shortlist not computed yet — it populates after the nightly refresh or when the shortlist is saved.</td></tr>`;
+        document.getElementById("doc-toggle").hidden = true; return;
+      }
+      document.getElementById("doc-empty").hidden = docRows.length !== 0;
+      document.getElementById("doc-toggle").hidden = docRows.length <= DOC_TOP;
+      renderDoctypeRows();
+    }
+    function renderDoctypeRows() {
+      const max = Math.max(1, ...docRows.map(t => t.count || 0));
+      const shown = docExpanded ? docRows : docRows.slice(0, DOC_TOP);
+      document.getElementById("doc-rows").innerHTML = shown.map(t => {
+        const pct = t.count == null ? 0 : Math.round((t.count / max) * 100);
+        return `<tr><td class="bd-name" title="${esc(t.document_type)}">${esc(docLabel(t.document_type))}</td>`
+          + `<td class="bd-cell"><div class="bd-track"><div class="bd-fill" style="width:${pct}%;"></div></div></td>`
+          + `<td class="bd-val">${fmtInt(t.count)}</td></tr>`;
+      }).join("");
+    }
+    document.getElementById("doc-toggle").addEventListener("click", e => {
+      e.preventDefault(); docExpanded = !docExpanded;
+      e.target.textContent = docExpanded ? "Show top " + DOC_TOP : "Show all"; renderDoctypeRows();
+    });
+
+    const KW_TOP = 8;
+    let kwExpanded = false, kwTerms = [];
+    async function loadKeywordBreakdown() {
+      document.getElementById("kw-rows").innerHTML =
+        `<tr><td class="secondary" style="padding:10px 6px;"><span class="spinner"></span> Loading…</td></tr>`;
+      let pending = false;
+      try {
+        const j = await (await fetch(`/api/categories/${CID}/keyword-breakdown`)).json();
+        kwTerms = j.terms || []; pending = !!j.pending;
+        if (window.setSqlPanel) setSqlPanel("kw-sql", j.sql);
+      } catch (e) {
+        document.getElementById("kw-rows").innerHTML = `<tr><td class="secondary" style="padding:10px 6px;">Could not load this breakdown.</td></tr>`; return;
+      }
+      if (pending) {
+        document.getElementById("kw-rows").innerHTML = `<tr><td class="secondary" style="padding:10px 6px;">Shortlist not computed yet — it populates after the nightly refresh or when the shortlist is saved.</td></tr>`;
+        document.getElementById("kw-toggle").hidden = true; return;
+      }
+      document.getElementById("kw-empty").hidden = kwTerms.length !== 0;
+      document.getElementById("kw-toggle").hidden = kwTerms.length <= KW_TOP;
+      renderKeywordRows();
+    }
+    function renderKeywordRows() {
+      const max = Math.max(1, ...kwTerms.map(t => t.count || 0));
+      const shown = kwExpanded ? kwTerms : kwTerms.slice(0, KW_TOP);
+      document.getElementById("kw-rows").innerHTML = shown.map(t => {
+        const pct = t.count == null ? 0 : Math.round((t.count / max) * 100);
+        const val = t.count == null ? "error" : fmtInt(t.count);
+        return `<tr><td class="bd-name" title="${esc(t.keyword)}">${esc(t.keyword)}</td>`
+          + `<td class="bd-cell"><div class="bd-track"><div class="bd-fill" style="width:${pct}%;"></div></div></td>`
+          + `<td class="bd-val">${val}</td></tr>`;
+      }).join("");
+    }
+    document.getElementById("kw-toggle").addEventListener("click", e => {
+      e.preventDefault(); kwExpanded = !kwExpanded;
+      e.target.textContent = kwExpanded ? "Show top " + KW_TOP : "Show all"; renderKeywordRows();
+    });
+
+    loadOrgBreakdown();
+    loadDoctypeBreakdown();
+    loadKeywordBreakdown();
+    loadVenn();
   </script>
 {% endblock %}
