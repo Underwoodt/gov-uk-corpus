@@ -9,9 +9,12 @@
        Tighten every cell, pull the numeric columns in tight, and give each pair a distinct
        header tint via the --head custom property set on the card wrapper. */
     .cmp-tbl table { margin:0 0 8px; }
-    .cmp-tbl th, .cmp-tbl td { padding:6px 7px; font-size:12px; }
-    .cmp-tbl th { font-size:11px; letter-spacing:0; }
-    .cmp-tbl th.num, .cmp-tbl td.num { padding-left:4px; padding-right:7px; white-space:nowrap; }
+    .cmp-tbl th, .cmp-tbl td { padding:5px 5px; font-size:11px; }
+    /* Headers wrap on spaces (BOTH / KEPT) and never break mid-word, so the columns stay
+       narrow and the 6-column band table fits inside its card. */
+    .cmp-tbl th { font-size:10px; letter-spacing:0; white-space:normal; overflow-wrap:normal; word-break:normal; vertical-align:bottom; }
+    .cmp-tbl th.num, .cmp-tbl td.num { padding-left:3px; padding-right:5px; }
+    .cmp-tbl td.num { white-space:nowrap; }   /* numbers themselves never wrap */
     .cmp-tbl th:first-child, .cmp-tbl td:first-child { padding-left:2px; }
     .cmp-tbl thead th { background:var(--head, var(--surface-2)); }
   </style>
