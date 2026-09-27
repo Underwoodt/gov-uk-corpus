@@ -64,7 +64,7 @@
      in progress. Populated by JS polling evaluate-bg/status; auto-refreshes on finish. #}
   <div id="run-live" hidden style="margin:12px 0 0;padding:10px 14px;border-left:4px solid var(--blue);
     background:var(--panel-blue);border-radius:0 5px 5px 0;max-width:840px;font-size:15px;">
-    <span class="spinner"></span> <span id="run-live-text">Checking…</span>
+    <span class="spinner" id="run-live-spin"></span> <span id="run-live-text">Checking…</span>
   </div>
 
   {% if run_state != 'complete' %}
@@ -289,6 +289,7 @@
   <script>
     const CID = {{ category.id }}, RUN_ID = {{ run.run_id|tojson }};
     const CHAIN_IDS = {{ (chain|map(attribute='run_id')|list)|tojson }};
+    const RUN_STATE = {{ run_state|tojson }};   // DB truth at page load: 'fresh' | 'partial' | 'complete' | …
 
     // Per-page results (guc-0006): fetched from the run's results API, filtered client-side.
     (function () {
@@ -419,35 +420,61 @@
     (function () {
       const box = document.getElementById("run-live");
       const txt = document.getElementById("run-live-text");
+      const spin = document.getElementById("run-live-spin");
       if (!box) return;
       const CHAIN = CHAIN_IDS.map(String);
       let timer = null, everRan = false;
+      function stop() { if (timer) { clearInterval(timer); timer = null; } }
+      function showSpinner(on) { if (spin) spin.style.display = on ? "" : "none"; }
+      // DB truth: is any run in this lineage actually alive (live pid + fresh heartbeat)?
+      // The in-memory evaluate-bg/status can outlive the real job — a restart wipes it
+      // (so a resumed/duplicate entry can read running with no live driver), and a job
+      // that finished without clearing its flag lingers as running — so we never trust
+      // it on its own.
+      async function chainAlive() {
+        try {
+          const rj = await (await fetch(`/api/categories/${CID}/runs`)).json();
+          return (rj.runs || []).some(r => CHAIN.includes(String(r.run_id)) && r.alive);
+        } catch (e) { return false; }
+      }
+      function finish() {                       // nothing is genuinely running
+        stop();
+        showSpinner(false);                     // spinner never spins for a finished run
+        if (everRan) {                          // was running this session → reload for final data
+          box.hidden = false;
+          box.style.borderLeftColor = "var(--green)";
+          txt.textContent = "Evaluation finished — refreshing…";
+          setTimeout(() => location.reload(), 900);
+        } else {
+          box.hidden = true;                    // no banner
+        }
+      }
       async function check() {
         let s;
         try { s = await (await fetch(`/api/categories/${CID}/evaluate-bg/status`)).json(); }
         catch (e) { return; }
-        const mine = !!(s.running && s.run_id != null && CHAIN.includes(String(s.run_id)));
+        const claimed = !!(s.running && s.run_id != null && CHAIN.includes(String(s.run_id)));
+        // Reconcile the in-memory claim against the DB: show "still evaluating" only if a
+        // run in this lineage is genuinely alive. Guards the banner against outliving a restart.
+        const mine = claimed && await chainAlive();
         refreshActionBtn(mine);   // disabled while running (and Start Run needs a >3-char name)
         if (mine) {
           everRan = true;
           box.hidden = false;
+          showSpinner(true);
           const done = Number(s.done || 0).toLocaleString();
           txt.textContent = `This run is still evaluating in the background — ${done} pages done`
             + (s.remaining != null ? ` · ${Number(s.remaining).toLocaleString()} left` : "")
             + (s.phase ? ` · ${s.phase}` : "");
           if (!timer) timer = setInterval(check, 3000);
         } else {
-          if (timer) { clearInterval(timer); timer = null; }
-          if (everRan) {                        // was running, now done → show final data
-            box.style.borderLeftColor = "var(--green)";
-            txt.innerHTML = "Evaluation finished — refreshing…";
-            setTimeout(() => location.reload(), 900);
-          } else {
-            box.hidden = true;                  // not running: no banner
-          }
+          finish();
         }
       }
-      check();
+      // Load-time reconciliation: if the DB already says this run's lineage is complete,
+      // never show the "still evaluating" banner or spinner — and don't even poll.
+      if (RUN_STATE === "complete") { box.hidden = true; showSpinner(false); refreshActionBtn(false); }
+      else check();
     })();
 
     // Advanced-only: lazily fetch the completed example prompts the first time the rolldown opens.
