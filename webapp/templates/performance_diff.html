@@ -120,20 +120,20 @@
       {% elif final_diffs %}<span class="muted-sm">— list</span>{% endif %}</summary>
     {% if final_diffs %}
     <table class="dc-table" style="margin-top:10px;">
-      <thead><tr><th>Page</th><th>Run 1 · baseline</th><th>Run 2</th></tr></thead>
+      <thead><tr><th>Page</th><th>Keywords</th><th>Evidence</th><th>Run 1 · baseline</th><th>Run 2</th></tr></thead>
       <tbody>
         {% for d in final_diffs %}
         <tr>
-          <td>
-            <a class="dc-url" href="{{ d.url }}" target="_blank" rel="noopener" title="{{ d.url }}">{{ d.title or d.url }}</a>
-            {% if d.keywords %}<div class="fd-kw">{% for k in d.keywords %}<span class="kw-pill">{{ k }}</span>{% endfor %}</div>{% endif %}
+          <td><a class="dc-url" href="{{ d.url }}" target="_blank" rel="noopener" title="{{ d.url }}">{{ d.title or d.url }}</a></td>
+          <td>{% if d.keywords %}<div class="fd-kw">{% for k in d.keywords %}<span class="kw-pill">{{ k }}</span>{% endfor %}</div>{% else %}<span class="muted-sm">—</span>{% endif %}</td>
+          <td class="fd-evid-col">
             {% if d.evidence or d.topic %}
             <details class="fd-evid">
               <summary>evidence</summary>
               {% if d.topic %}<div class="muted-sm" style="margin:4px 0;">Topic: <strong>{{ d.topic }}</strong>{% if d.where_hit %} · found in {{ d.where_hit|join(', ') }}{% endif %}</div>{% endif %}
-              {% if d.evidence %}<ul style="margin:4px 0 0;padding-left:18px;">{% for q in d.evidence %}<li class="muted-sm">“{{ q }}”</li>{% endfor %}</ul>{% endif %}
+              {% if d.evidence %}<ul style="margin:4px 0 0;padding-left:16px;">{% for q in d.evidence %}<li class="muted-sm">“{{ q }}”</li>{% endfor %}</ul>{% endif %}
             </details>
-            {% endif %}
+            {% else %}<span class="muted-sm">—</span>{% endif %}
           </td>
           <td>{% if d.base_final %}<span class="kd keep">IN</span>{% else %}<span class="kd drop">OUT</span>{% endif %}</td>
           <td>{% if d.other_final %}<span class="kd keep">IN</span>{% else %}<span class="kd drop">OUT</span>{% endif %}</td>
@@ -196,9 +196,10 @@
     .diff-card { padding:14px 16px; margin:0 0 14px; }
     .dc-head { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:10px; }
     .dc-url { font-size:14px; overflow-wrap:anywhere; color:var(--blue); font-weight:600; }
-    .fd-kw { margin:4px 0 0; display:flex; flex-wrap:wrap; gap:4px; }
+    .fd-kw { display:flex; flex-wrap:wrap; gap:4px; }
     .kw-pill { display:inline-block; font-size:11px; font-weight:600; padding:1px 8px; border-radius:999px; background:#e8f1f8; color:#0b3d6b; }
-    .fd-evid { margin:5px 0 0; }
+    .fd-evid-col { max-width:360px; }
+    .fd-evid { margin:0; }
     .fd-evid > summary { cursor:pointer; font-size:12px; color:var(--blue); font-weight:600; }
     .fd-evid li { margin:2px 0; }
     .dc-phase { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; padding:2px 8px; border-radius:999px; white-space:nowrap; }
