@@ -57,6 +57,21 @@
       <p class="secondary" style="font-size:13px;margin:8px 0 0;max-width:720px;" id="disc-note"></p>
     </div>
 
+    {# Card 0b: the last (up to) 4 runs' Phase-1 score distributions, grouped side by side (A–D). #}
+    <div class="card" id="card-runcompare" style="max-width:860px;padding:18px 22px;margin-top:8px;" hidden>
+      <h3 style="margin:0 0 4px;">Score distribution across the last runs <span class="secondary" style="font-weight:400;font-size:14px;">— A–D, side by side</span></h3>
+      <p class="secondary" style="margin:0 0 12px;max-width:720px;">The Phase-1 inclusion-score spread for the most recent runs (newest = A), grouped by score band. Where the A–D bars differ a lot within a band, the scoring isn't repeatable there. Which run is which — and how they differ — is in the key below.</p>
+      <div id="rc-legend" style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:0 0 6px;"></div>
+      <svg id="rc-chart" viewBox="0 0 680 300" style="width:100%;max-width:680px;height:auto;" role="img" aria-label="Phase-1 inclusion score distribution for the last four runs, grouped side by side per score band."></svg>
+      <div class="table-wrap" style="margin-top:12px;">
+        <table id="rc-table" style="font-size:14px;">
+          <thead><tr><th>Run</th><th>Date</th><th>Time</th><th>Model</th><th title="Distinct prompt configs, named i–iv (see key)">Prompt</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="secondary" style="font-size:12px;margin:8px 0 0;max-width:720px;" id="rc-key"></p>
+    </div>
+
     {# Card 1: Phase 1 (inclusion) decisions on the shared pages. #}
     <div class="card" id="card-phase1" style="max-width:860px;padding:18px 22px;margin-top:8px;">
       <h3 style="margin:0 0 4px;">Phase 1 – Inclusion (Recall): accepted vs rejected</h3>
@@ -247,6 +262,71 @@
       s += `<text x="${L + pw / 2}" y="${H - 6}" text-anchor="middle" font-size="11" fill="#6f777b">Phase-1 inclusion score</text>`;
       svg.innerHTML = s;
     }
+    // ---- Last-4-runs grouped score distribution (A–D) ----
+    const RC_COLORS = ["#1d70b8", "#f47738", "#00703c", "#6f2c91"];   // A, B, C, D
+    const RC_LETTERS = ["A", "B", "C", "D"];
+    const rcEsc = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    function renderGroupedChart(series) {
+      const svg = document.getElementById("rc-chart");
+      if (!svg) return;
+      const buckets = series[0].hist.map(d => d.label);
+      const B = buckets.length, K = series.length;
+      const maxV = Math.max(1, ...series.flatMap(se => se.hist.map(d => d.pages || 0)));
+      const W = 680, H = 300, L = 44, R = 12, T = 16, BM = 44, pw = W - L - R, ph = H - T - BM;
+      const step = maxV <= 20 ? 5 : maxV <= 50 ? 10 : maxV <= 120 ? 20 : maxV <= 300 ? 50 : 100;
+      const yMax = Math.ceil(maxV / step) * step, y = v => T + ph - (v / yMax) * ph;
+      const groupW = pw / B, inner = groupW * 0.82, bw = inner / K;
+      let s = "";
+      for (let g = 0; g <= yMax; g += step) {
+        s += `<line x1="${L}" y1="${y(g)}" x2="${W - R}" y2="${y(g)}" stroke="#e1e0d9" stroke-width="1"/>`;
+        s += `<text x="${L - 6}" y="${y(g) + 4}" text-anchor="end" font-size="11" fill="#6f777b">${g}</text>`;
+      }
+      buckets.forEach((label, bi) => {
+        const gx = L + groupW * bi + (groupW - inner) / 2;
+        series.forEach((se, si) => {
+          const pages = (se.hist[bi] || {}).pages || 0;
+          if (pages > 0) {
+            const x = gx + si * bw;
+            s += `<rect x="${x}" y="${y(pages)}" width="${Math.max(1, bw - 1)}" height="${(T + ph) - y(pages)}" fill="${se.color}"><title>${se.letter} · ${label}: ${pages}</title></rect>`;
+          }
+        });
+        s += `<text x="${L + groupW * (bi + 0.5)}" y="${H - BM + 18}" text-anchor="middle" font-size="11" fill="#0b0c0c">${label}</text>`;
+      });
+      s += `<text x="${L + pw / 2}" y="${H - 6}" text-anchor="middle" font-size="11" fill="#6f777b">Phase-1 inclusion score</text>`;
+      svg.innerHTML = s;
+    }
+    function renderRunTable(series) {
+      document.getElementById("rc-legend").innerHTML = series.map(se =>
+        `<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:11px;height:11px;background:${se.color};border-radius:2px;"></span><strong>${se.letter}</strong> ${rcEsc((se.run.name || "").trim() || fmtDate(se.run.started_at))}</span>`).join("");
+      // Distinct prompt configs → i–iv, so the table shows only which runs differ.
+      const roman = ["i", "ii", "iii", "iv", "v", "vi"];
+      const order = [], num = {};
+      const sigOf = r => { const t = r.trial || {}; return JSON.stringify([t.variant || "current", t.template_version == null ? "?" : t.template_version, t.body_limit == null ? "?" : t.body_limit]); };
+      series.forEach(se => { const sig = sigOf(se.run); if (!(sig in num)) { order.push(sig); num[sig] = roman[order.length - 1] || ("#" + order.length); } });
+      document.querySelector("#rc-table tbody").innerHTML = series.map(se => {
+        const dt = se.run.started_at || "";
+        return `<tr><td><strong>${se.letter}</strong></td><td>${rcEsc(dt.slice(0, 10))}</td><td>${rcEsc(dt.slice(11, 19))}</td>`
+          + `<td class="mono">${rcEsc(se.run.actual_model || se.run.model || "—")}</td><td>${num[sigOf(se.run)]}</td></tr>`;
+      }).join("");
+      const describe = sig => { const a = JSON.parse(sig); return `variant ${a[0]}, template v${a[1]}, body ${a[2]}`; };
+      document.getElementById("rc-key").innerHTML = "Prompt key: " + order.map(sig => `<strong>${num[sig]}</strong> = ${rcEsc(describe(sig))}`).join(" · ")
+        + (order.length === 1 ? " — all runs shown used the same prompt config." : "");
+    }
+    async function loadRunGroups() {
+      const card = document.getElementById("card-runcompare");
+      if (!card) return;
+      const runs = RUNS.slice(0, 4);   // the most recent (up to) 4 runs, newest first = A
+      if (!runs.length) { card.hidden = true; return; }
+      const data = await Promise.all(runs.map(r =>
+        fetch(`/api/categories/${CID}/analysis/discriminability?run=${encodeURIComponent(r.run_id)}`)
+          .then(x => x.json()).catch(() => null)));
+      const series = [];
+      runs.forEach((r, i) => { if (data[i] && data[i].score_hist) series.push({ letter: RC_LETTERS[i], color: RC_COLORS[i], run: r, hist: data[i].score_hist }); });
+      if (!series.length) { card.hidden = true; return; }
+      card.hidden = false;
+      renderGroupedChart(series);
+      renderRunTable(series);
+    }
     async function loadDisc() {
       const run = document.getElementById("disc-run").value;
       if (!run) return;
@@ -331,6 +411,7 @@
       // Single-run picker.
       const dr = document.getElementById("disc-run");
       if (dr && !none) { dr.innerHTML = opts; dr.value = (RUNS[0] || {}).run_id; dr.addEventListener("change", loadDisc); loadDisc(); }
+      if (!none) loadRunGroups();   // last-4-runs grouped score distribution (A–D)
       // Pair pickers.
       const q = new URLSearchParams(location.search);
       [["pick-base", q.get("baseline") || (RUNS[0] || {}).run_id], ["pick-comp", q.get("comparison") || (RUNS[1] || {}).run_id]].forEach(([id, def]) => {
