@@ -4964,7 +4964,7 @@ async def api_analysis_prompt_review(request: Request, cid: int):
             f"Exclusion Phase: of {p2['excl_input']} pages both runs kept at the Inclusion Phase, "
             f"{p2['flips']['total']} end differently and {p2['flips']['exclusion_driven']} of those are "
             f"exclusion-driven.\nFlip rate by Inclusion Phase confidence band:\n"
-            + "\n".join(f"  {b['band']}: {b['flipped']}/{b['pages']} flipped" for b in p2['bands']))
+            + "\n".join(f"  {b['band']}: {b['flipped']}/{b['input']} flipped" for b in p2['bands']))
         prompt = (
             f"TOPIC: {category.get('display_name') or ''}\n\n"
             f"CURRENT INCLUDE CRITERIA:\n{category.get('inclusion_context') or '(none)'}\n\n"
