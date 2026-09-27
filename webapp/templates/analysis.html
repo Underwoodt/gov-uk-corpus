@@ -39,17 +39,24 @@
       <span class="current" data-tabid="guc-0004c4">Data Analysis</span>
     </div>
     <h2>How repeatable are the last runs?</h2>
-    <p class="hint" style="margin-top:-20px;max-width:720px;">The newest run is the <strong>baseline (A)</strong>; the cards below
-      compare it against each of the next most recent runs (<strong>B, C, D</strong>), side by side. Each pair is compared only
-      over the pages present in <em>both</em> of those runs, because a page in one run but not the other reflects a change in the
-      underlying data, not a change in the decisions. See the key on the score-distribution card above for which run is which.</p>
+    <p class="hint" style="margin-top:-20px;max-width:720px;">Pick the <strong>baseline (A)</strong> below; the cards
+      compare it against the up-to-three runs immediately before it (<strong>B, C, D</strong>), side by side. Slide the
+      baseline back through the history to inspect older test cases. Each pair is compared only over the pages present in
+      <em>both</em> of those runs, because a page in one run but not the other reflects a change in the underlying data, not a
+      change in the decisions. See the key on the score-distribution card for which run is which.</p>
+
+    <div id="start-run-wrap" class="controls" hidden style="align-items:center;gap:8px;margin:0 0 16px;flex-wrap:wrap;">
+      <label for="start-run" style="font-size:14px;font-weight:600;">Baseline run (A)</label>
+      <select id="start-run" style="font:inherit;padding:5px 8px;border:2px solid var(--black);border-radius:4px;max-width:560px;"></select>
+      <span class="secondary" style="font-size:13px;">compared against the 3 runs before it (B, C, D)</span>
+    </div>
 
     <p id="an-empty" class="secondary" hidden></p>
 
     {# Card 0: the last (up to) 4 runs' Phase-1 score distributions, grouped side by side (A–D). #}
     <div class="card" id="card-runcompare" style="max-width:860px;padding:18px 22px;margin-top:8px;" hidden>
       <h3 style="margin:0 0 4px;">Score distribution across the last runs <span class="secondary" style="font-weight:400;font-size:14px;">— A–D, side by side</span></h3>
-      <p class="secondary" style="margin:0 0 12px;max-width:720px;">The Inclusion Phase score spread for the most recent runs (newest = A), grouped by score band. Where the A–D bars differ a lot within a band, the scoring isn't repeatable there. Which run is which — and how they differ — is in the key below.</p>
+      <p class="secondary" style="margin:0 0 12px;max-width:720px;">The Inclusion Phase score spread for the baseline (A) and the runs before it, grouped by score band. Where the A–D bars differ a lot within a band, the scoring isn't repeatable there. Which run is which — and how they differ — is in the key below.</p>
       <div class="explain-wrap" style="margin:0 0 12px;">
         <button class="btn secondary-btn explain-btn" type="button" data-card="distribution" style="padding:4px 12px;font-size:13px;">Explain this (AI)</button>
         <span class="secondary explain-status" id="explain-status-distribution" style="font-size:13px;margin-left:8px;"></span>
@@ -174,7 +181,10 @@
       adjudication_hints_drop: {{ (category.adjudication_hints_drop or "") | tojson }},
     };
     let RUNS = [], byId = {};
-    let A_RUN = null, COMPS = [];   // A = newest run; COMPS = B/C/D (for the pair cards + review)
+    let START = 0;                   // index into RUNS of the chosen baseline (A); default = newest
+    let A_RUN = null, COMPS = [];    // A = the baseline run; COMPS = B/C/D (the up-to-3 runs before it)
+    // The A–D window: the baseline plus the (up to) three runs immediately before it (older).
+    function windowRuns() { return RUNS.slice(START, START + 4); }
     const DISC = {};                // run_id -> discriminability response (shared cache)
     function fmtDate(s) { return s ? String(s).slice(0, 19).replace("T", " ") : "—"; }
     const fmtInt = n => Number(n || 0).toLocaleString();
@@ -289,7 +299,7 @@
     async function loadRunGroups() {
       const card = document.getElementById("card-runcompare");
       if (!card) return;
-      const runs = RUNS.slice(0, 4);   // the most recent (up to) 4 runs, newest first = A
+      const runs = windowRuns();   // the baseline (A) + up to 3 runs before it
       if (!runs.length) { card.hidden = true; return; }
       const data = await Promise.all(runs.map(r =>
         fetch(`/api/categories/${CID}/analysis/discriminability?run=${encodeURIComponent(r.run_id)}`)
@@ -328,12 +338,12 @@
       if (empties.length) msg += ` <span class="secondary">(${empties.map(s => s.letter).join(", ")} scored no pages.)</span>`;
       note.innerHTML = msg;
     }
-    // Pair-comparison cards: A (newest) vs each of B/C/D, side by side.
+    // Pair-comparison cards: A (the chosen baseline) vs each of B/C/D (the runs before it), side by side.
     async function renderComparisons() {
-      const A = RUNS[0];
+      const A = RUNS[START];
       if (!A) return;
       A_RUN = A;
-      COMPS = RUNS.slice(1, 4).map((r, i) => ({ letter: RC_LETTERS[i + 1], run: r }));
+      COMPS = RUNS.slice(START + 1, START + 4).map((r, i) => ({ letter: RC_LETTERS[i + 1], run: r }));
       // Phase-1 4-run table (each run's own full-run verdicts) from cached discriminability + pages.
       const shown = [{ letter: "A", run: A }, ...COMPS];
       const rows = await Promise.all(shown.map(async x => {
@@ -447,18 +457,37 @@
         + (repeatable ? "<strong>highly</strong>" : "only moderately")
         + " repeatable; low agreement with a small score change means the variance is coming from the Exclusion Phase, not the scoring.";
     }
+    // Re-render both cards for the current baseline (START). Comparison cards need ≥2 runs.
+    function rerender() {
+      // Clear any open per-card AI explanations — they describe the previous baseline.
+      document.querySelectorAll(".explain-out").forEach(el => { el.hidden = true; el.innerHTML = ""; });
+      document.querySelectorAll(".explain-status").forEach(el => el.textContent = "");
+      if (RUNS.length) loadRunGroups();
+      if (RUNS.length >= 2) renderComparisons();
+    }
     async function load() {
       const j = await (await fetch(`/api/categories/${CID}/runs`)).json();
-      RUNS = (j.runs || []).filter(r => !r.source_run_id);      // inclusion (Phase 1) runs = chain heads
+      RUNS = (j.runs || []).filter(r => !r.source_run_id);      // inclusion runs = chain heads
       RUNS.forEach(r => byId[r.run_id] = r);
       const none = RUNS.length === 0, few = RUNS.length < 2;
-      const opts = RUNS.map(r => `<option value="${r.run_id}">${r.name ? r.name + " · " : ""}${fmtDate(r.started_at)} · ${r.actual_model || r.model || ""}</option>`).join("");
       const empty = document.getElementById("an-empty");
       empty.hidden = !few;
       empty.innerHTML = none ? "No runs yet — evaluate the shortlist on the Explainability tab first."
         : "Only one run so far — the pair-comparison cards below need two runs, but the score-distribution card above works now.";
       ["card-phase1", "card-phase2", "card-overall", "card-review"].forEach(id => { const el = document.getElementById(id); if (el) el.hidden = few; });
-      if (!none) loadRunGroups();      // last-4-runs grouped score distribution (A–D)
+      // Baseline (A) selector: any run can be A; B/C/D are the runs immediately before it.
+      const sel = document.getElementById("start-run"), wrap = document.getElementById("start-run-wrap");
+      if (sel && wrap) {
+        wrap.hidden = RUNS.length < 2;
+        sel.innerHTML = RUNS.map((r, i) => {
+          const label = (r.name ? r.name + " · " : "") + fmtDate(r.started_at) + " · " + (r.actual_model || r.model || "");
+          return `<option value="${i}">${i === 0 ? "newest — " : ""}${rcEsc(label)}</option>`;
+        }).join("");
+        START = Math.min(START, Math.max(0, RUNS.length - 1));
+        sel.value = String(START);
+        sel.onchange = () => { START = parseInt(sel.value, 10) || 0; rerender(); };
+      }
+      if (!none) loadRunGroups();      // grouped score distribution (A–D window)
       if (!few) renderComparisons();   // pair cards: A vs B/C/D
     }
     load();
@@ -518,7 +547,7 @@
     // Per-card "Explain this (AI)": a short, data-driven plain-English read of one card, on demand.
     // Uses the newest pair (A vs B) for the comparison cards, or the shown run set for distribution.
     function explainPayload(card) {
-      if (card === "distribution") return { card, runs: RUNS.slice(0, 4).map(r => r.run_id) };
+      if (card === "distribution") return { card, runs: windowRuns().map(r => r.run_id) };
       return { card, baseline: A_RUN && A_RUN.run_id, comparison: COMPS[0] && COMPS[0].run.run_id };
     }
     document.querySelectorAll(".explain-btn").forEach(btn => {
