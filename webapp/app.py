@@ -4864,6 +4864,24 @@ def analysis_page(request: Request, cid: int):
     return resp
 
 
+@app.get("/categories/{cid}/keyword-matching", response_class=HTMLResponse)
+def keyword_matching_page(request: Request, cid: int):
+    """Keyword Matching tab (guc-0004c2): the deterministic-match breakdowns for a shortlist —
+    organisations, document types, keyword counts and keyword overlap. (Moved here from the
+    Explainability page.) All data is loaded client-side from the *-breakdown / keyword-overlap APIs."""
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    category = cat.get_category(conn, cid)
+    if not category:
+        conn.close()
+        return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
+    category["display_name"] = cat.display_name(category)
+    resp = templates.TemplateResponse("keyword_matching.html", ctx(conn, request, category=category))
+    conn.close()
+    return resp
+
+
 @app.get("/api/categories/{cid}/analysis/phase1")
 def api_analysis_phase1(request: Request, cid: int, baseline: str = "", comparison: str = ""):
     if not authed(request):
