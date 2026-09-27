@@ -99,7 +99,7 @@
           <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:11px;height:11px;background:#1d70b8;border-radius:2px;"></span>Same in both</span>
           <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:11px;height:11px;background:#d4351c;border-radius:2px;"></span>Flipped</span>
         </div>
-        <div id="p1-charts" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px;"></div>
+        <div id="p1-charts"></div>
       </div>
       <p class="secondary" style="font-size:13px;margin:12px 0 0;max-width:720px;" id="p1-note"></p>
     </div>
@@ -217,6 +217,35 @@
         s += `<rect x="${x}" y="${y(same)}" width="${bw}" height="${(T + ph) - y(same)}" fill="#1d70b8"/>`;
         if (d.flipped) s += `<rect x="${x}" y="${y(d.pages)}" width="${bw}" height="${y(same) - y(d.pages)}" fill="#d4351c"><title>${d.label}: ${d.flipped} flipped of ${d.pages}</title></rect>`;
         s += `<text x="${cx}" y="${H - B + 16}" text-anchor="middle" font-size="9" fill="#0b0c0c">${d.label}</text>`;
+      });
+      return s + "</svg>";
+    }
+    // Merged flip chart: all pairs (A vs B/C/D) in ONE grouped+stacked chart. X-axis = the four
+    // bands; within each band the pairs sit side by side; each bar stacks same (blue) + flipped (red).
+    function mergedFlipChartSVG(pairs) {
+      const W = 680, H = 300, L = 36, R = 12, T = 16, BM = 48, pw = W - L - R, ph = H - T - BM;
+      const bands = ((pairs[0] && pairs[0].hist) || []).map(d => d.label);
+      const B = bands.length, K = pairs.length;
+      let s = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:680px;height:auto;" role="img" aria-label="Final outcome by Inclusion Phase score band — A vs each recent run, side by side.">`;
+      if (!B || !K) return s + `<text x="${W / 2}" y="${H / 2}" text-anchor="middle" font-size="12" fill="#6f777b">no shared scored pages</text></svg>`;
+      const maxV = Math.max(1, ...pairs.flatMap(p => p.hist.map(d => d.pages || 0)));
+      const step = maxV <= 10 ? 2 : maxV <= 20 ? 5 : maxV <= 50 ? 10 : maxV <= 120 ? 20 : 50;
+      const yMax = Math.ceil(maxV / step) * step, y = v => T + ph - (v / yMax) * ph;
+      const groupW = pw / B, inner = groupW * 0.82, bw = inner / K;
+      for (let g = 0; g <= yMax; g += step) {
+        s += `<line x1="${L}" y1="${y(g)}" x2="${W - R}" y2="${y(g)}" stroke="#e1e0d9" stroke-width="1"/>`;
+        s += `<text x="${L - 6}" y="${y(g) + 4}" text-anchor="end" font-size="10" fill="#6f777b">${g}</text>`;
+      }
+      bands.forEach((label, bi) => {
+        const gx = L + groupW * bi + (groupW - inner) / 2;
+        pairs.forEach((p, si) => {
+          const d = p.hist[bi] || { pages: 0, flipped: 0 };
+          const x = gx + si * bw, w = Math.max(1, bw - 1), same = (d.pages || 0) - (d.flipped || 0);
+          if (same > 0) s += `<rect x="${x}" y="${y(same)}" width="${w}" height="${(T + ph) - y(same)}" fill="#1d70b8"><title>A vs ${p.letter} · ${label}: ${fmtInt(same)} same of ${fmtInt(d.pages)}</title></rect>`;
+          if (d.flipped) s += `<rect x="${x}" y="${y(d.pages)}" width="${w}" height="${y(same) - y(d.pages)}" fill="#d4351c"><title>A vs ${p.letter} · ${label}: ${fmtInt(d.flipped)} flipped of ${fmtInt(d.pages)}</title></rect>`;
+          s += `<text x="${x + bw / 2}" y="${T + ph + 12}" text-anchor="middle" font-size="9" fill="#505a5f">${p.letter}</text>`;
+        });
+        s += `<text x="${L + groupW * (bi + 0.5)}" y="${H - BM + 34}" text-anchor="middle" font-size="11" fill="#0b0c0c">${label}</text>`;
       });
       return s + "</svg>";
     }
@@ -389,13 +418,20 @@
       renderOvComparisons(A, data, pn);
     }
     function renderP1Comparisons(A, data) {
-      document.getElementById("p1-charts").innerHTML = data.map(c => {
+      // One merged grouped+stacked chart across all pairs, plus a compact per-pair flips/exceptions row.
+      const pairs = data.filter(c => c.p2 && !c.p2.error && c.p2.score_hist)
+        .map(c => ({ letter: c.letter, hist: c.p2.score_hist }));
+      const links = data.map(c => {
         const p2 = c.p2 || {}, flips = (p2.flips && p2.flips.total) || 0;
         const link = listUrl({ context: "phase1_diff", baseline: A.run_id, comparison: c.run.run_id });
-        return `<div style="min-width:0;">`
-          + `<div style="font-size:13px;font-weight:700;margin:0 0 4px;">A vs ${c.letter} <span class="secondary" style="font-weight:400;">· ${fmtInt(flips)} flip${flips === 1 ? "" : "s"} · <a href="${link}">exceptions</a></span></div>`
-          + (p2.error ? `<p class="secondary" style="font-size:12px;">no data</p>` : flipChartSVG(p2.score_hist)) + `</div>`;
-      }).join("");
+        return `<span style="white-space:nowrap;"><strong>A vs ${c.letter}</strong> <span class="secondary" style="font-weight:400;">· ${fmtInt(flips)} flip${flips === 1 ? "" : "s"} · <a href="${link}">exceptions</a></span></span>`;
+      }).join(`<span class="secondary" style="margin:0 10px;">·</span>`);
+      document.getElementById("p1-charts").innerHTML =
+        `<div style="display:flex;flex-wrap:wrap;align-items:center;font-size:13px;margin:0 0 8px;">${links}</div>`
+        + (pairs.length
+            ? mergedFlipChartSVG(pairs)
+              + `<p class="secondary" style="font-size:11px;margin:4px 0 0;">Within each band, bars are ${pairs.map(p => "A vs " + p.letter).join(" · ")} (left → right).</p>`
+            : `<p class="secondary" style="font-size:12px;">no data</p>`);
       const arr = data.filter(c => c.p2 && c.p2.flips).map(c => c.p2.flips.total);
       const note = document.getElementById("p1-note");
       if (!arr.length) { note.textContent = ""; return; }
