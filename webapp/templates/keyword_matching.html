@@ -8,8 +8,9 @@
   <style>
     /* Side-by-side breakdown panels with compact bars. auto-fit lets a single
        visible panel (e.g. no keywords) expand to full width. */
-    .breakdowns { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));
-      gap:10px 32px; margin-top:16px; align-items:start; }
+    .breakdowns { display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));
+      gap:10px 32px; margin-top:16px; align-items:start; max-width:900px; }
+    #kw-venn { max-width:900px; }
     .breakdowns > div { margin-top:0 !important; }
     .breakdowns table { margin-bottom:0; }
     /* Compact breakdown bars: tight rows, thin bars, small type. */
