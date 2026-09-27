@@ -51,7 +51,7 @@
       <h3 style="margin:0 0 4px;">Score distribution across the last runs <span class="secondary" style="font-weight:400;font-size:14px;">— A–D, side by side</span></h3>
       <p class="secondary" style="margin:0 0 12px;max-width:720px;">The Phase-1 inclusion-score spread for the most recent runs (newest = A), grouped by score band. Where the A–D bars differ a lot within a band, the scoring isn't repeatable there. Which run is which — and how they differ — is in the key below.</p>
       <div id="rc-legend" style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:0 0 6px;"></div>
-      <svg id="rc-chart" viewBox="0 0 680 300" style="width:100%;max-width:680px;height:auto;" role="img" aria-label="Phase-1 inclusion score distribution for the last four runs, grouped side by side per score band."></svg>
+      <svg id="rc-chart" viewBox="0 0 680 324" style="width:100%;max-width:680px;height:auto;" role="img" aria-label="Phase-1 inclusion score distribution for the last four runs, grouped side by side per score band."></svg>
       <p class="secondary" style="font-size:13px;margin:8px 0 0;max-width:720px;" id="rc-note"></p>
       <div class="table-wrap" style="margin-top:12px;">
         <table id="rc-table" style="font-size:14px;">
@@ -217,13 +217,18 @@
     function runTagModel(model, trial, pn) {
       return `<div class="secondary" style="font-size:11px;font-weight:400;line-height:1.3;">${rcEsc(model || "—")} · ${pn.of({ trial })}</div>`;
     }
+    // Which named band each fine score bucket belongs to — shown as a second x-axis line so the
+    // 6-bucket distribution still reads against the same four bands as the flip charts/table.
+    const BUCKET_BAND = { "0.0": "wrong sense", "0.1": "in passing", "0.15–0.2": "in passing",
+      "0.25–0.35": "in passing", "0.4–0.65": "moderate", "0.7–1.0": "major" };
     function renderGroupedChart(series) {
       const svg = document.getElementById("rc-chart");
       if (!svg) return;
       const buckets = series[0].hist.map(d => d.label);
       const B = buckets.length, K = series.length;
       const maxV = Math.max(1, ...series.flatMap(se => se.hist.map(d => d.pages || 0)));
-      const W = 680, H = 300, L = 44, R = 12, T = 16, BM = 44, pw = W - L - R, ph = H - T - BM;
+      const W = 680, H = 324, L = 44, R = 12, T = 16, BM = 62, pw = W - L - R, ph = H - T - BM;
+      svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
       const step = maxV <= 20 ? 5 : maxV <= 50 ? 10 : maxV <= 120 ? 20 : maxV <= 300 ? 50 : 100;
       const yMax = Math.ceil(maxV / step) * step, y = v => T + ph - (v / yMax) * ph;
       const groupW = pw / B, inner = groupW * 0.82, bw = inner / K;
@@ -241,9 +246,12 @@
             s += `<rect x="${x}" y="${y(pages)}" width="${Math.max(1, bw - 1)}" height="${(T + ph) - y(pages)}" fill="${se.color}"><title>${se.letter} · ${label}: ${pages}</title></rect>`;
           }
         });
-        s += `<text x="${L + groupW * (bi + 0.5)}" y="${H - BM + 18}" text-anchor="middle" font-size="11" fill="#0b0c0c">${label}</text>`;
+        const cx = L + groupW * (bi + 0.5);
+        s += `<text x="${cx}" y="${H - BM + 16}" text-anchor="middle" font-size="11" fill="#0b0c0c">${label}</text>`;
+        // Second line: the named band this bucket rolls up into (wrong sense / in passing / …).
+        s += `<text x="${cx}" y="${H - BM + 30}" text-anchor="middle" font-size="9" fill="#6f777b">${BUCKET_BAND[label] || ""}</text>`;
       });
-      s += `<text x="${L + pw / 2}" y="${H - 6}" text-anchor="middle" font-size="11" fill="#6f777b">Phase-1 inclusion score</text>`;
+      s += `<text x="${L + pw / 2}" y="${H - 6}" text-anchor="middle" font-size="11" fill="#6f777b">Phase-1 inclusion score · band</text>`;
       svg.innerHTML = s;
     }
     function renderRunTable(series) {
