@@ -2552,15 +2552,33 @@ def _chain_of(conn, head_run_id: str):
     return incl, excl
 
 
+def _json_list(raw) -> list:
+    """Parse a stored JSON array; tolerate NULL / bad data → []."""
+    try:
+        v = json.loads(raw) if raw else []
+        return v if isinstance(v, list) else []
+    except (ValueError, TypeError):
+        return []
+
+
 def _reasons_map(conn, run_id) -> dict:
-    """{url: {keep, score, reason, raw_reply}} for one phase-run."""
+    """{url: {keep, score, reason, raw_reply, evidence[], where_hit[], topic}} for one phase-run.
+    The grounding fields (topic/where_hit/evidence) are written by the inclusion pass, so they are
+    populated on inclusion rows and empty on exclusion rows."""
     if not run_id:
         return {}
     P = shortlist._P
     rows = conn.execute(
-        f"SELECT url, keep, score, reason, raw_reply FROM evaluation_results WHERE run_id = {P}",
-        (run_id,)).fetchall()
-    return {r["url"]: dict(r) for r in rows}
+        f"SELECT url, keep, score, reason, raw_reply, evidence, where_hit, primary_topic "
+        f"FROM evaluation_results WHERE run_id = {P}", (run_id,)).fetchall()
+    out = {}
+    for r in rows:
+        d = dict(r)
+        d["evidence"] = _json_list(d.get("evidence"))
+        d["where_hit"] = _json_list(d.get("where_hit"))
+        d["topic"] = d.get("primary_topic") or ""
+        out[d["url"]] = d
+    return out
 
 
 def _diff_notes_map(conn, base: str, other: str) -> dict:
@@ -2637,14 +2655,9 @@ def performance_diff_page(request: Request, cid: int, base: str = "", other: str
                        if _band(min(bi_m.get(d["url"], {}).get("score") or 0,
                                     oi_m.get(d["url"], {}).get("score") or 0)) == final_band]
 
-    # Per-row display detail: page title (link text), the corpus keywords the page matched, and the
-    # model's grounding evidence (topic + verbatim quotes) from the baseline inclusion run, else other.
-    def _jlist(raw):
-        try:
-            v = json.loads(raw) if raw else []
-            return v if isinstance(v, list) else []
-        except (ValueError, TypeError):
-            return []
+    # Page title (link text) for every page shown, and the corpus keywords each disagreeing page
+    # matched (page-level) — shown on the phase-disagreement cards. The per-phase grounding evidence
+    # already rides on each card cell via _reasons_map. The flip table shows the title only.
     all_urls = list({*(c["url"] for c in p1_cards), *(c["url"] for c in p2_cards),
                      *(d["url"] for d in final_diffs)})
     titles, meta = {}, {}
@@ -2655,30 +2668,13 @@ def performance_diff_page(request: Request, cid: int, base: str = "", other: str
             rr = dict(r)
             titles[rr["url"]] = rr.get("title") or ""
             meta[rr["url"]] = {"content_id": rr.get("content_id")}
+    card_urls = [c["url"] for c in p1_cards + p2_cards]
+    kw = gold._matched_keywords(conn, cid, card_urls, meta) if card_urls else {}
     for c in p1_cards + p2_cards:
         c["title"] = titles.get(c["url"]) or ""
-    fd_urls = [d["url"] for d in final_diffs]
-    kw = gold._matched_keywords(conn, cid, fd_urls, meta) if fd_urls else {}
-    ev = {}
-    if fd_urls:
-        ph_f = ",".join([shortlist._P] * len(fd_urls))
-        for rid in (b_incl and b_incl["run_id"], o_incl and o_incl["run_id"]):
-            if not rid:
-                continue
-            for r in conn.execute(
-                    f"SELECT url, evidence, where_hit, primary_topic FROM evaluation_results "
-                    f"WHERE run_id = {shortlist._P} AND url IN ({ph_f})", tuple([rid] + fd_urls)).fetchall():
-                rr = dict(r)
-                if rr["url"] in ev:
-                    continue
-                quotes, fields = _jlist(rr.get("evidence")), _jlist(rr.get("where_hit"))
-                if quotes or rr.get("primary_topic"):
-                    ev[rr["url"]] = {"quotes": quotes, "fields": fields, "topic": rr.get("primary_topic") or ""}
+        c["keywords"] = kw.get(c["url"], [])
     for d in final_diffs:
         d["title"] = titles.get(d["url"]) or ""
-        d["keywords"] = kw.get(d["url"], [])
-        e = ev.get(d["url"]) or {}
-        d["evidence"], d["where_hit"], d["topic"] = e.get("quotes", []), e.get("fields", []), e.get("topic", "")
 
     trials = {"base": _run_trial(conn, b_incl["run_id"]) if b_incl else {},
               "other": _run_trial(conn, o_incl["run_id"]) if o_incl else {}}

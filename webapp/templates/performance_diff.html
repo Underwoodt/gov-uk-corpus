@@ -16,11 +16,21 @@
     {%- else -%}{{ chip(None) }}{%- endif -%}
   {% endmacro %}
 
+  {# The grounding data the model returned for a cell: primary topic, fields hit, verbatim quotes. #}
+  {% macro evidence(cell) %}
+    {%- if cell and (cell.evidence or cell.topic) -%}
+      <div class="ev">
+        {% if cell.topic %}<div class="ev-topic">Topic: <strong>{{ cell.topic }}</strong>{% if cell.where_hit %} · found in {{ cell.where_hit|join(', ') }}{% endif %}</div>{% endif %}
+        {% if cell.evidence %}<ul class="ev-quotes">{% for q in cell.evidence %}<li>“{{ q }}”</li>{% endfor %}</ul>{% endif %}
+      </div>
+    {%- endif -%}
+  {% endmacro %}
+
   {% macro reason(cell, phase, has_excl) %}
-    {%- if cell and cell.reason -%}<div class="rsn">{{ cell.reason }}</div>
-    {%- elif cell -%}<span class="muted-sm">(no reason recorded)</span>
+    {%- if cell and cell.reason -%}<div class="rsn">{{ cell.reason }}</div>{{ evidence(cell) }}
+    {%- elif cell -%}<span class="muted-sm">(no reason recorded)</span>{{ evidence(cell) }}
     {%- elif phase == 'inclusion' -%}<span class="muted-sm">not scored in this run</span>
-    {%- elif not has_excl -%}<span class="muted-sm">no Phase 2 in this run</span>
+    {%- elif not has_excl -%}<span class="muted-sm">no Exclusion Phase in this run</span>
     {%- else -%}<span class="muted-sm">not reached — dropped at inclusion</span>{%- endif -%}
   {% endmacro %}
 
@@ -29,6 +39,7 @@
       <div class="dc-head">
         <a class="dc-url" href="{{ c.url }}" target="_blank" rel="noopener" title="{{ c.url }}">{{ c.title or c.url }}</a>
         <span class="dc-phase {{ c.phase }}">diverged at {{ 'Inclusion' if c.phase == 'inclusion' else 'Exclusion' }}</span>
+        {% if c.keywords %}<span class="dc-kw">{% for k in c.keywords %}<span class="kw-pill">{{ k }}</span>{% endfor %}</span>{% endif %}
       </div>
       <div class="table-wrap">
         <table class="dc-table">
@@ -120,21 +131,11 @@
       {% elif final_diffs %}<span class="muted-sm">— list</span>{% endif %}</summary>
     {% if final_diffs %}
     <table class="dc-table" style="margin-top:10px;">
-      <thead><tr><th>Page</th><th>Keywords</th><th>Evidence</th><th>Run 1 · baseline</th><th>Run 2</th></tr></thead>
+      <thead><tr><th>Page</th><th>Run 1 · baseline</th><th>Run 2</th></tr></thead>
       <tbody>
         {% for d in final_diffs %}
         <tr>
           <td><a class="dc-url" href="{{ d.url }}" target="_blank" rel="noopener" title="{{ d.url }}">{{ d.title or d.url }}</a></td>
-          <td>{% if d.keywords %}<div class="fd-kw">{% for k in d.keywords %}<span class="kw-pill">{{ k }}</span>{% endfor %}</div>{% else %}<span class="muted-sm">—</span>{% endif %}</td>
-          <td class="fd-evid-col">
-            {% if d.evidence or d.topic %}
-            <details class="fd-evid">
-              <summary>evidence</summary>
-              {% if d.topic %}<div class="muted-sm" style="margin:4px 0;">Topic: <strong>{{ d.topic }}</strong>{% if d.where_hit %} · found in {{ d.where_hit|join(', ') }}{% endif %}</div>{% endif %}
-              {% if d.evidence %}<ul style="margin:4px 0 0;padding-left:16px;">{% for q in d.evidence %}<li class="muted-sm">“{{ q }}”</li>{% endfor %}</ul>{% endif %}
-            </details>
-            {% else %}<span class="muted-sm">—</span>{% endif %}
-          </td>
           <td>{% if d.base_final %}<span class="kd keep">IN</span>{% else %}<span class="kd drop">OUT</span>{% endif %}</td>
           <td>{% if d.other_final %}<span class="kd keep">IN</span>{% else %}<span class="kd drop">OUT</span>{% endif %}</td>
         </tr>
@@ -196,12 +197,13 @@
     .diff-card { padding:14px 16px; margin:0 0 14px; }
     .dc-head { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:10px; }
     .dc-url { font-size:14px; overflow-wrap:anywhere; color:var(--blue); font-weight:600; }
-    .fd-kw { display:flex; flex-wrap:wrap; gap:4px; }
+    .dc-kw { display:inline-flex; flex-wrap:wrap; gap:4px; }
     .kw-pill { display:inline-block; font-size:11px; font-weight:600; padding:1px 8px; border-radius:999px; background:#e8f1f8; color:#0b3d6b; }
-    .fd-evid-col { max-width:360px; }
-    .fd-evid { margin:0; }
-    .fd-evid > summary { cursor:pointer; font-size:12px; color:var(--blue); font-weight:600; }
-    .fd-evid li { margin:2px 0; }
+    /* Grounding evidence shown under each phase's reason. */
+    .ev { margin:6px 0 0; padding-top:6px; border-top:1px dashed var(--border); }
+    .ev-topic { font-size:12px; color:var(--muted); }
+    .ev-quotes { margin:4px 0 0; padding-left:16px; font-size:12px; color:var(--ink); }
+    .ev-quotes li { margin:2px 0; }
     .dc-phase { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; padding:2px 8px; border-radius:999px; white-space:nowrap; }
     .dc-phase.inclusion { background:#e8f1fb; color:#1d4e89; }
     .dc-phase.exclusion { background:#fbeee8; color:#8a3a1a; }
