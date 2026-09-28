@@ -13,11 +13,19 @@
 ## 1. Purpose
 
 GOV.UK is enormous. Analysts frequently need **a defensible list of the pages about one topic, owned
-by the right organisations** — not all of GOV.UK. The Shortlist Builder lets a user save a *category*
-(a reusable query: organisations + document types + keywords + AI include/exclude criteria), narrows
-a local corpus of ~877k GOV.UK pages with a **deterministic selection funnel**, then runs a
-**two-phase LLM pass** to judge the survivors, producing a reviewable, exportable, and **fully
-explainable** shortlist. Every mechanical and AI decision can be traced back to "why this page?".
+by the right organisations** — not all of GOV.UK. The Shortlist Builder lets a user save a
+**shortlist** (a reusable definition: organisations + document types + keywords + AI include/exclude
+criteria), narrows a local corpus of ~877k GOV.UK pages with a **deterministic selection funnel**,
+then runs a **two-phase LLM pass** to judge the survivors, producing a reviewable, exportable, and
+**fully explainable** result. Every mechanical and AI decision can be traced back to "why this page?".
+
+> **Terminology — "shortlist" vs `categories`.** The saved object is a **shortlist** everywhere the
+> product speaks to users (this document, the UI, the Help journeys). In the **database and code** the
+> same object is called a **category**: the `categories` table, the `category_id` foreign key, the
+> `category_*` tables (`category_shortlist_pages`, `category_search_pages`, `category_audit`, …), the
+> `categories.py` module and `_category_tabs.html`. The code name is retained for compatibility, so
+> the two words are interchangeable — **shortlist = category** — and this doc keeps the literal
+> identifiers (`categories`, `category_id`) in the data-model and component sections.
 
 ## 2. System context
 
@@ -107,7 +115,7 @@ idempotent column migrations run in each backend's `init_db()` on startup.
   must equal the `sb_csrf` cookie; safe methods pass), and a security-headers layer
   (`X-Content-Type-Options`, `X-Frame-Options: SAMEORIGIN`, referrer policy; sets the CSRF cookie). A
   Content-Security-Policy is **not yet** set (inline scripts/styles remain).
-- **Templates** (`templates/`, all extend `base.html`) — the category form, preview/pipeline tabs
+- **Templates** (`templates/`, all extend `base.html`) — the shortlist (Filter Parameters) form, preview/pipeline tabs
   (`_category_tabs.html`, `_ai_pipeline.html`, `ai_pipeline_page.html`), the selection funnel, the
   results/audit tables, the download page, the analysis/compare/run-detail pages, gold-labelling,
   settings, accounts, and Help (`help_index.html`/`help_page.html`). `static/` holds `govuk.css` and
@@ -119,10 +127,10 @@ idempotent column migrations run in each backend's `init_db()` on startup.
   `stage_redirects` (resolve to final destination), `stage_attachments` (expand child/attachment
   pages), with `canonical` (URL normalisation), `hashing`, `extract`/`text`, `build_search_text`,
   `view_counts`, `reconcile`, and `run_all` (the nightly orchestrator).
-- **Shortlist domain:** `categories` (saved specs CRUD + validation), `shortlist` (the deterministic
+- **Shortlist domain:** `categories` (saved shortlist specs — CRUD + validation), `shortlist` (the deterministic
   org→doctype→keyword engine, Postgres full-text), `keyword_explain`, `orgs` (registry + hierarchy),
   `facets`/`category_counts` (UI pickers + precomputed sizes), `audit`/`audit_stats` (per-page funnel
-  outcomes), `category_interview` (guided builder), `category_transfer` (export/import a category).
+  outcomes), `category_interview` (guided builder), `category_transfer` (export/import a shortlist).
 - **AI evaluation:** `evaluate` (prompt builders, parsers, run persistence, `prompt_spec_json`),
   `evaluate_driver` (per-page `evaluate_one_page` + `persist_result`, shared by the web driver, the
   retry path and the bench CLI), `llm` (the single model-call site, `PROVIDERS`, credentials, and the
@@ -141,7 +149,7 @@ flowchart TB
   A[GOV.UK sitemap] --> B[Stage 1 fetch + hash + upsert<br/>content table]
   B --> C[Stage 2 redirects] --> D[Stage 3 attachments]
   D --> E[Enrich: search_text · readability · orgs · view_counts]
-  E --> F{Category spec<br/>org · doctype · keywords · include/exclude}
+  E --> F{Shortlist definition<br/>org · doctype · keywords · include/exclude}
   F --> G[Deterministic funnel<br/>org → doctype → keyword]
   G --> H[category_shortlist_pages]
   F --> I[GOV.UK Search hybrid top-up<br/>category_search_pages]
@@ -182,7 +190,7 @@ Full reference: [database.md](../database.md). Grouped tables:
   `search_text`, readability, doc-type/schema, dates, `content_id`, `view_count`), `sitemap`,
   `page_organisations`, `page_links`, `redirects`, `organisations` + `organisation_hierarchy` +
   `organisation_page_counts`; `runs` + `fetch_log` (ingestion provenance).
-- **Categories / shortlist membership:** `categories` (epoch-ms PK; filter + inference fields),
+- **Shortlist membership (`categories`):** `categories` (epoch-ms PK; filter + inference fields),
   `category_page_counts`, `category_shortlist_pages` (deterministic membership + matched keywords),
   `category_search_pages` (hybrid membership + provenance + `es_score`), `category_audit`; view
   `category_shortlist_report`.
@@ -195,7 +203,7 @@ Full reference: [database.md](../database.md). Grouped tables:
 - **Accounts / sessions:** in `schema_auth.sql` (Postgres `auth` schema); roles are code-level
   (`roles.py`).
 
-**Key relationships:** `category_id` links a category to its shortlist/search/audit/eval/gold rows;
+**Key relationships:** `category_id` links a shortlist (`categories` row) to its shortlist/search/audit/eval/gold rows;
 `evaluation_runs.source_run_id` chains an exclusion run to its inclusion run; `content.content_id` is
 the cross-URL identity used for membership; `page_organisations`/`page_links`/`redirects` hang off
 `content.url`.
@@ -261,8 +269,8 @@ flowchart LR
   precise `stop_reason` (`budget` / `cap` / `provider_errors` / `balance` / `config` / `manual`), which
   the UI surfaces (e.g. a low-balance stop advises checking the Anthropic credit balance).
 - **Reproducibility:** each run stamps a `prompt_spec` JSON snapshot (template + git version + the
-  category's include/exclude/keep/drop text + body limit + sampling), so a run's exact prompts are
-  reconstructable later even after the category or templates change. Prompts are **versioned by git
+  shortlist's include/exclude/keep/drop text + body limit + sampling), so a run's exact prompts are
+  reconstructable later even after the shortlist or templates change. Prompts are **versioned by git
   SHA** (the old `prompt_versions` table was retired).
 - **Observability:** Python `logging`; ingestion provenance in `runs` + `fetch_log`; run liveness in
   `run_status`/`pid`/`host`/`heartbeat_at`; SDK retries via `AI_MAX_RETRIES`/`AI_TIMEOUT`.
@@ -308,8 +316,9 @@ flowchart LR
 ## 12. Glossary
 
 - **Corpus** — the local `content` table: one canonical row per GOV.UK page.
-- **Category / Filter Parameters** — a saved, reusable shortlist spec.
-- **Shortlist** — the pages a category's parameters generate (the "Results").
+- **Shortlist** — a saved, reusable definition that generates a list of GOV.UK pages (in the DB and code: the `categories` table / `category_id` / `categories.py`).
+- **Filter Parameters** — the fields of a shortlist that generate it (organisations, document types, keywords, include/exclude criteria).
+- **Results** — the pages a shortlist's parameters generate (the "Results" tab).
 - **Run** — one AI evaluation of a shortlist; an inclusion run + its chained exclusion run.
 - **Funnel** — the stage-by-stage narrowing (org → doc type → keyword → AI), shown as counts.
 - **`guc-NNNN`** — the per-page id shown in the UI and tracked in `PAGE_INDEX.md`.
