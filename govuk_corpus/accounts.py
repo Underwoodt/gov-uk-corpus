@@ -26,6 +26,21 @@ DOMAIN_REJECT_MESSAGE = "Please use your DEFRA or Equal Experts email address."
 ROLES = ("Admin", "Team Manager", "User", "Tester")
 STATUSES = ("pending", "active", "disabled")
 
+# ---- break-glass emergency admin -----------------------------------------
+# A permanent, always-available Admin account. Its password lives ONLY in the environment
+# (BREAKGLASS_ADMIN_PASSWORD) — never in git — and `authenticate` accepts it even if the DB row
+# is missing, disabled or locked. Other admins are still created normally via user management;
+# this account simply cannot be locked out, demoted or disabled.
+BREAKGLASS_EMAIL = "breakglass_admin@defra.gov.uk"
+
+
+def breakglass_password() -> str:
+    return os.getenv("BREAKGLASS_ADMIN_PASSWORD") or ""
+
+
+def is_breakglass_email(email: Optional[str]) -> bool:
+    return normalise_email(email) == normalise_email(BREAKGLASS_EMAIL)
+
 # Password policy. Best practice (NIST 800-63B): make length the primary control,
 # accept a long passphrase, allow a generous character set, and reject only the
 # characters that get mis-typed or paste-mangled (control / non-ASCII).
@@ -182,6 +197,29 @@ def create_user(conn, *, email: str, first_name: str, last_name: str, password: 
         raise
 
 
+def ensure_breakglass_user(conn) -> dict:
+    """Create or re-assert the break-glass Admin row so sessions/UI work normally. Idempotent:
+    forces role=Admin + status=active, clears any lockout, and syncs the stored hash to the
+    current env password. Bypasses the normal password policy and domain checks (it is not a
+    self-service account)."""
+    _require_pg()
+    e = normalise_email(BREAKGLASS_EMAIL)
+    pw_hash = hash_password(breakglass_password() or secrets.token_urlsafe(24))
+    if get_user_by_email(conn, e):
+        conn.execute(
+            "UPDATE auth.users SET role='Admin', account_status='active', password_hash=%s, "
+            "failed_login_count=0, locked_until=NULL, must_change_password=false, "
+            "last_login_at=now(), updated_at=now() WHERE lower(email)=lower(%s)", (pw_hash, e))
+        conn.commit()
+        return get_user_by_email(conn, e)
+    row = conn.execute(
+        f"INSERT INTO auth.users (email, first_name, last_name, password_hash, role, account_status) "
+        f"VALUES (%s,%s,%s,%s,'Admin','active') RETURNING {_PUBLIC_COLS}",
+        (e, "Break-glass", "Admin", pw_hash)).fetchone()
+    conn.commit()
+    return dict(row)
+
+
 def get_user_by_email(conn, email: str, *, with_hash: bool = False) -> Optional[dict]:
     """Fetch a user by case-insensitive email. `with_hash=True` (login only) also
     returns password_hash — never expose that to the client."""
@@ -219,6 +257,10 @@ def update_user(conn, user_id: str, *, first_name: Optional[str] = None,
     from request data) to prevent mass-assignment; role/status are validated. Returns the
     updated public row."""
     _require_pg()
+    # The break-glass account must always remain an active Admin — ignore any downgrade.
+    target = get_user(conn, user_id)
+    if target and is_breakglass_email(target.get("email")):
+        role, account_status = "Admin", "active"
     sets, params = [], []
     if first_name is not None:
         sets.append("first_name = %s"); params.append(first_name.strip())
@@ -373,6 +415,18 @@ def authenticate(conn, email: str, password: str, *, ip=None):
     shows LOGIN_FAILED_MESSAGE for everything except 'locked'. Applies lockout and
     writes audit rows; never returns or logs the password hash."""
     _require_pg()
+    # Break-glass emergency admin: always allowed with the env-configured password, bypassing DB
+    # state (missing row / disabled / locked). The password lives only in the environment.
+    if is_breakglass_email(email):
+        bg = breakglass_password()
+        if bg and secrets.compare_digest(password or "", bg):
+            user = ensure_breakglass_user(conn)
+            audit(conn, "login_succeeded", user_id=user["id"], ip=ip, detail="breakglass")
+            return user, None
+        if bg:                       # configured but wrong password → deny (no DB fallback here)
+            audit(conn, "login_denied", ip=ip, detail="breakglass-bad-password")
+            return None, "invalid"
+        # bg not configured (e.g. local dev with no env var) → fall through to normal DB auth
     user = get_user_by_email(conn, email, with_hash=True)
     if user is None:
         return None, "invalid"

@@ -25,6 +25,28 @@ except Exception:
     _HAS_ARGON2 = False
 
 
+class TestBreakglass(unittest.TestCase):
+    def test_email_match_case_insensitive(self):
+        self.assertTrue(accounts.is_breakglass_email("breakglass_admin@defra.gov.uk"))
+        self.assertTrue(accounts.is_breakglass_email("  BreakGlass_Admin@DEFRA.GOV.UK  "))
+        self.assertFalse(accounts.is_breakglass_email("tom@defra.gov.uk"))
+        self.assertFalse(accounts.is_breakglass_email(""))
+        self.assertFalse(accounts.is_breakglass_email(None))
+
+    def test_password_from_env(self):
+        old = os.environ.get("BREAKGLASS_ADMIN_PASSWORD")
+        try:
+            os.environ.pop("BREAKGLASS_ADMIN_PASSWORD", None)
+            self.assertEqual(accounts.breakglass_password(), "")   # unset → empty (no break-glass)
+            os.environ["BREAKGLASS_ADMIN_PASSWORD"] = "s3cret-value"
+            self.assertEqual(accounts.breakglass_password(), "s3cret-value")
+        finally:
+            if old is None:
+                os.environ.pop("BREAKGLASS_ADMIN_PASSWORD", None)
+            else:
+                os.environ["BREAKGLASS_ADMIN_PASSWORD"] = old
+
+
 class TestDomainValidation(unittest.TestCase):
     def test_allowed_domains_case_insensitive(self):
         for e in ("tom@defra.gov.uk", "Tom.Jones@DEFRA.GOV.UK", "a@equalexperts.com", "A@EqualExperts.com"):
