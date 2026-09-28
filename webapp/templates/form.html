@@ -64,19 +64,6 @@
     {% endif %}
   </div>
 
-  {% if not is_edit %}
-  <div data-level="advanced" style="margin:0 0 24px;padding:14px 16px;border:1px solid var(--border-mid,#b1b4b6);
-    border-radius:8px;background:var(--surface-2,#f3f2f1);display:flex;align-items:center;
-    gap:14px;flex-wrap:wrap;">
-    <span aria-hidden="true" style="font-size:22px;line-height:1;">🤖</span>
-    <span class="secondary" style="flex:1 1 260px;min-width:240px;">Prefer to be interviewed?
-      Let the assistant build the shortlist with you.</span>
-    <a class="btn secondary-btn" href="{{ url_for('category_assistant_page') }}"
-      style="margin:0;">Complete with the assistant</a>
-  </div>
-  <div id="prefill-banner" class="success" hidden>Pre-filled by the assistant — review the fields and save.</div>
-  {% endif %}
-
   {% if errors %}
   <div class="error-summary" role="alert">
     <h2>There is a problem</h2>
@@ -390,38 +377,6 @@
   </form>
 
   <script>
-    // Pre-fill from the category assistant (handed over via sessionStorage).
-    (function () {
-      if (!new URLSearchParams(location.search).get("prefill")) return;
-      var raw; try { raw = sessionStorage.getItem("category_prefill"); } catch (e) {}
-      if (!raw) return;
-      var f; try { f = JSON.parse(raw); } catch (e) { return; }
-      // The assistant sends a `slug`; the Name field is free text — derive a readable name from it.
-      if (f.description == null && f.slug) {
-        f.description = String(f.slug).replace(/[-_]+/g, " ").replace(/\b\w/g, function (c) { return c.toUpperCase(); });
-      }
-      function setByName(name, val) {
-        var boxes = document.querySelectorAll('input[type="checkbox"][name="' + name + '"]');
-        if (boxes.length) {                              // checkbox group (Organisations / Page Types)
-          var want = String(val == null ? "" : val).split(/[\n,]/).map(function (s) { return s.trim().toLowerCase(); }).filter(Boolean);
-          [].forEach.call(boxes, function (b) { b.checked = want.indexOf(b.value.toLowerCase()) !== -1; });
-          if (boxes[0]) boxes[0].dispatchEvent(new Event("change", { bubbles: true }));
-          return;
-        }
-        var el = document.getElementById(name) || document.querySelector('[name="' + name + '"]');
-        if (el && !el.readOnly) el.value = val;
-      }
-      ["description","owner_email","dept_slugs","document_type_slugs","keywords","inclusion_context",
-       "exclusion_context","adjudication_hints_keep","adjudication_hints_drop"].forEach(function (k) {
-        if (f[k] != null) setByName(k, f[k]);
-      });
-      var cb = document.querySelector('[name="include_child_orgs"]');
-      if (cb) cb.checked = !!f.include_child_orgs;
-      var banner = document.getElementById("prefill-banner");
-      if (banner) banner.hidden = false;
-      try { sessionStorage.removeItem("category_prefill"); } catch (e) {}
-    })();
-
     // Filter a checkbox list by each item's data-t; used by Organisations and Page Types.
     function filterChecklist(listEl, query) {
       var q = (query || "").trim().toLowerCase();

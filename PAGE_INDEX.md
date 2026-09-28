@@ -53,15 +53,15 @@ we can pin the report to an exact page.
 | guc-0008 | Download shortlist | `download.html` | `GET /categories/{id}/download` | Active |
 | guc-0010 | Settings | `settings.html` | `GET /settings` | Active |
 | guc-0011 | Peak-hours schedule | `peak_schedule.html` | `GET /settings/peak/{provider}` | Active |
-| guc-0012 | AI Assistant | `assistant.html` | `GET /assistant` | Active |
-| guc-0013 | Category assistant (guided create) | `category_assistant.html` | `GET /categories/new/assistant` | Active |
+| guc-0012 | AI Assistant | `assistant.html` | `GET /assistant` | Removed (2026-09-28) |
+| guc-0013 | Category assistant (guided create) | `category_assistant.html` | `GET /categories/new/assistant` | Removed (2026-09-28) |
 | guc-0014 | Sign in | inline in `webapp/app.py` | `GET /login` | Active |
 | guc-0015 | Create an account (register) | inline in `webapp/app.py` | `GET/POST /register` (accounts mode) | Active |
 | guc-0016 | Profile (details, password, UI display level) | `profile.html` | `GET /profile`, `POST /profile/details`, `POST /profile/password` | Active |
-| guc-0017 | Edit user (admin) | `user_edit.html` | `GET/POST /admin/users/{id}/edit` (accounts mode) | Active |
+| guc-0017 | Edit user (admin) | `user_edit.html` | `GET/POST /admin/users/{id}/edit` (accounts mode) | Retired — now sub-tab `guc-0020b` of Users |
 | guc-0018 | URL check (corpus / active / final shortlist) | `url_check.html` | `GET /categories/{id}/url-check`, `POST /api/categories/{id}/url-check`, `POST /categories/{id}/url-check/save` | Active |
-| guc-0019 | GOV.UK search (Admin UI level) | `govuk_search.html` | `GET /govuk-search`, `GET /api/govuk-search` | Active |
-| guc-0020 | User administration (admin) | `admin_users.html` | `GET /admin/users`, `POST /admin/users` (accounts mode) | Active |
+| guc-0019 | GOV.UK search (Admin UI level) | `govuk_search.html` | `GET /govuk-search`, `POST /api/govuk-search` | Removed (2026-09-28) — the pipeline's GOV.UK Search code (`_govuk_search_multi`, hybrid shortlist search) is retained |
+| guc-0020 | Users (admin; the Users nav tab) | `admin_users.html` + `user_edit.html` | `GET /admin/users`, `POST /admin/users`, `GET/POST /admin/users/{id}/edit` (accounts mode) | Active |
 | guc-0021 | Updating category (post-save rebuild) | `rebuilding.html` | `GET /categories/{id}/rebuilding`, `POST /api/categories/{id}/refresh-shortlist`, `POST /api/categories/{id}/reconcile-eval` | Active |
 | guc-0022 | Sustainability dashboard (modelled AI impact) | `sustainability.html` | `GET /sustainability` | Active |
 | guc-0024 | Forgotten password (request reset link) | inline (`_LOGIN_HEAD`) | `GET/POST /forgot-password` | Active |
@@ -97,11 +97,14 @@ letter (e.g. `guc-0003b1`); the nested pane's id is what shows in the corner.
 | guc-0018a | Should be in | URL check (`guc-0018`) |
 | guc-0018b | Should not be in | URL check (`guc-0018`) |
 | guc-0018c | Check Results | URL check (`guc-0018`) |
+| guc-0020a | Users (accounts list, add a user, import a shortlist) | Users (`guc-0020`) |
+| guc-0020b | Edit user (`user_edit.html`, `GET/POST /admin/users/{id}/edit`; was top-level `guc-0017`) | Users (`guc-0020`) |
 
 ## Retired IDs
 
 | ID | Page | Retired | Note |
 | guc-0005 | Run performance | 2026-09-25 | Moved under AI Pipeline as the third sub-tab (`guc-0004c3`); same route and template. |
+| guc-0017 | Edit user | 2026-09-28 | Moved under the Users tab as its second sub-tab (`guc-0020b`); same route and template. |
 |----|------|---------|------|
 | guc-0009 | Audit dashboard | 2026-09-16 | Merged into the Audit Results page as the Dashboard sub-tab (`guc-0004b`). |
 

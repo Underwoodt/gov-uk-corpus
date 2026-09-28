@@ -39,7 +39,7 @@ from starlette.concurrency import run_in_threadpool
 
 from govuk_corpus import accounts, ai_models, audit
 from govuk_corpus import categories as cat
-from govuk_corpus import category_counts, category_transfer, feedback, guardrails, sessions
+from govuk_corpus import category_counts, category_transfer, feedback, sessions
 from govuk_corpus import (audit_stats, category_interview, evaluate, evaluate_driver, extract,
                           gold, help_docs, keyword_explain, llm, orgs, peak_schedule, pricing,
                           prompts, readability, reporting, roles, search_augment, settings,
@@ -894,109 +894,6 @@ def new_category_page(request: Request):
         return login_redirect(request)
     conn = connect()
     return templates.TemplateResponse("form.html", _form_ctx(conn, request, None, {}, []))
-
-
-# ---- category assistant (guided interview -> pre-fill the create form) ---
-@app.get("/categories/new/assistant", response_class=HTMLResponse)
-def category_assistant_page(request: Request):
-    if not authed(request):
-        return login_redirect(request)
-    conn = connect()
-    cats = cat.list_categories(conn)
-    categories = [{"id": c["id"],
-                   "name": cat.prettify(c.get("slug")) or (c.get("description") or "Untitled")}
-                  for c in cats]
-    resp = templates.TemplateResponse("category_assistant.html", ctx(
-        conn, request, greeting=category_interview.GREETING, categories=categories,
-        main_doc_types=list(category_interview.MAIN_DOCUMENT_TYPES)))
-    conn.close()
-    return resp
-
-
-@app.get("/api/categories/{cid}/definition")
-def api_category_definition(request: Request, cid: int):
-    """The category's current field values, for the assistant to import and refine."""
-    if not authed(request):
-        return JSONResponse({"error": "auth"}, status_code=401)
-    conn = connect()
-    try:
-        c = cat.get_category(conn, cid)
-        if not c:
-            return JSONResponse({"error": "not found"}, status_code=404)
-        name = cat.prettify(c.get("slug")) or (c.get("description") or "Untitled")
-        fields = {k: c.get(k) for k in category_interview.FIELD_KEYS
-                  if c.get(k) is not None and c.get(k) != ""}
-        if "include_child_orgs" in c:
-            fields["include_child_orgs"] = bool(c.get("include_child_orgs"))
-        return JSONResponse({"name": name, "fields": fields})
-    finally:
-        conn.close()
-
-
-def _slug_reference(conn, text: str) -> str:
-    """A note of REAL organisation / document-type slugs matching words in the user's
-    latest message, appended to the interview prompt so the assistant recommends valid
-    slugs (widely) rather than inventing them — and re-checks whenever a field changes."""
-    org_matches = orgs.search(conn, text, limit=20)
-    dt_matches = category_interview.match_document_types(text)
-    if not org_matches and not dt_matches:
-        return ""
-    lines = ["SLUG REFERENCE — real slugs from the corpus that match words in the user's "
-             "latest message. When the user names organisations or document types that are "
-             "NOT exact slugs, recommend from these (widely — offer any that plausibly "
-             "match) and never invent a slug. If a word matches none here, say so and offer "
-             "the closest options."]
-    if org_matches:
-        lines.append("Organisation slugs: " + ", ".join(m["slug"] for m in org_matches))
-    if dt_matches:
-        lines.append("Document-type slugs: " + ", ".join(dt_matches))
-    return "\n".join(lines)
-
-
-@app.post("/api/categories/assistant")
-async def api_category_assistant(request: Request):
-    if not authed(request):
-        return JSONResponse({"error": "auth"}, status_code=401)
-    body = await request.json()
-    messages = body.get("messages") or []
-    if not isinstance(messages, list) or not messages:
-        return JSONResponse({"error": "no messages"}, status_code=400)
-    edit_fields = body.get("edit_fields") if isinstance(body.get("edit_fields"), dict) else None
-    # Keep only role/content and cap history length to bound cost.
-    clean = [{"role": m.get("role"), "content": str(m.get("content") or "")}
-             for m in messages[-24:] if m.get("role") in ("user", "assistant")]
-    # Guardrail: block the user's latest message if it carries personal data or
-    # prohibited language, before it reaches the model. Pause on the same question.
-    last_user = next((m["content"] for m in reversed(clean) if m["role"] == "user"), "")
-    finding = guardrails.check(last_user)
-    if finding:
-        return JSONResponse({"reply": guardrails.refusal_message(finding),
-                             "fields": None, "suggestion": None})
-    conn = connect()
-    try:
-        budget = _budget(conn)
-        spent = _daily_spend(conn)
-        if budget > 0 and spent >= budget:
-            return JSONResponse({"error": f"Daily AI budget of ${budget:.2f} reached "
-                                 f"(${spent:.4f} spent today)."}, status_code=429)
-        cfg = _ai_config(conn)
-        # Re-check the user's latest message against real slugs and hand the model the
-        # matches, so a changed organisation/doc-type field gets valid-slug recommendations.
-        system = category_interview.system_prompt(edit_fields, base=prompts.default_text("builder"))
-        ref = _slug_reference(conn, last_user)
-        if ref:
-            system = system + "\n\n" + ref
-        res = await run_in_threadpool(_ai_chat, cfg, system, clean)
-        if res.get("error"):
-            return JSONResponse({"error": res["error"]}, status_code=502)
-        _log_ai_usage(conn, res.get("cost_usd"), res.get("input_tokens"),
-                      res.get("output_tokens"), "assistant")
-        reply = res.get("reply", "")
-        fields = category_interview.parse_fields(reply)
-        suggestion = category_interview.parse_suggestion(reply)
-        return JSONResponse({"reply": reply, "fields": fields, "suggestion": suggestion})
-    finally:
-        conn.close()
 
 
 def _slug_errors(conn, data: dict) -> list:
@@ -3579,19 +3476,6 @@ def _govuk_search_multi(phrases, organisations=(), document_types=(), progress=N
             "per_phrase_cap": _GOVUK_PER_PHRASE, "thresholds": thresholds}
 
 
-@app.get("/govuk-search", response_class=HTMLResponse)
-def govuk_search_page(request: Request):
-    """Search GOV.UK for pages matching a set of phrases (guc-0019). Shown only at the
-    Admin UI-complexity level (profile setting) — see the data-level="admin" nav link.
-    Uses the official Search API."""
-    if not authed(request):
-        return login_redirect(request)
-    conn = connect()
-    resp = templates.TemplateResponse("govuk_search.html", ctx(conn, request, active_nav="govuk_search"))
-    conn.close()
-    return resp
-
-
 @app.get("/sustainability", response_class=HTMLResponse)
 def sustainability_page(request: Request):
     """Modelled sustainability dashboard for the AI runs (guc-0022): energy / water / CO₂."""
@@ -3605,29 +3489,6 @@ def sustainability_page(request: Request):
     finally:
         conn.close()
     return resp
-
-
-@app.post("/api/govuk-search")
-async def api_govuk_search(request: Request):
-    if not authed(request):
-        return JSONResponse({"error": "auth"}, status_code=401)
-    body = await request.json()
-    raw = body.get("phrases")
-    lines = raw.splitlines() if isinstance(raw, str) else (raw if isinstance(raw, list) else [])
-    phrases, seen = [], set()
-    for p in lines:
-        p = str(p or "").strip()
-        if p and p.lower() not in seen:
-            seen.add(p.lower())
-            phrases.append(p)
-    if not phrases:
-        return JSONResponse({"results": [], "doctypes": [], "per_phrase": [], "query_urls": []})
-    try:
-        data = await run_in_threadpool(_govuk_search_multi, phrases)
-    except Exception as e:
-        logging.getLogger("govuk_search").warning("search failed: %s", e)
-        return JSONResponse({"error": "Couldn't reach GOV.UK search — try again."}, status_code=502)
-    return JSONResponse(data)
 
 
 def _doc_type_counts(conn, org_slugs) -> list:
@@ -5635,51 +5496,6 @@ async def admin_import_category(request: Request):
     return RedirectResponse(url=users_url + f"?import_ok={quote(msg)}", status_code=303)
 
 
-@app.get("/assistant", response_class=HTMLResponse)
-def assistant_page(request: Request):
-    if not authed(request):
-        return login_redirect(request)
-    conn = connect()
-    cfg = _ai_config(conn)
-    resp = templates.TemplateResponse("assistant.html", ctx(
-        conn, request, active_nav="assistant", model=cfg["model"],
-        provider_label=cfg["label"], has_key=cfg["has_key"],
-        default_system=prompts.default_text("assistant"),
-        base_url=cfg["base_url"] or "api.anthropic.com (Claude default)"))
-    conn.close()
-    return resp
-
-
-@app.post("/api/assistant")
-async def api_assistant(request: Request):
-    if not authed(request):
-        return JSONResponse({"error": "auth"}, status_code=401)
-    form = await request.form()
-    prompt = (form.get("prompt") or "").strip()
-    system = (form.get("system") or "").strip()
-    if not prompt:
-        return JSONResponse({"error": "Enter a prompt."}, status_code=400)
-    finding = guardrails.check(prompt)          # block personal data / prohibited language
-    if finding:
-        return JSONResponse({"reply": guardrails.refusal_message(finding)})
-    conn = connect()
-    cfg = _ai_config(conn)
-    budget = _budget(conn)
-    spent = _daily_spend(conn)
-    conn.close()
-    if budget > 0 and spent >= budget:
-        return JSONResponse({"error": f"Daily AI budget of ${budget:.2f} reached "
-                             f"(${spent:.4f} spent today). Raise it in Settings."})
-    # Run the blocking SDK call off the event loop so one slow request can't stall the app.
-    result = await run_in_threadpool(_ai_reply, cfg, system, prompt)
-    if not result.get("error"):
-        conn = connect()
-        _log_ai_usage(conn, result.get("cost_usd"), result.get("input_tokens"),
-                      result.get("output_tokens"), "assistant")
-        conn.close()
-    return JSONResponse(result)
-
-
 @app.get("/profile", response_class=HTMLResponse)
 def profile_page(request: Request, details_ok: int = 0, pw_ok: int = 0,
                  details_error: str = "", pw_error: str = ""):
@@ -5891,9 +5707,6 @@ async def admin_reset_link(request: Request, user_id: str):
 _PROMPT_NOTES = {
     "inclusion": "Sent once per page in an inclusion run — keep or drop, with a score and reason.",
     "exclusion": "Recall-priority re-check of the pages Phase 1 kept — only ever turns a keep into a drop.",
-    "builder": "System prompt for the assistant that helps define a shortlist. When editing an existing "
-               "shortlist a summary of its current fields is appended automatically.",
-    "assistant": "Default system prompt pre-filled in the AI Assistant box (editable there per request).",
 }
 
 
