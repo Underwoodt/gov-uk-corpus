@@ -4846,6 +4846,24 @@ _BAND_ORDER = ["0 (wrong sense)", "0.01–0.35 (in passing)", "0.36–0.65 (mode
 _BAND_SHORT = {"0 (wrong sense)": "wrong sense", "0.01–0.35 (in passing)": "in passing",
                "0.36–0.65 (moderate)": "moderate", "0.66–1 (major)": "major"}
 
+
+def _score_phrase(s) -> str:
+    """A score rendered for a prompt-writer as its band label with the number in parentheses —
+    e.g. 'in passing (0.2)'. This is the hybrid house style: the band names what the number means
+    (coverage, not confidence) while the figure keeps the precision the analyst views rely on."""
+    try:
+        v = float(s)
+    except (ValueError, TypeError):
+        return "unscored"
+    return f"{_BAND_SHORT[_band(v)]} ({v:g})"
+
+
+# One-line rubric shown to prompt-writers (UI legend) and given to the review model so its prose
+# uses the same band+number vocabulary as the charts. Kept in sync with _band's boundaries.
+_SCORE_LEGEND = ("Inclusion score = how much of the page is about the topic (coverage, not "
+                 "confidence): 0.01–0.35 in passing · 0.36–0.65 moderate · 0.66–1 major "
+                 "(0 = wrong sense, dropped).")
+
 _SCORE_BUCKETS = ["0.0", "0.1", "0.15–0.2", "0.25–0.35", "0.4–0.65", "0.7–1.0"]
 
 
@@ -5095,6 +5113,9 @@ _PROMPT_REVIEW_FORMAT = (
     "sub-heading inside a block.\n"
     "## Editorial choice\n(Any decision the user must make, or 'none'.)\n"
     "## Verify\n(One line on how to confirm it worked.)\n\n"
+    "When you mention an inclusion score in the prose, write it as its band label with the number in "
+    "parentheses — 'in passing (0.2)', 'moderate (0.5)', 'major (0.8)' — never a bare number, so the "
+    "reader knows what it means. " + _SCORE_LEGEND + "\n"
     "Keep the prose tight — the fenced paste-ready blocks may be as long as needed, but all other "
     "text combined must stay under the word limit stated in the user message.")
 
@@ -5151,7 +5172,7 @@ def _prompt_review_single(conn, cid: int, category: dict, base: str, max_words: 
         ph = ",".join([shortlist._P] * len(head))
         for r in conn.execute(f"SELECT url, title FROM content WHERE url IN ({ph})", tuple(head)).fetchall():
             d = dict(r); titles[d["url"]] = d.get("title") or ""
-    keep_cases = [f"- {(titles.get(u, '') or u)[:80]}\n  score {d.get('score')} — {d.get('reason') or '(none)'}"
+    keep_cases = [f"- {(titles.get(u, '') or u)[:80]}\n  {_score_phrase(d.get('score'))} — {d.get('reason') or '(none)'}"
                   for u, d in bl[:12]]
     drop_cases = [f"- {(titles.get(u, '') or u)[:80]}\n  dropped — {d.get('reason') or '(none)'}"
                   for u, d in drops]
