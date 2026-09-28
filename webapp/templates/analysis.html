@@ -145,6 +145,8 @@
           <span class="secondary" id="review-meta"></span>
           <button class="btn secondary-btn" id="review-copy" type="button" style="padding:4px 12px;font-size:13px;">Copy markdown</button>
         </div>
+        <p class="secondary" style="margin:8px 0 0;font-size:12px;font-style:italic;">This recommendation may not carry the
+          essence of what you need — review it and use it as inspiration for your next version.</p>
         <div id="review-text" style="font-size:14px;line-height:1.5;margin:8px 0 0;"></div>
       </div>
     </div>
@@ -536,7 +538,13 @@
       const codeStyle = "white-space:pre-wrap;word-break:break-word;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin:6px 0;font-size:13px;";
       while (i < lines.length) {
         const ln = lines[i], cb = ln.match(/^\u0000(\d+)\u0000$/);
-        if (cb) { html += `<pre style="${codeStyle}">${esc(blocks[+cb[1]])}</pre>`; i++; continue; }
+        if (cb) {
+          html += `<div class="md-code" style="position:relative;margin:6px 0;">`
+            + `<button type="button" class="md-copy" style="position:absolute;top:6px;right:6px;font:inherit;font-size:12px;`
+            + `padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:var(--white,#fff);cursor:pointer;">Copy</button>`
+            + `<pre style="${codeStyle}">${esc(blocks[+cb[1]])}</pre></div>`;
+          i++; continue;
+        }
         if (/^\s*---\s*$/.test(ln)) { html += "<hr>"; i++; continue; }
         const h = ln.match(/^(#{1,6})\s+(.*)$/);
         if (h) { const lvl = Math.min(6, h[1].length + 3); html += `<h${lvl} style="margin:12px 0 4px;">${inline(h[2])}</h${lvl}>`; i++; continue; }
@@ -609,6 +617,14 @@
     if (copyBtn) copyBtn.addEventListener("click", () => {
       navigator.clipboard.writeText(lastReview || "");
       copyBtn.textContent = "Copied"; setTimeout(() => copyBtn.textContent = "Copy markdown", 1500);
+    });
+    // Per-recommendation copy: each fenced block gets its own Copy button.
+    const reviewText = document.getElementById("review-text");
+    if (reviewText) reviewText.addEventListener("click", e => {
+      const btn = e.target.closest(".md-copy"); if (!btn) return;
+      const pre = btn.parentElement.querySelector("pre"); if (!pre) return;
+      navigator.clipboard.writeText(pre.textContent);
+      btn.textContent = "Copied"; setTimeout(() => btn.textContent = "Copy", 1500);
     });
 
     // ---- Apply to shortlist: turn the review's paste-ready blocks into accept/skip rows ------
