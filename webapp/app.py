@@ -5938,9 +5938,13 @@ def settings_page(request: Request, saved: int = 0, user_ok: int = 0, user_error
     active = settings.get_setting(conn, "active_model_id", "")
     if not active and models:
         active = str(models[0]["id"])
+    incl_id = settings.get_setting(conn, PHASE_MODEL_KEYS[evaluate.PHASE_INCLUSION], "")
+    excl_id = settings.get_setting(conn, PHASE_MODEL_KEYS[evaluate.PHASE_EXCLUSION], "")
     for m in models:                      # is this model's provider usable?
         m["has_key"] = _provider_configured(m["provider"])
         m["active"] = str(m["id"]) == str(active)
+        m["is_inclusion"] = str(m["id"]) == str(incl_id)
+        m["is_exclusion"] = str(m["id"]) == str(excl_id)
     phase_models = [
         {"phase": ph, "key": PHASE_MODEL_KEYS[ph],
          "current": settings.get_setting(conn, PHASE_MODEL_KEYS[ph], ""),

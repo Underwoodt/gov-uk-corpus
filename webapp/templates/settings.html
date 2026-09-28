@@ -28,16 +28,21 @@
     <form method="post" action="{{ url_for('save_settings') }}">
       <input type="hidden" name="csrf" value="{{ csrf_token }}">
       <h2 style="margin-bottom:10px;">AI models</h2>
-      <p class="hint">Edit any row and click <em>Save settings</em>. Select the active model (used for new runs and
-        the assistant). All prices are USD per 1M tokens. The standard rate used for cost estimates is
-        <em>input cache-miss off-peak</em> and <em>output off-peak</em>.</p>
+      <p class="hint">Edit any row and click <em>Save settings</em>. Pick the model for each job from one place:
+        <strong>General Queries</strong> (the assistant and anything without a phase model), the pipeline's
+        <strong>Inclusion</strong> phase, and its <strong>Exclusion</strong> phase. A phase with no model set
+        falls back to the General Queries model. All prices are USD per 1M tokens; the standard rate used for
+        cost estimates is <em>input cache-miss off-peak</em> and <em>output off-peak</em>.</p>
 
       {% set PF = ['in_hit_off','in_hit_peak','in_miss_off','in_miss_peak','out_off','out_peak'] %}
       <div style="overflow-x:auto;">
       <table style="font-size:13px;">
         <thead>
           <tr>
-            <th rowspan="2">Active</th><th rowspan="2">Supplier</th><th rowspan="2">Model ID</th>
+            <th rowspan="2" style="text-align:center;">General<br>Queries<br>model</th>
+            <th rowspan="2" style="text-align:center;">Inclusion<br>model</th>
+            <th rowspan="2" style="text-align:center;">Exclusion<br>model</th>
+            <th rowspan="2">Supplier</th><th rowspan="2">Model ID</th>
             <th colspan="2" class="num" style="border-bottom:1px solid var(--mid-grey);">Input · cache hit</th>
             <th colspan="2" class="num" style="border-bottom:1px solid var(--mid-grey);">Input · cache miss</th>
             <th colspan="2" class="num" style="border-bottom:1px solid var(--mid-grey);">Output</th>
@@ -52,8 +57,12 @@
         <tbody>
           {% for m in models %}
           <tr>
-            <td><input type="radio" name="active_model_id" value="{{ m.id }}" {{ 'checked' if m.active }}
+            <td style="text-align:center;"><input type="radio" name="active_model_id" value="{{ m.id }}" {{ 'checked' if m.active }}
               style="width:20px;height:20px;accent-color:var(--black);"></td>
+            <td style="text-align:center;"><input type="radio" name="phase_model_inclusion" value="{{ m.id }}" {{ 'checked' if m.is_inclusion }}
+              style="width:20px;height:20px;accent-color:var(--blue,#1d70b8);"></td>
+            <td style="text-align:center;"><input type="radio" name="phase_model_exclusion" value="{{ m.id }}" {{ 'checked' if m.is_exclusion }}
+              style="width:20px;height:20px;accent-color:var(--blue,#1d70b8);"></td>
             <td>
               <select name="m_{{ m.id }}_provider" style="font-size:13px;padding:3px;border:2px solid var(--black);">
                 {% for prov in providers %}<option value="{{ prov }}" {{ 'selected' if m.provider == prov }}>{{ prov }}</option>{% endfor %}
@@ -62,9 +71,9 @@
             <td><input name="m_{{ m.id }}_model_id" value="{{ m.model_id }}" class="mono"
               style="font-size:13px;padding:3px;border:2px solid var(--black);min-width:200px;"></td>
             {% for f in PF %}
-            <td class="num"><input name="m_{{ m.id }}_{{ f }}" type="number" step="0.0001" min="0"
-              value="{{ '%.4f'|format(m[f] or 0) }}"
-              style="width:78px;padding:3px;border:2px solid var(--black);text-align:right;"></td>
+            <td class="num"><input name="m_{{ m.id }}_{{ f }}" type="number" step="0.01" min="0"
+              value="{{ '%.2f'|format(m[f] or 0) }}"
+              style="width:70px;padding:3px;border:2px solid var(--black);text-align:right;"></td>
             {% endfor %}
             <td>{% if m.has_key %}✅{% else %}<span style="color:#d4351c;">⛔</span>{% endif %}</td>
             <td><button type="button" class="btn secondary-btn test-model" data-id="{{ m.id }}"
@@ -102,7 +111,7 @@
           ('out_off','Output · off-peak'),('out_peak','Output · peak')] %}
         {% for f, lbl in add_labels %}
         <label style="font-size:13px;">{{ lbl }}<br>
-          <input name="add_{{ f }}" type="number" step="0.0001" min="0" placeholder="0"
+          <input name="add_{{ f }}" type="number" step="0.01" min="0" placeholder="0"
             style="width:120px;padding:5px;border:2px solid var(--black);"></label>
         {% endfor %}
         <button class="btn secondary-btn" type="submit">Add model</button>
