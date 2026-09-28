@@ -41,7 +41,7 @@
   <table id="cat-table">
     <thead><tr>
       <th>Shortlist</th><th>Owner</th><th>Last updated</th>
-      <th class="num">Pages kept</th><th>Status</th>
+      <th class="num">Pages kept</th>
     </tr></thead>
     <tbody>
       {% for c in categories %}
@@ -54,7 +54,6 @@
         <td>{{ c.updated }}</td>
         <td class="num">{{ c.pages_kept }}
           {% if c.pages_kept_at %}<span class="sub" title="Recomputed nightly and on edit">as of {{ c.pages_kept_at }}</span>{% endif %}</td>
-        <td><span class="pill {{ c.status }}">{{ c.status }}</span></td>
       </tr>
       {% endfor %}
     </tbody>
