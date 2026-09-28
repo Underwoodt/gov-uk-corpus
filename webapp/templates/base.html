@@ -46,7 +46,6 @@
     <a href="{{ url_for('sustainability_page') }}" class="{{ 'active' if active_nav == 'sustainability' }}">Sustainability</a>
     <a href="{{ url_for('help_index') }}" class="{{ 'active' if active_nav == 'help' }}">Help</a>
     {% if is_admin %}
-    <a href="{{ url_for('admin_users_page') }}" class="{{ 'active' if active_nav == 'users' }}" data-level="admin">Users</a>
     <a href="{{ url_for('settings_page') }}" class="{{ 'active' if active_nav == 'settings' }}" data-level="admin">Settings</a>
     {% endif %}
     {% if user %}

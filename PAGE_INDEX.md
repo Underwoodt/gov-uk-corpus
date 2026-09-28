@@ -61,7 +61,7 @@ we can pin the report to an exact page.
 | guc-0017 | Edit user (admin) | `user_edit.html` | `GET/POST /admin/users/{id}/edit` (accounts mode) | Retired — now sub-tab `guc-0020b` of Users |
 | guc-0018 | URL check (corpus / active / final shortlist) | `url_check.html` | `GET /categories/{id}/url-check`, `POST /api/categories/{id}/url-check`, `POST /categories/{id}/url-check/save` | Active |
 | guc-0019 | GOV.UK search (Admin UI level) | `govuk_search.html` | `GET /govuk-search`, `POST /api/govuk-search` | Removed (2026-09-28) — the pipeline's GOV.UK Search code (`_govuk_search_multi`, hybrid shortlist search) is retained |
-| guc-0020 | Users (admin; the Users nav tab) — tabs: `guc-0020a` Users (`admin_users.html`), `guc-0020b` Edit user (`user_edit.html`) | `admin_users.html` + `user_edit.html` | `GET /admin/users`, `POST /admin/users`, `GET/POST /admin/users/{id}/edit` (accounts mode) | Active |
+| guc-0020 | User management — now the **Settings → User Management** tab (`guc-0020a`, rendered in `settings.html`; list + add-user + import); `guc-0020b` Edit user (`user_edit.html`) | `settings.html` (User Management tab) + `user_edit.html` | `POST /admin/users` (create), `POST /admin/import-category`, `GET/POST /admin/users/{id}/edit` (accounts mode); `GET /admin/users` → 303 to `/settings#users` | Active |
 | guc-0021 | Updating category (post-save rebuild) | `rebuilding.html` | `GET /categories/{id}/rebuilding`, `POST /api/categories/{id}/refresh-shortlist`, `POST /api/categories/{id}/reconcile-eval` | Active |
 | guc-0022 | Sustainability dashboard (modelled AI impact) | `sustainability.html` | `GET /sustainability` | Active |
 | guc-0024 | Forgotten password (request reset link) | inline (`_LOGIN_HEAD`) | `GET/POST /forgot-password` | Active |

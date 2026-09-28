@@ -5468,20 +5468,19 @@ async def admin_import_category(request: Request):
     fix a live category."""
     if not authed(request):
         return login_redirect(request)
-    users_url = str(request.url_for("admin_users_page"))
     if not _require_admin(request):
-        return RedirectResponse(url=users_url, status_code=303)
+        return RedirectResponse(url=_users_tab_url(request), status_code=303)
     form = await request.form()
     upload = form.get("bundle")
     if upload is None or not hasattr(upload, "read"):
-        return RedirectResponse(url=users_url + "?import_error=No+file+chosen", status_code=303)
+        return RedirectResponse(url=_users_tab_url(request, "import_error=No+file+chosen"), status_code=303)
     raw = await upload.read()
     try:
         if raw[:2] == b"\x1f\x8b":            # gzip magic
             raw = gzip.decompress(raw)
         bundle = category_transfer.loads(raw.decode("utf-8"))
     except Exception:
-        return RedirectResponse(url=users_url + "?import_error=Could+not+read+the+bundle", status_code=303)
+        return RedirectResponse(url=_users_tab_url(request, "import_error=Could+not+read+the+bundle"), status_code=303)
     cu = current_user(request)
     owner = cu.get("email") if cu else None
     conn = connect()
@@ -5489,11 +5488,11 @@ async def admin_import_category(request: Request):
         summary = category_transfer.import_bundle(conn, bundle, owner_email=owner)
     except Exception as e:
         conn.close()
-        return RedirectResponse(url=users_url + f"?import_error={quote(f'{type(e).__name__}: {e}')}",
+        return RedirectResponse(url=_users_tab_url(request, f"import_error={quote(f'{type(e).__name__}: {e}')}"),
                                 status_code=303)
     conn.close()
     msg = f"Imported shortlist {summary['slug']} ({summary['content']} pages, {summary['runs']} runs)."
-    return RedirectResponse(url=users_url + f"?import_ok={quote(msg)}", status_code=303)
+    return RedirectResponse(url=_users_tab_url(request, f"import_ok={quote(msg)}"), status_code=303)
 
 
 @app.get("/profile", response_class=HTMLResponse)
@@ -5582,25 +5581,23 @@ def _require_admin(request: Request):
     return u if (u and roles.allows(u.get("role"), "admin")) else None
 
 
+def _users_tab_url(request: Request, query: str = "") -> str:
+    """URL of the Settings → User Management tab, where user administration now lives."""
+    base = str(request.url_for("settings_page"))
+    return f"{base}?{query}#users" if query else f"{base}#users"
+
+
 @app.get("/admin/users", response_class=HTMLResponse)
 def admin_users_page(request: Request, user_ok: int = 0, user_error: str = "",
                      import_ok: str = "", import_error: str = ""):
-    """Admin: view every user and open each one to edit their profile (guc-0020).
-    Accounts mode + admin only."""
+    """User administration now lives on the Settings → User Management tab; this old
+    path just forwards there (kept for bookmarks and existing links)."""
     if not authed(request):
         return login_redirect(request)
-    conn = connect()
-    if not _require_admin(request):
-        conn.close()
-        return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
-    usql, uparams = accounts.list_users_query()
-    resp = templates.TemplateResponse("admin_users.html", ctx(
-        conn, request, active_nav="users", users=accounts.list_users(conn),
-        account_roles=accounts.ROLES, user_ok=user_ok, user_error=user_error,
-        import_ok=import_ok, import_error=import_error,
-        list_sql=_display_sql(usql, uparams)))
-    conn.close()
-    return resp
+    q = urlencode({k: v for k, v in
+                   {"user_ok": user_ok or "", "user_error": user_error,
+                    "import_ok": import_ok, "import_error": import_error}.items() if v})
+    return RedirectResponse(url=_users_tab_url(request, q), status_code=303)
 
 
 @app.post("/admin/users")
@@ -5608,9 +5605,8 @@ async def admin_create_user(request: Request):
     """Admin creates an account (accounts mode). Same fields as registration, plus role."""
     if not authed(request):
         return login_redirect(request)
-    users_url = str(request.url_for("admin_users_page"))
     if not _require_admin(request):
-        return RedirectResponse(url=users_url, status_code=303)
+        return RedirectResponse(url=_users_tab_url(request), status_code=303)
     form = await request.form()
     role = form.get("role") if form.get("role") in accounts.ROLES else "User"
     conn = connect()
@@ -5620,12 +5616,12 @@ async def admin_create_user(request: Request):
                              last_name=(form.get("last_name") or ""),
                              password=(form.get("password") or ""), role=role)
     except accounts.EmailTakenError:
-        return RedirectResponse(url=users_url + "?user_error=exists", status_code=303)
+        return RedirectResponse(url=_users_tab_url(request, "user_error=exists"), status_code=303)
     except ValueError as e:
-        return RedirectResponse(url=users_url + "?user_error=" + quote(str(e)), status_code=303)
+        return RedirectResponse(url=_users_tab_url(request, "user_error=" + quote(str(e))), status_code=303)
     finally:
         conn.close()
-    return RedirectResponse(url=users_url + "?user_ok=1", status_code=303)
+    return RedirectResponse(url=_users_tab_url(request, "user_ok=1"), status_code=303)
 
 
 @app.get("/admin/users/{user_id}/edit", response_class=HTMLResponse)
@@ -5633,12 +5629,12 @@ def admin_edit_user_page(request: Request, user_id: str, pw_msg: str = "", reset
     if not authed(request):
         return login_redirect(request)
     if not _require_admin(request):
-        return RedirectResponse(url=str(request.url_for("admin_users_page")), status_code=303)
+        return RedirectResponse(url=_users_tab_url(request), status_code=303)
     conn = connect()
     try:
         u = accounts.get_user(conn, user_id)
         if not u:
-            return RedirectResponse(url=str(request.url_for("admin_users_page")), status_code=303)
+            return RedirectResponse(url=_users_tab_url(request), status_code=303)
         return templates.TemplateResponse("user_edit.html", ctx(
             conn, request, active_nav="users", u=u, account_roles=accounts.ROLES, account_statuses=accounts.STATUSES,
             pw_msg=pw_msg, reset_link=reset_link))
@@ -5651,7 +5647,7 @@ async def admin_update_user(request: Request, user_id: str):
     if not authed(request):
         return login_redirect(request)
     if not _require_admin(request):
-        return RedirectResponse(url=str(request.url_for("admin_users_page")), status_code=303)
+        return RedirectResponse(url=_users_tab_url(request), status_code=303)
     form = await request.form()
     role = form.get("role") if form.get("role") in accounts.ROLES else None
     status = form.get("account_status") if form.get("account_status") in accounts.STATUSES else None
@@ -5661,7 +5657,7 @@ async def admin_update_user(request: Request, user_id: str):
                              last_name=form.get("last_name"), role=role, account_status=status)
     finally:
         conn.close()
-    return RedirectResponse(url=str(request.url_for("admin_users_page")) + "?user_ok=1", status_code=303)
+    return RedirectResponse(url=_users_tab_url(request, "user_ok=1"), status_code=303)
 
 
 @app.post("/admin/users/{user_id}/require-reset")
@@ -5670,7 +5666,7 @@ async def admin_require_reset(request: Request, user_id: str):
     if not authed(request):
         return login_redirect(request)
     if not _require_admin(request):
-        return RedirectResponse(url=str(request.url_for("admin_users_page")), status_code=303)
+        return RedirectResponse(url=_users_tab_url(request), status_code=303)
     conn = connect()
     try:
         accounts.require_password_change(conn, user_id, on=True)
@@ -5690,7 +5686,7 @@ async def admin_reset_link(request: Request, user_id: str):
     if not authed(request):
         return login_redirect(request)
     if not _require_admin(request):
-        return RedirectResponse(url=str(request.url_for("admin_users_page")), status_code=303)
+        return RedirectResponse(url=_users_tab_url(request), status_code=303)
     conn = connect()
     try:
         token = accounts.create_reset_token(conn, user_id)
@@ -5740,7 +5736,8 @@ def _admin_guard(request: Request):
 
 
 @app.get("/settings", response_class=HTMLResponse)
-def settings_page(request: Request, saved: int = 0, user_ok: int = 0, user_error: str = ""):
+def settings_page(request: Request, saved: int = 0, user_ok: int = 0, user_error: str = "",
+                  import_ok: str = "", import_error: str = ""):
     if not authed(request):
         return login_redirect(request)
     if (redir := _admin_guard(request)):
@@ -5760,12 +5757,15 @@ def settings_page(request: Request, saved: int = 0, user_ok: int = 0, user_error
         m["is_exclusion"] = str(m["id"]) == str(excl_id)
     accounts_mode = AUTH_MODE == "accounts"
     users = accounts.list_users(conn) if accounts_mode else None
+    _usql, _uparams = accounts.list_users_query()
     _msql, _mparams = ai_models.list_models_query()
     resp = templates.TemplateResponse("settings.html", ctx(
         conn, request, active_nav="settings", models=models,
         models_sql=_display_sql(_msql, _mparams),
         accounts_mode=accounts_mode, users=users, account_roles=accounts.ROLES,
+        list_sql=_display_sql(_usql, _uparams),
         user_ok=user_ok, user_error=user_error,
+        import_ok=import_ok, import_error=import_error,
         providers=list(PROVIDERS.keys()),
         daily_budget=_budget(conn), max_docs=_max_docs(conn),
         spent_today=round(_daily_spend(conn), 4), saved=saved,
