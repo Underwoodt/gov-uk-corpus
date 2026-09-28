@@ -47,7 +47,6 @@ def truncate_body(body: str, limit: int = BODY_CHAR_LIMIT) -> str:
 
 PHASE_INCLUSION = "Phase 1 - Inclusion"
 PHASE_EXCLUSION = "Phase 2 - Exclusion"
-PHASE_ADJUDICATION = "Phase 3 - Adjudication"
 
 # Execution mode for a phase's inference. Synchronous = one blocking API call per
 # page (the current behaviour). Batch = submit the whole phase as one asynchronous

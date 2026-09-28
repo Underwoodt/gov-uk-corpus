@@ -303,6 +303,9 @@ def ctx(conn, request: Request, **extra) -> dict:
             # Effective role + a gate helper for templates:
             #   {% if can_use('Administrator') %}…{% endif %}
             "role": role, "can_use": lambda required=None: roles.allows(role, required),
+            # True when this request may reach settings/admin pages (admin account in
+            # accounts mode; the single user in shared mode) — matches the route guard.
+            "is_admin": _settings_admin_ok(request),
             # Accounts mode: the logged-in user (None in shared-password mode).
             "auth_mode": AUTH_MODE, "user": user,
             "csrf_token": _csrf_token(request)}
@@ -382,7 +385,6 @@ _log_ai_usage = llm.log_usage
 PHASE_MODEL_KEYS = {
     evaluate.PHASE_INCLUSION: "phase_model_inclusion",
     evaluate.PHASE_EXCLUSION: "phase_model_exclusion",
-    evaluate.PHASE_ADJUDICATION: "phase_model_adjudication",
 }
 
 def _config_from_model(conn, m: dict) -> dict:
@@ -5822,7 +5824,7 @@ def admin_edit_user_page(request: Request, user_id: str, pw_msg: str = "", reset
         if not u:
             return RedirectResponse(url=str(request.url_for("admin_users_page")), status_code=303)
         return templates.TemplateResponse("user_edit.html", ctx(
-            conn, request, u=u, account_roles=accounts.ROLES, account_statuses=accounts.STATUSES,
+            conn, request, active_nav="users", u=u, account_roles=accounts.ROLES, account_statuses=accounts.STATUSES,
             pw_msg=pw_msg, reset_link=reset_link))
     finally:
         conn.close()
@@ -5911,14 +5913,25 @@ def _ai_prompts() -> list:
 
 
 def _settings_admin_ok(request: Request) -> bool:
-    """Admin gate for settings mutations: admin in accounts mode; the single user in shared mode."""
+    """Admin gate for settings/admin pages and mutations: an admin account in accounts
+    mode; the single user in shared-password mode."""
     return AUTH_MODE != "accounts" or _require_admin(request) is not None
+
+
+def _admin_guard(request: Request):
+    """A redirect to Shortlists for a signed-in non-admin, else None. Callers first
+    confirm the request is authenticated (login_redirect handles the signed-out case)."""
+    if _settings_admin_ok(request):
+        return None
+    return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
 
 
 @app.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request, saved: int = 0, user_ok: int = 0, user_error: str = ""):
     if not authed(request):
         return login_redirect(request)
+    if (redir := _admin_guard(request)):
+        return redir
     conn = connect()
     ai_models.seed_defaults(conn)
     models = ai_models.list_models(conn)
@@ -5966,6 +5979,8 @@ def _price_form(form, prefix: str) -> dict:
 async def save_settings(request: Request):
     if not authed(request):
         return login_redirect(request)
+    if (redir := _admin_guard(request)):
+        return redir
     form = await request.form()
     conn = connect()
     if "active_role" in form:
@@ -6007,6 +6022,8 @@ async def save_settings(request: Request):
 async def add_model_route(request: Request):
     if not authed(request):
         return login_redirect(request)
+    if (redir := _admin_guard(request)):
+        return redir
     form = await request.form()
     provider = (form.get("provider") or "").strip()
     model_id = (form.get("model_id") or "").strip()
@@ -6025,6 +6042,8 @@ async def add_model_route(request: Request):
 async def delete_model_route(request: Request):
     if not authed(request):
         return login_redirect(request)
+    if (redir := _admin_guard(request)):
+        return redir
     form = await request.form()
     mid = form.get("model_id")
     conn = connect()
@@ -6063,6 +6082,8 @@ async def test_model_route(request: Request, mid: int):
 def peak_schedule_page(request: Request, provider: str, saved: int = 0):
     if not authed(request):
         return login_redirect(request)
+    if (redir := _admin_guard(request)):
+        return redir
     if provider not in PROVIDERS:
         return RedirectResponse(url=str(request.url_for("settings_page")), status_code=303)
     conn = connect()
@@ -6080,6 +6101,8 @@ def peak_schedule_page(request: Request, provider: str, saved: int = 0):
 async def save_peak_schedule(request: Request, provider: str):
     if not authed(request):
         return login_redirect(request)
+    if (redir := _admin_guard(request)):
+        return redir
     if provider not in PROVIDERS:
         return RedirectResponse(url=str(request.url_for("settings_page")), status_code=303)
     form = await request.form()
