@@ -29,6 +29,8 @@ buttons), so they double as living documentation — when a screen changes, upda
 | 6.2 | …What was kept / dropped and why | Row-level reasons | Results (stages) · Run details |
 | 6.3 | …Seeing the AI results | The two-phase pipeline | Runs → Pipeline Runs · Run details |
 | 6.4 | …Letting the AI reframe your question | Fixing run-to-run wobble | Compare Runs · Filter Parameters |
+| 7 | [Edit your Filter Parameters](7-edit-filter-parameters.md) | How do I tune it — and why re-run? | Filter Parameters · Pipeline Runs |
+| 7.1–7.4 | …Edit · re-run · AI suggests · the caveat | Sharpening the prompts from your own results | Filter Parameters · Pipeline Runs |
 
 ## The map of the app (so the journeys hang together)
 
@@ -49,9 +51,10 @@ don't pick pages by hand. Open a shortlist and you get a row of tabs:
     (Journey 6.4). *(Renamed from "Data Analysis".)*
   - **Run performance** — a side-by-side metrics table. **Advanced interface only** — a basic user
     on the simple interface does not see this tab.
-- **Filter Parameters** — where you set what generates the shortlist (Journey 3): organisation,
-  document types, keywords, and the AI include/exclude criteria — and, once a run has finished, an
-  **"improve your prompt with AI?"** review card (Journeys 3.4 and 6.4).
+- **Filter Parameters** — where you set what generates the shortlist (Journey 3), later edit it and
+  re-run (Journey 7): organisation, document types, keywords, and the AI include/exclude criteria —
+  and, once a run has finished, an **"improve your prompt with AI?"** review card (Journeys 3.4,
+  6.4 and 7.3).
 - **GDS Compliance** / **URL check** — supporting checks, not covered by these journeys.
 
 Open a single run (from **Pipeline Runs**) to reach its **Run details** page — the two AI phases, a

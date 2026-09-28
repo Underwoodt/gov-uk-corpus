@@ -162,5 +162,6 @@ hand, the AI can now suggest from real evidence, so the shortlist gets steadier 
 ## Links
 
 - Previous: [Journey 5 — Download a shortlist](5-download-a-shortlist.md)
+- Next: [Journey 7 — Edit your Filter Parameters (and re-run)](7-edit-filter-parameters.md)
 - Back to the start: [Journey 2 — What is a shortlist?](2-what-is-a-shortlist.md)
 - The criteria you'll be tuning live in [Journey 3.4](3-create-a-shortlist.md#34--prompts-include-exclude-and-sorting-out-the-coin-flips-llm-inference).
