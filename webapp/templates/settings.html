@@ -17,7 +17,6 @@
 
   <div class="tabs" role="tablist" style="margin:22px 0 22px;">
     <a href="#" class="stab current" data-tab="models">Available Models</a>
-    <a href="#" class="stab" data-tab="phases">Inference Phase &amp; Models</a>
     <a href="#" class="stab" data-tab="guardrails">Execution Guardrails</a>
     <a href="#" class="stab" data-tab="prompts">AI Prompts</a>
     <a href="#" class="stab" data-tab="users">User Management</a>
@@ -135,49 +134,7 @@
       service after changing them. A model whose supplier has no key can be selected but won't run.</p>
   </section>
 
-  <!-- Tab 2: Inference Phase & Models -->
-  <section class="stabpanel" data-tab="phases" hidden>
-    <form method="post" action="{{ url_for('save_settings') }}">
-      <input type="hidden" name="csrf" value="{{ csrf_token }}">
-      <h2 style="margin-bottom:10px;">Model per phase</h2>
-      <p class="hint">Each evaluation phase runs on its own model (the current pipeline uses a cheap,
-        recall-first model for Inclusion and a stronger model for Exclusion). Pick a model per phase;
-        leave as "Use active model" to fall back to the selected active model.</p>
-      <p class="hint"><strong>Mode</strong> — <em>Synchronous</em> makes one API call per page (current behaviour).
-        <em>Batch</em> submits the phase as one asynchronous Anthropic Message Batches job (~50% cheaper).
-        Batch needs an <strong>Anthropic</strong> model — DeepSeek has no batch API, so a DeepSeek phase always runs synchronously.</p>
-      <table>
-        <thead><tr><th>Phase</th><th>Model</th><th>Mode</th></tr></thead>
-        <tbody>
-          {% for pm in phase_models %}
-          <tr>
-            <td>{{ pm.phase }}</td>
-            <td>
-              <select name="{{ pm.key }}" style="font-size:14px;padding:4px;border:2px solid var(--black);min-width:280px;">
-                <option value="">Use active model</option>
-                {% for m in models %}
-                <option value="{{ m.id }}" {{ 'selected' if pm.current == (m.id|string) }}>{{ m.provider }} / {{ m.model_id }}</option>
-                {% endfor %}
-              </select>
-            </td>
-            <td>
-              <select name="{{ pm.mode_key }}" style="font-size:14px;padding:4px;border:2px solid var(--black);">
-                <option value="synchronous" {{ 'selected' if pm.mode != 'batch' }}>Synchronous</option>
-                <option value="batch" {{ 'selected' if pm.mode == 'batch' }}>Batch</option>
-              </select>
-              {% if pm.mode == 'batch' and pm.provider != 'anthropic' %}
-              <div class="hint" style="color:var(--red,#b00);margin-top:4px;">Batch needs an Anthropic model — this phase is on {{ pm.provider }}.</div>
-              {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      <button class="btn" type="submit">Save phases</button>
-    </form>
-  </section>
-
-  <!-- Tab 3: Execution Guardrails -->
+  <!-- Tab 2: Execution Guardrails -->
   <section class="stabpanel" data-tab="guardrails" hidden>
     <form method="post" action="{{ url_for('save_settings') }}">
       <input type="hidden" name="csrf" value="{{ csrf_token }}">

@@ -385,19 +385,6 @@ PHASE_MODEL_KEYS = {
     evaluate.PHASE_ADJUDICATION: "phase_model_adjudication",
 }
 
-# Phase → settings key holding the execution mode (synchronous | batch) for that phase.
-PHASE_MODE_KEYS = {
-    evaluate.PHASE_INCLUSION: "phase_mode_inclusion",
-    evaluate.PHASE_EXCLUSION: "phase_mode_exclusion",
-    evaluate.PHASE_ADJUDICATION: "phase_mode_adjudication",
-}
-
-
-def _phase_mode(conn, phase: str) -> str:
-    """The stored execution mode for a phase (defaults to synchronous)."""
-    return evaluate.normalise_mode(settings.get_setting(conn, PHASE_MODE_KEYS.get(phase, ""), ""))
-
-
 def _config_from_model(conn, m: dict) -> dict:
     """Build an AI config dict from an ai_models row."""
     provider = m["provider"]
@@ -5945,12 +5932,6 @@ def settings_page(request: Request, saved: int = 0, user_ok: int = 0, user_error
         m["active"] = str(m["id"]) == str(active)
         m["is_inclusion"] = str(m["id"]) == str(incl_id)
         m["is_exclusion"] = str(m["id"]) == str(excl_id)
-    phase_models = [
-        {"phase": ph, "key": PHASE_MODEL_KEYS[ph],
-         "current": settings.get_setting(conn, PHASE_MODEL_KEYS[ph], ""),
-         "mode_key": PHASE_MODE_KEYS[ph], "mode": _phase_mode(conn, ph),
-         "provider": _ai_config_for_phase(conn, ph).get("provider")}
-        for ph in (evaluate.PHASE_INCLUSION, evaluate.PHASE_EXCLUSION, evaluate.PHASE_ADJUDICATION)]
     accounts_mode = AUTH_MODE == "accounts"
     users = accounts.list_users(conn) if accounts_mode else None
     _msql, _mparams = ai_models.list_models_query()
@@ -5959,7 +5940,7 @@ def settings_page(request: Request, saved: int = 0, user_ok: int = 0, user_error
         models_sql=_display_sql(_msql, _mparams),
         accounts_mode=accounts_mode, users=users, account_roles=accounts.ROLES,
         user_ok=user_ok, user_error=user_error,
-        providers=list(PROVIDERS.keys()), phase_models=phase_models,
+        providers=list(PROVIDERS.keys()),
         provider_keys={k: _provider_configured(k) for k in PROVIDERS},
         daily_budget=_budget(conn), max_docs=_max_docs(conn),
         spent_today=round(_daily_spend(conn), 4), saved=saved,
@@ -5992,14 +5973,10 @@ async def save_settings(request: Request):
     active = form.get("active_model_id")
     if active:
         settings.set_setting(conn, "active_model_id", active)
-    # Per-phase model selection (Inclusion / Exclusion / Adjudication).
+    # Per-phase model selection (Inclusion / Exclusion), set from the models table radios.
     for ph, key in PHASE_MODEL_KEYS.items():
         if key in form:
             settings.set_setting(conn, key, (form.get(key) or "").strip())
-    # Per-phase execution mode (synchronous | batch).
-    for ph, key in PHASE_MODE_KEYS.items():
-        if key in form:
-            settings.set_setting(conn, key, evaluate.normalise_mode(form.get(key)))
     # Save edits to existing model rows.
     for m in ai_models.list_models(conn):
         rid = m["id"]
