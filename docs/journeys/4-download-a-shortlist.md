@@ -5,7 +5,7 @@ and the format that suits where it's going next.*
 
 **Who / when:** anyone who needs to hand the list on, analyse it in a spreadsheet, or feed it to
 another system.
-**Pages used:** the **Shortlist** tab → **Download**.
+**Pages used:** the **Results** tab → **Download**.
 
 ---
 
@@ -20,13 +20,13 @@ another system.
 
 ## Getting to the download
 
-**What you do:** open the **Shortlist** tab for your shortlist and choose **Download**.
+**What you do:** open the **Results** tab for your shortlist and choose **Download**.
 
 **What you see:** a download page with three choices — *which run* to export, *which fields* to
 include, and *what format* to produce. It opens pre-set to sensible defaults, so you can just hit
 download, or fine-tune first.
 
-> Say: "From the Shortlist tab, hit Download. You get one screen: which version to export, which
+> Say: "From the Results tab, hit Download. You get one screen: which version to export, which
 > columns, and which file type. Defaults are already chosen — tweak only what you care about."
 
 ![Screenshot — the Download page: the Run selector, the field picker, and the Output type dropdown](screenshots/4-0-download-page.png)
@@ -89,7 +89,7 @@ The file extension is added for you.
 
 ## In one breath
 
-> Say: "From the Shortlist tab, hit Download, pick the run, tick the column groups you need — URL's
+> Say: "From the Results tab, hit Download, pick the run, tick the column groups you need — URL's
 > always there — choose CSV, Excel or JSON, and you've got a defensible file ready to hand on."
 
 ## Links

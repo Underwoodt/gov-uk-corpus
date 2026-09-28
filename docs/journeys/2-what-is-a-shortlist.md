@@ -41,7 +41,7 @@ answer "why did the Filter Parameters keep (or drop) this page?"
 > saved, re-runnable definition — filters for the easy narrowing, an AI pass for the judgement —
 > and it always shows its working."
 
-![Screenshot — a Selection funnel on the Shortlist tab, page count dropping from All pages through the filters to the AI pass (illustrates filters → AI → shortlist)](screenshots/2-1-funnel-concept.png)
+![Screenshot — a Selection funnel (Runs → Selection funnel), page count dropping from All pages through the filters to the AI pass (illustrates filters → AI → shortlist)](screenshots/2-1-funnel-concept.png)
 
 ---
 
@@ -67,15 +67,15 @@ answer "why did the Filter Parameters keep (or drop) this page?"
 new shortlist** button. Opening any shortlist reveals its tabs — the shape of everything that
 follows:
 
-- **Filter Parameters** — where you set the parameters that generate the shortlist → [Journey 3].
-- **Shortlist** — the list those parameters generated, and the **Selection funnel** → [Journeys 4 and 5].
-- **Filter pipeline run** — running the AI and the history of runs → [Journey 5.3].
+- **Results** — the list those parameters generated, with the row-level kept/dropped views → [Journeys 4 and 5.2].
+- **Runs** — run the AI over the shortlist and see every run; its sub-tabs hold the **Selection funnel** and **Compare Runs** → [Journey 5].
+- **Filter Parameters** — where you set the parameters that generate the shortlist, and (after a run) ask the AI to sharpen them → [Journey 3].
 
-> Say: "This home page is just the shelf of saved questions. Open one and you get tabs: set the
-> parameters, see the shortlist they generated, and run the AI over it. That's the whole loop — and
-> we'll build one from scratch next."
+> Say: "This home page is just the shelf of saved questions. Open one and you get tabs: see the
+> results your parameters generated, run the AI over them, and set the parameters themselves. That's
+> the whole loop — and we'll build one from scratch next."
 
-![Screenshot — the Shortlists home list plus a shortlist opened to show its tab row (Filter Parameters · Shortlist · Filter pipeline run · GDS Compliance · Explainability · URL check)](screenshots/2-3-shortlist-tabs.png)
+![Screenshot — the Shortlists home list plus a shortlist opened to show its tab row (Results · Runs · GDS Compliance · URL check · Filter Parameters)](screenshots/2-3-shortlist-tabs.png)
 
 ---
 

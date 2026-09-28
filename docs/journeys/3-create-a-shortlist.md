@@ -150,7 +150,12 @@ time — the shortlist stops wobbling between runs.
 
 **Why it's optional but powerful:** you don't need examples if your include/exclude criteria are
 already crisp. But when the same page keeps flipping between runs, a Keep/Drop example is the
-precise fix — and Journey 5.4 shows how the AI itself can *suggest* these for you.
+precise fix — and you don't have to invent them alone. Once you've done at least one run, this same
+**Filter Parameters** page grows an **"Do you want to try to improve your prompt with AI?"** card at
+the top: it reviews your runs and proposes sharper include/exclude criteria and Keep/Drop examples,
+each with an **Apply to field** button that drops the wording straight into the box for you to edit
+and Save. Treat it as inspiration, not gospel — the card says so.
+[Journey 5.4](5-how-was-this-built.md#54--letting-the-ai-reframe-your-question) walks through it.
 
 ---
 
@@ -165,7 +170,7 @@ getting the list *out* is [Journey 4](4-download-a-shortlist.md).
 > Say: "Save, and the tool generates the shortlist there and then. From here you can look at what it
 > produced, run the AI over it, and download it — which is exactly where we go next."
 
-![Screenshot — the Save button at the foot of the Filter Parameters form, then the generated Shortlist tab it lands on](screenshots/3-5-save-generated.png)
+![Screenshot — the Save button at the foot of the Filter Parameters form, then the generated Results tab it lands on](screenshots/3-5-save-generated.png)
 
 ---
 
