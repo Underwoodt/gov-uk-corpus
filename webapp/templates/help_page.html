@@ -16,10 +16,17 @@
   .help-article blockquote.help-note {
     margin: 14px 0; padding: 12px 16px; border-left: 4px solid var(--blue,#1d70b8);
     background: var(--panel-blue,#eef4fb); border-radius: 0 6px 6px 0; }
-  /* Screenshot placeholders — the images aren't served yet, so show what they'd depict */
+  /* Screenshot placeholders — shown when the image file isn't in the repo yet */
   .help-article .help-figure {
     margin: 12px 0; padding: 10px 14px; border: 1px dashed var(--grey-border,#b1b4b6);
     border-radius: 6px; color: var(--grey-text,#505a5f); font-size: 14px; background: var(--surface-2,#f8f8f8); }
+  /* Real screenshots (served from docs/journeys/screenshots/) */
+  .help-article figure.help-shot { margin: 16px 0; }
+  .help-article figure.help-shot img {
+    display: block; max-width: 100%; height: auto; border: 1px solid var(--grey-border,#b1b4b6);
+    border-radius: 6px; }
+  .help-article figure.help-shot figcaption {
+    margin-top: 6px; font-size: 13px; color: var(--grey-text,#505a5f); }
 </style>
 
 <p style="margin:0 0 12px;"><a href="{{ url_for('help_index') }}">‹ All help &amp; guides</a></p>

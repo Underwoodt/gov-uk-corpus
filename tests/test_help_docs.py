@@ -54,9 +54,23 @@ class TestRender(unittest.TestCase):
         # A section heading gets an id matching the GitHub-style anchor (colon-titled headings).
         self.assertIn('id="41-start-a-run"', self.body)
 
-    def test_images_become_captions_not_broken_imgs(self):
+    def test_images_become_captions_when_file_absent(self):
+        # Journey 4 has no screenshot files, so its images render as captions, not broken <img>.
         self.assertIn("help-figure", self.body)
         self.assertNotIn("<img", self.body)
+
+    def test_existing_screenshot_renders_as_img(self):
+        # Journey 1's screenshots are committed, so they render as real served images.
+        _, b1 = h.render("1-create-an-account")
+        self.assertIn('<img src="/help/screenshots/1-1-sign-in.png"', b1)
+        self.assertIn('figure class="help-shot"', b1)
+
+    def test_screenshot_path_safety(self):
+        self.assertTrue(h.screenshot_path("1-1-sign-in.png"))   # committed file
+        self.assertIsNone(h.screenshot_path("../secret.png"))   # traversal
+        self.assertIsNone(h.screenshot_path("nope.png"))        # missing
+        self.assertIsNone(h.screenshot_path("evil.txt"))        # non-image extension
+        self.assertIsNone(h.screenshot_path(""))
 
     def test_kept_blockquote_note_rendered(self):
         # The interface-level note is a non-Say blockquote → kept as a styled note (Journey 6).

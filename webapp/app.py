@@ -31,7 +31,7 @@ from typing import Dict, List, Optional
 from urllib.parse import quote, urlencode
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request
-from fastapi.responses import (HTMLResponse, JSONResponse, PlainTextResponse,
+from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse, PlainTextResponse,
                                RedirectResponse, Response)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -324,6 +324,18 @@ def help_index(request: Request):
             conn, request, active_nav="help", journeys=help_docs.list_journeys()))
     finally:
         conn.close()
+
+
+@app.get("/help/screenshots/{name}")
+def help_screenshot(request: Request, name: str):
+    """Serve a journey screenshot from docs/journeys/screenshots/. The name is validated
+    (safe chars + image extension) and checked to exist inside that folder; traversal is blocked."""
+    if not authed(request):
+        return login_redirect(request)
+    path = help_docs.screenshot_path(name)
+    if not path:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return FileResponse(path)
 
 
 @app.get("/help/{slug}", response_class=HTMLResponse)

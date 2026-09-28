@@ -90,6 +90,33 @@ def _rewrite_url(url: str, cur_slug: str) -> str:
     return url
 
 
+SCREENSHOTS_DIR = os.path.join(_DIR, "screenshots")
+_SHOT_NAME = re.compile(r"^[A-Za-z0-9._-]+\.(?:png|jpe?g|gif|webp|svg)$", re.IGNORECASE)
+
+
+def screenshot_path(name: str) -> Optional[str]:
+    """Absolute path of a served screenshot, or None if the name is unsafe or the file is
+    missing. Used both to render the <img> and (by the web route) to serve the bytes."""
+    if not _SHOT_NAME.match(name or ""):
+        return None
+    p = os.path.normpath(os.path.join(SCREENSHOTS_DIR, name))
+    if os.path.dirname(p) != os.path.normpath(SCREENSHOTS_DIR) or not os.path.isfile(p):
+        return None
+    return p
+
+
+def _image_html(alt: str, src: str) -> str:
+    """A real <img> when the referenced screenshot exists on disk, else a caption placeholder
+    (the images may not have been captured yet)."""
+    alt_e = html.escape(alt)
+    m = re.match(r"^screenshots/([^/]+)$", (src or "").strip())
+    if m and screenshot_path(m.group(1)):
+        url = "/help/screenshots/" + m.group(1)
+        return (f'<figure class="help-shot"><img src="{url}" alt="{alt_e}" loading="lazy">'
+                f'<figcaption>{alt_e}</figcaption></figure>')
+    return f'<p class="help-figure">🖼 <em>{alt_e}</em></p>'
+
+
 def _inline(s: str, cur_slug: str) -> str:
     codes: List[str] = []
     s = re.sub(r"`([^`]+)`", lambda m: codes.append(m.group(1)) or f"\x00{len(codes)-1}\x00", s)
@@ -150,7 +177,7 @@ def _md_to_html(text: str, cur_slug: str) -> str:
             i += 1; continue
         im = re.match(r"^!\[([^\]]*)\]\(([^)]+)\)\s*$", s)
         if im:
-            parts.append(f'<p class="help-figure">🖼 <em>{html.escape(im.group(1))}</em></p>')
+            parts.append(_image_html(im.group(1), im.group(2)))
             i += 1; continue
         if s.startswith(">"):
             buf = []
