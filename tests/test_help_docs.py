@@ -46,13 +46,13 @@ class TestRender(unittest.TestCase):
 
     def test_internal_links_rewritten(self):
         self.assertIn('href="/help/5-download-a-shortlist"', self.body)
-        # a cross-doc anchor link (Journey 3 → 6.4)
-        _, b3 = h.render("3-create-a-shortlist")
-        self.assertIn('href="/help/6-how-was-this-built#64--letting-the-ai-reframe-your-question"', b3)
+        # a cross-doc anchor link (Journey 7 → Journey 6, section 6.4)
+        _, b7 = h.render("7-edit-filter-parameters")
+        self.assertIn('href="/help/6-how-was-this-built#64-letting-the-ai-reframe-your-question"', b7)
 
     def test_heading_ids_present_and_match_anchor_scheme(self):
-        # A section heading gets an id matching the GitHub-style anchor.
-        self.assertIn('id="41--start-a-run"', self.body)
+        # A section heading gets an id matching the GitHub-style anchor (colon-titled headings).
+        self.assertIn('id="41-start-a-run"', self.body)
 
     def test_images_become_captions_not_broken_imgs(self):
         self.assertIn("help-figure", self.body)
