@@ -103,9 +103,8 @@
       <span id="pi-status" class="secondary"></span>
     </div>
     <div id="pi-out" hidden style="margin-top:14px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+      <div style="display:flex;align-items:center;gap:12px;">
         <span class="secondary" id="pi-meta"></span>
-        <button class="btn secondary-btn" id="pi-copy" type="button" style="padding:4px 12px;font-size:13px;">Copy markdown</button>
       </div>
       <div style="margin:12px 0 4px;padding:16px 18px;border-left:6px solid var(--blue,#1d70b8);
         background:var(--panel-blue,#e8f1f8);border-radius:0 8px 8px 0;font-size:17px;line-height:1.5;">
@@ -188,10 +187,6 @@
           document.getElementById("pi-out").hidden = false;
         } catch (e) { st.textContent = "Could not run the review."; }
         finally { btn.disabled = false; }
-      });
-      document.getElementById("pi-copy").addEventListener("click", () => {
-        navigator.clipboard.writeText(lastReview || "");
-        const c = document.getElementById("pi-copy"); c.textContent = "Copied"; setTimeout(() => c.textContent = "Copy markdown", 1500);
       });
       // Per-recommendation actions: Copy the block, or Apply it straight into the matching field.
       document.getElementById("pi-text").addEventListener("click", e => {
