@@ -1,9 +1,15 @@
 {% extends "base.html" %}
-{% block page_id %}guc-0017{% endblock %}
-{% block title %}Edit user{% endblock %}
+{% block page_id %}guc-0020b{% endblock %}
+{% block title %}Edit user — Users{% endblock %}
 {% block content %}
-  <a class="back" href="{{ url_for('admin_users_page') }}">‹ User administration</a>
-  <h1 style="margin:16px 0 4px;">Edit user</h1>
+  <h1 style="margin:16px 0 16px;">Users</h1>
+
+  <div class="tabs" role="tablist">
+    <a href="{{ url_for('admin_users_page') }}" data-tabid="guc-0020a" role="tab">Users</a>
+    <span class="current" data-tabid="guc-0020b" role="tab">Edit user</span>
+  </div>
+  <div class="tabpanel">
+  <h2 style="margin:0 0 4px;">{{ ((u.first_name or '') ~ ' ' ~ (u.last_name or '')).strip() or u.email }}</h2>
   <p class="secondary" style="margin:0 0 18px;"><span class="mono">{{ u.email }}</span>
     {% if u.must_change_password %}· <strong style="color:#8a3b12;">must set a new password at next sign-in</strong>{% endif %}</p>
 
@@ -46,5 +52,7 @@
       <input type="hidden" name="csrf" value="{{ csrf_token }}">
       <button class="btn secondary-btn" type="submit">Generate reset link</button>
     </form>
+  </div>
+  <span class="pane-id">guc-0020b</span>
   </div>
 {% endblock %}

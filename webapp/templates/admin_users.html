@@ -1,18 +1,22 @@
 {% extends "base.html" %}
 {% from "_sql.html" import sql_details %}
-{% block page_id %}guc-0020{% endblock %}
-{% block title %}User administration{% endblock %}
+{% block page_id %}guc-0020a{% endblock %}
+{% block title %}Users{% endblock %}
 {% block content %}
-  <a class="back" href="{{ url_for('settings_page') }}">‹ Settings</a>
-  <h1 style="margin:16px 0 6px;">User administration</h1>
-  <p class="lede" style="margin:0 0 20px;max-width:680px;">View everyone with an account and open a user to edit
-    their name, role and status. Creating an account here follows the same rules as sign-up.</p>
+  <h1 style="margin:16px 0 16px;">Users</h1>
+
+  <div class="tabs" role="tablist">
+    <span class="current" data-tabid="guc-0020a" role="tab">Users</span>
+  </div>
+  <div class="tabpanel">
+  <p class="lede" style="margin:0 0 20px;max-width:680px;">Everyone with an account. Open a user to edit
+    their name, role and status, or reset their password. Creating an account here follows the same rules as sign-up.</p>
 
   {% if user_ok %}<div class="success" style="margin-bottom:16px;">Saved.</div>{% endif %}
   {% if user_error %}<div class="error-summary"><h2>There is a problem</h2><ul><li>{{
     'An account with that email address already exists.' if user_error == 'exists' else user_error }}</li></ul></div>{% endif %}
 
-  <h2 style="margin:24px 0 8px;">Users</h2>
+  <h2 style="margin:8px 0 8px;">Accounts</h2>
   {% if users %}
   <div class="table-wrap" style="max-width:900px;"><table style="font-size:14px;">
     <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Created</th><th></th></tr></thead>
@@ -67,4 +71,6 @@
     <input type="file" name="bundle" accept=".gz,.json,application/gzip,application/json" required>
     <button class="btn secondary-btn" type="submit">Import shortlist</button>
   </form>
+  <span class="pane-id">guc-0020a</span>
+  </div>
 {% endblock %}
