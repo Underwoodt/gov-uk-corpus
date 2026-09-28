@@ -91,9 +91,10 @@
      criteria below (guc-0004c4 has the same review, driven off run-to-run divergence). #}
   <div class="card" id="card-prompt-improve" hidden style="padding:18px 22px;margin:0 0 20px;">
     <h3 style="margin:0 0 4px;">Do you want to try to improve your prompt with AI?</h3>
-    <p class="secondary" style="margin:0 0 10px;max-width:760px;">Ask the model to explain the run-to-run variance
-      and propose concrete, paste-ready edits to your include / exclude criteria and KEEP / DROP examples below. It is
-      given the diagnosis and the flipping pages. Suggest-only — nothing is applied. Uses API credit.</p>
+    <p class="secondary" style="margin:0 0 10px;max-width:760px;">Ask the model to review your runs and propose concrete
+      edits to your include / exclude criteria and KEEP / DROP examples below. <strong>Copy</strong> a suggestion, or
+      <strong>Apply</strong> it straight into its field — then review it and <strong>Save</strong>. Nothing is saved until
+      you do. Uses API credit.</p>
     <div class="controls" style="align-items:center;gap:12px;flex-wrap:wrap;">
       <button class="btn" id="pi-btn" type="button">Review the prompts</button>
       <label class="secondary" style="font-size:14px;">Max words
@@ -125,20 +126,25 @@
         md = String(md).replace(/```[^\n]*\n?([\s\S]*?)```/g, (m, code) => { blocks.push(code.replace(/\n$/, "")); return `\u0000${blocks.length - 1}\u0000`; });
         const inline = s => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>")
           .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>");
-        const lines = md.split(/\r?\n/); let html = "", i = 0;
-        const codeStyle = "white-space:pre-wrap;word-break:break-word;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin:6px 0;font-size:13px;";
+        // Which editable field a "### <heading>" block targets, so its code block can offer "Apply to field".
+        const FIELD_OF = { "inclusion criteria": "inclusion_context", "exclusion criteria": "exclusion_context",
+          "keep examples": "adjudication_hints_keep", "drop examples": "adjudication_hints_drop" };
+        const lines = md.split(/\r?\n/); let html = "", i = 0, curField = null;
+        const codeStyle = "white-space:pre-wrap;word-break:break-word;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:24px 12px 10px;margin:6px 0;font-size:13px;";
+        const btnStyle = "font:inherit;font-size:12px;padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:var(--white,#fff);cursor:pointer;";
         while (i < lines.length) {
           const ln = lines[i], cb = ln.match(/^\u0000(\d+)\u0000$/);
           if (cb) {
+            const field = curField; curField = null;
+            const apply = field ? `<button type="button" class="md-apply" data-field="${field}" style="${btnStyle}border-color:var(--green,#00703c);color:var(--green,#00703c);font-weight:600;">Apply to field</button>` : "";
             html += `<div class="md-code" style="position:relative;margin:6px 0;">`
-              + `<button type="button" class="md-copy" style="position:absolute;top:6px;right:6px;font:inherit;font-size:12px;`
-              + `padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:var(--white,#fff);cursor:pointer;">Copy</button>`
+              + `<div style="position:absolute;top:6px;right:6px;display:flex;gap:6px;">${apply}<button type="button" class="md-copy" style="${btnStyle}">Copy</button></div>`
               + `<pre style="${codeStyle}">${esc(blocks[+cb[1]])}</pre></div>`;
             i++; continue;
           }
           if (/^\s*---\s*$/.test(ln)) { html += "<hr>"; i++; continue; }
           const h = ln.match(/^(#{1,6})\s+(.*)$/);
-          if (h) { const lvl = Math.min(6, h[1].length + 3); html += `<h${lvl} style="margin:12px 0 4px;">${inline(h[2])}</h${lvl}>`; i++; continue; }
+          if (h) { curField = FIELD_OF[h[2].trim().toLowerCase()] || null; const lvl = Math.min(6, h[1].length + 3); html += `<h${lvl} style="margin:12px 0 4px;">${inline(h[2])}</h${lvl}>`; i++; continue; }
           if (/^\s*[-*]\s+/.test(ln)) { html += "<ul style='margin:4px 0 4px 18px;'>"; while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) { html += `<li>${inline(lines[i].replace(/^\s*[-*]\s+/, ""))}</li>`; i++; } html += "</ul>"; continue; }
           if (/^\s*\d+\.\s+/.test(ln)) { html += "<ol style='margin:4px 0 4px 20px;'>"; while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) { html += `<li>${inline(lines[i].replace(/^\s*\d+\.\s+/, ""))}</li>`; i++; } html += "</ol>"; continue; }
           if (ln.trim() === "") { i++; continue; }
@@ -185,12 +191,28 @@
         navigator.clipboard.writeText(lastReview || "");
         const c = document.getElementById("pi-copy"); c.textContent = "Copied"; setTimeout(() => c.textContent = "Copy markdown", 1500);
       });
-      // Per-recommendation copy: each fenced block gets its own Copy button.
+      // Per-recommendation actions: Copy the block, or Apply it straight into the matching field.
       document.getElementById("pi-text").addEventListener("click", e => {
-        const btn = e.target.closest(".md-copy"); if (!btn) return;
-        const pre = btn.parentElement.querySelector("pre"); if (!pre) return;
-        navigator.clipboard.writeText(pre.textContent);
-        btn.textContent = "Copied"; setTimeout(() => btn.textContent = "Copy", 1500);
+        const copy = e.target.closest(".md-copy");
+        if (copy) {
+          const pre = copy.closest(".md-code").querySelector("pre"); if (!pre) return;
+          navigator.clipboard.writeText(pre.textContent);
+          copy.textContent = "Copied"; setTimeout(() => copy.textContent = "Copy", 1500);
+          return;
+        }
+        const apply = e.target.closest(".md-apply");
+        if (apply) {
+          const field = document.getElementById(apply.dataset.field);
+          const pre = apply.closest(".md-code").querySelector("pre");
+          if (!field || !pre) return;
+          field.value = pre.textContent;
+          field.dispatchEvent(new Event("input", { bubbles: true }));   // fire any field listeners
+          field.scrollIntoView({ behavior: "smooth", block: "center" });
+          const prev = field.style.background;
+          field.style.transition = "background .3s"; field.style.background = "#fff8d6";
+          setTimeout(() => { field.style.background = prev; }, 1400);
+          apply.textContent = "Applied ✓"; setTimeout(() => apply.textContent = "Apply to field", 1600);
+        }
       });
     })();
   </script>
