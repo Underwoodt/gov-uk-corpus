@@ -17,13 +17,13 @@ Run details) · **Compare Runs**.
 > was kept or dropped, see what the AI actually decided, and — if the answer isn't quite right — let
 > the AI suggest a sharper question. Nothing is a black box."
 
+---
+
 > **On the simple interface** you see everything in this journey — Pipeline Runs, the Selection
 > funnel, Compare Runs and each run's details. Two power-user extras stay hidden until you switch to
 > the **advanced** interface: the **Run performance** metrics tab, and the **Trial (A/B)** run
 > options (prompt variant, concurrency, prompt caching) on New Run. You need neither to build, run,
 > check and tune a shortlist.
-
----
 
 ## 6.1 — Showing how it works: the funnel
 

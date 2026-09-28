@@ -18,7 +18,7 @@ we can pin the report to an exact page.
 
 ## Next free serial
 
-**`guc-0033`** ← assign this to the next new page, then increment this line. (guc-0023 is free; 0024–0026 used by the password-reset pages; 0027 = GOV.UK Search additions; 0028 = Run performance diff; 0029 = Gold labels; 0030 = Gold agreement; 0031 = Gold labels wizard; 0032 = Analysis review list.)
+**`guc-0035`** ← assign this to the next new page, then increment this line. (guc-0023 is free; 0024–0026 used by the password-reset pages; 0027 = GOV.UK Search additions; 0028 = Run performance diff; 0029 = Gold labels; 0030 = Gold agreement; 0031 = Gold labels wizard; 0032 = Analysis review list; 0033 = Help index; 0034 = Help article.)
 
 ## How it's wired (so the rule is automatic)
 
@@ -73,6 +73,8 @@ we can pin the report to an exact page.
 | guc-0030 | Gold agreement (inter-labeller κ, disagreements, adjudication) | `gold_agreement.html` | `GET /categories/{id}/gold/agreement`, `POST /api/categories/{id}/gold/adjudicate` | Active |
 | guc-0031 | Gold labels wizard (one page at a time, Prev / Next save) | `gold_labels.html` (wizard mode) | `GET /categories/{id}/gold/wizard?run=` | Active |
 | guc-0032 | Analysis review list (generalised page list opened from the Data Analysis cards; title = context – verdict, e.g. “Inclusion Phase (Recall) – Keep”) | `analysis_list.html` | `GET /categories/{id}/analysis/list?context=&run=&verdict=` | Active |
+| guc-0033 | Help index (lists the journey guides, rendered from `docs/journeys/*.md`) | `help_index.html` | `GET /help` | Active |
+| guc-0034 | Help article (one journey guide rendered as an in-app page) | `help_page.html` | `GET /help/{slug}` | Active |
 
 ## Sub-tab IDs
 

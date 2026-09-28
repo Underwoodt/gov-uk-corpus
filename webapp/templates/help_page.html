@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block page_id %}guc-0034{% endblock %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<style>
+  .help-article { max-width: 720px; }
+  .help-article h1 { margin: 0 0 14px; }
+  .help-article h2 { margin: 30px 0 8px; }
+  .help-article h3 { margin: 20px 0 6px; }
+  .help-article p, .help-article li { line-height: 1.55; }
+  .help-article ul, .help-article ol { margin: 8px 0 8px 22px; }
+  .help-article li { margin: 4px 0; }
+  .help-article hr { border: 0; border-top: 1px solid var(--grey-border,#b1b4b6); margin: 26px 0; }
+  .help-article code { background: var(--surface-2,#f3f2f1); padding: 1px 5px; border-radius: 4px; font-size: 0.92em; }
+  /* Kept explanatory callouts (e.g. the interface-level note) */
+  .help-article blockquote.help-note {
+    margin: 14px 0; padding: 12px 16px; border-left: 4px solid var(--blue,#1d70b8);
+    background: var(--panel-blue,#eef4fb); border-radius: 0 6px 6px 0; }
+  /* Screenshot placeholders — the images aren't served yet, so show what they'd depict */
+  .help-article .help-figure {
+    margin: 12px 0; padding: 10px 14px; border: 1px dashed var(--grey-border,#b1b4b6);
+    border-radius: 6px; color: var(--grey-text,#505a5f); font-size: 14px; background: var(--surface-2,#f8f8f8); }
+</style>
+
+<p style="margin:0 0 12px;"><a href="{{ url_for('help_index') }}">‹ All help &amp; guides</a></p>
+
+<article class="help-article">
+  <h1>{{ title }}</h1>
+  {{ body | safe }}
+</article>
+{% endblock %}

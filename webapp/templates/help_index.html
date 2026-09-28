@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block page_id %}guc-0033{% endblock %}
+{% block title %}Help{% endblock %}
+{% block content %}
+<div style="max-width:760px;">
+  <h1 style="margin:0 0 6px;">Help &amp; guides</h1>
+  <p class="secondary" style="margin:0 0 20px;">Short, plain-English walkthroughs of the main things
+    you do in the Shortlist Builder. Read them in order for the whole loop, or jump to the one you
+    need.</p>
+
+  <ol style="list-style:none;padding:0;margin:0;">
+  {% for j in journeys %}
+    <li style="margin:0 0 12px;">
+      <a href="{{ url_for('help_page', slug=j.slug) }}"
+         style="display:block;padding:14px 16px;border:1px solid var(--grey-border,#b1b4b6);
+                border-radius:8px;text-decoration:none;">
+        <span style="font-weight:700;font-size:18px;color:var(--link,#1d70b8);">{{ j.title }}</span>
+        {% if j.blurb %}<span class="secondary" style="display:block;margin:6px 0 0;color:var(--grey-text,#505a5f);">{{ j.blurb }}</span>{% endif %}
+      </a>
+    </li>
+  {% endfor %}
+  </ol>
+
+  {% if not journeys %}
+  <p class="secondary">No guides are available.</p>
+  {% endif %}
+</div>
+{% endblock %}

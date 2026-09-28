@@ -41,9 +41,9 @@ from govuk_corpus import accounts, ai_models, audit
 from govuk_corpus import categories as cat
 from govuk_corpus import category_counts, category_transfer, feedback, guardrails, sessions
 from govuk_corpus import (audit_stats, category_interview, evaluate, evaluate_driver, extract,
-                          gold, keyword_explain, llm, orgs, peak_schedule, pricing, prompts, readability,
-                          reporting, roles, search_augment, settings, shortlist, stage_align,
-                          sustainability, view_counts)
+                          gold, help_docs, keyword_explain, llm, orgs, peak_schedule, pricing,
+                          prompts, readability, reporting, roles, search_augment, settings,
+                          shortlist, stage_align, sustainability, view_counts)
 from govuk_corpus import orgs as orgs_mod   # stable module handle (some routes take an `orgs` param)
 from govuk_corpus.backend import db
 
@@ -308,6 +308,35 @@ def ctx(conn, request: Request, **extra) -> dict:
             "csrf_token": _csrf_token(request)}
     base.update(extra)
     return base
+
+
+# ---- Help (in-app user guides, rendered from docs/journeys/*.md) ---------
+@app.get("/help", response_class=HTMLResponse)
+def help_index(request: Request):
+    if not authed(request):
+        return login_redirect(request)
+    conn = connect()
+    try:
+        return templates.TemplateResponse("help_index.html", ctx(
+            conn, request, active_nav="help", journeys=help_docs.list_journeys()))
+    finally:
+        conn.close()
+
+
+@app.get("/help/{slug}", response_class=HTMLResponse)
+def help_page(request: Request, slug: str):
+    if not authed(request):
+        return login_redirect(request)
+    rendered = help_docs.render(slug)   # None for an unknown/invalid slug (also blocks traversal)
+    if rendered is None:
+        return RedirectResponse(url=str(request.url_for("help_index")), status_code=303)
+    title, body = rendered
+    conn = connect()
+    try:
+        return templates.TemplateResponse("help_page.html", ctx(
+            conn, request, active_nav="help", title=title, body=body))
+    finally:
+        conn.close()
 
 
 # ---- AI Assistant (temporary prototype) ---------------------------------
