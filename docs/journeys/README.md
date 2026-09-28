@@ -19,14 +19,16 @@ buttons), so they double as living documentation — when a screen changes, upda
 | 3 | [Create a shortlist](3-create-a-shortlist.md) | How do I describe what I want? | Filter Parameters |
 | 3.1–3.3 | …Organisation · Page types · Keywords | Narrowing the corpus | Filter Parameters |
 | 3.4 | …Prompts (include / exclude / the coin-flips) | Teaching the AI the judgement calls | Filter Parameters |
-| 4 | [Download a shortlist](4-download-a-shortlist.md) | How do I get the list out? | Results → Download |
-| 4.1 | …The fields you can export | What columns can I take? | Download |
-| 4.2 | …Formats | CSV, Excel or JSON? | Download |
-| 5 | ["Hang on — how was this built?"](5-how-was-this-built.md) | Trust and tuning | Results · Runs · Compare Runs |
-| 5.1 | …The funnel | How each filter narrowed it | Runs → Selection funnel |
-| 5.2 | …What was kept / dropped and why | Row-level reasons | Results (stages) · Run details |
-| 5.3 | …Seeing the AI results | The two-phase pipeline | Runs → Pipeline Runs · Run details |
-| 5.4 | …Letting the AI reframe your question | Fixing run-to-run wobble | Compare Runs · Filter Parameters |
+| 4 | [Run the AI](4-run-the-ai.md) | How do I run it, and know it worked? | Runs → Pipeline Runs · Run details |
+| 4.1–4.4 | …Start · watch the two passes · read the outcome · fix a stop | Doing the run and reading it | Pipeline Runs · Run details |
+| 5 | [Download a shortlist](5-download-a-shortlist.md) | How do I get the list out? | Results → Download |
+| 5.1 | …The fields you can export | What columns can I take? | Download |
+| 5.2 | …Formats | CSV, Excel or JSON? | Download |
+| 6 | ["Hang on — how was this built?"](6-how-was-this-built.md) | Trust and tuning | Results · Runs · Compare Runs |
+| 6.1 | …The funnel | How each filter narrowed it | Runs → Selection funnel |
+| 6.2 | …What was kept / dropped and why | Row-level reasons | Results (stages) · Run details |
+| 6.3 | …Seeing the AI results | The two-phase pipeline | Runs → Pipeline Runs · Run details |
+| 6.4 | …Letting the AI reframe your question | Fixing run-to-run wobble | Compare Runs · Filter Parameters |
 
 ## The map of the app (so the journeys hang together)
 
@@ -36,20 +38,20 @@ don't pick pages by hand. Open a shortlist and you get a row of tabs:
 **Results** · **Runs** · **GDS Compliance** · **URL check** · **Filter Parameters**
 
 - **Results** — the list those parameters generated, with per-stage kept/dropped views and the
-  row-level AI verdicts (Journeys 4 and 5.2).
+  row-level AI verdicts (Journeys 5 and 6.2).
 - **Runs** — running the AI over the shortlist, and everything about those runs. It has its own
   sub-tabs:
-  - **Pipeline Runs** — start a run with **New Run** and see the history of every run (this merges
-    what used to be separate "Active Run" and "Run History" tabs).
+  - **Pipeline Runs** — start a run with **New Run** and see the history of every run (Journey 4;
+    this merges what used to be separate "Active Run" and "Run History" tabs).
   - **Selection funnel** — how each filter narrowed the corpus, with the Keyword Matching
-    breakdowns folded in (Journey 5.1).
+    breakdowns folded in (Journey 6.1).
   - **Compare Runs** — compares your recent runs and lets the AI suggest sharper criteria
-    (Journey 5.4). *(Renamed from "Data Analysis".)*
+    (Journey 6.4). *(Renamed from "Data Analysis".)*
   - **Run performance** — a side-by-side metrics table. **Advanced interface only** — a basic user
     on the simple interface does not see this tab.
 - **Filter Parameters** — where you set what generates the shortlist (Journey 3): organisation,
   document types, keywords, and the AI include/exclude criteria — and, once a run has finished, an
-  **"improve your prompt with AI?"** review card (Journeys 3.4 and 5.4).
+  **"improve your prompt with AI?"** review card (Journeys 3.4 and 6.4).
 - **GDS Compliance** / **URL check** — supporting checks, not covered by these journeys.
 
 Open a single run (from **Pipeline Runs**) to reach its **Run details** page — the two AI phases, a

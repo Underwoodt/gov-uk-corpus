@@ -155,7 +155,7 @@ precise fix — and you don't have to invent them alone. Once you've done at lea
 the top: it reviews your runs and proposes sharper include/exclude criteria and Keep/Drop examples,
 each with an **Apply to field** button that drops the wording straight into the box for you to edit
 and Save. Treat it as inspiration, not gospel — the card says so.
-[Journey 5.4](5-how-was-this-built.md#54--letting-the-ai-reframe-your-question) walks through it.
+[Journey 6.4](6-how-was-this-built.md#64--letting-the-ai-reframe-your-question) walks through it.
 
 ---
 
@@ -164,8 +164,10 @@ and Save. Treat it as inspiration, not gospel — the card says so.
 **What you do:** **Save** at the bottom of the form.
 
 **What you see:** the tool (re)generates the shortlist from your parameters and moves you on to see
-it — the pages the filters kept, ready for the AI pass. That's [Journey 5](5-how-was-this-built.md);
-getting the list *out* is [Journey 4](4-download-a-shortlist.md).
+it — the pages the filters kept, ready for the AI pass. Running that pass is
+[Journey 4](4-run-the-ai.md); checking how it was built is
+[Journey 6](6-how-was-this-built.md); getting the list *out* is
+[Journey 5](5-download-a-shortlist.md).
 
 > Say: "Save, and the tool generates the shortlist there and then. From here you can look at what it
 > produced, run the AI over it, and download it — which is exactly where we go next."
@@ -183,5 +185,5 @@ getting the list *out* is [Journey 4](4-download-a-shortlist.md).
 ## Links
 
 - Previous: [Journey 2 — What is a shortlist?](2-what-is-a-shortlist.md)
-- Next: [Journey 4 — Download a shortlist](4-download-a-shortlist.md)
-- See it work: [Journey 5 — How was this built?](5-how-was-this-built.md)
+- Next: [Journey 4 — Run the AI](4-run-the-ai.md)
+- See it work: [Journey 6 — How was this built?](6-how-was-this-built.md)

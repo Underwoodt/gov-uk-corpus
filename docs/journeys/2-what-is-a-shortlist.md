@@ -68,7 +68,7 @@ new shortlist** button. Opening any shortlist reveals its tabs — the shape of 
 follows:
 
 - **Results** — the list those parameters generated, with the row-level kept/dropped views → [Journeys 4 and 5.2].
-- **Runs** — run the AI over the shortlist and see every run; its sub-tabs hold the **Selection funnel** and **Compare Runs** → [Journey 5].
+- **Runs** — run the AI over the shortlist and see every run; its sub-tabs hold the **Selection funnel** and **Compare Runs** → [Journey 4](4-run-the-ai.md).
 - **Filter Parameters** — where you set the parameters that generate the shortlist, and (after a run) ask the AI to sharpen them → [Journey 3].
 
 > Say: "This home page is just the shelf of saved questions. Open one and you get tabs: see the

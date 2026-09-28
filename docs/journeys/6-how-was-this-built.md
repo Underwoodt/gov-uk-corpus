@@ -1,4 +1,4 @@
-# Journey 5 — "Hang on, how was this built? Is it what I want?"
+# Journey 6 — "Hang on, how was this built? Is it what I want?"
 
 *What this shows: how to trust a shortlist — see exactly how the Filter Parameters generated it,
 which pages were kept or dropped and why, what the AI decided, and how the AI can help you sharpen
@@ -25,7 +25,7 @@ Run details) · **Compare Runs**.
 
 ---
 
-## 5.1 — Showing how it works: the funnel
+## 6.1 — Showing how it works: the funnel
 
 **What you do:** open the **Runs** tab, then its **Selection funnel** sub-tab, and look at the
 funnel table (the **Keyword Matching** breakdowns — which organisations, page types and terms
@@ -45,14 +45,14 @@ were applied:
 > and makes the judgement calls. If a stage cuts far more or far less than you expected, that's your
 > clue something in the Filter Parameters needs a tweak."
 
-![Screenshot — the Selection funnel table on the Runs → Selection funnel sub-tab: counts for All pages → After organisation → After document-type → After keyword → the AI pass](screenshots/5-1-funnel.png)
+![Screenshot — the Selection funnel table on the Runs → Selection funnel sub-tab: counts for All pages → After organisation → After document-type → After keyword → the AI pass](screenshots/6-1-funnel.png)
 
 **Why it matters:** the funnel turns "trust me" into "look" — you can see which single filter did
 the heavy lifting, and whether the drop at each step matches your intent.
 
 ---
 
-## 5.2 — Seeing what was kept and dropped, and why
+## 6.2 — Seeing what was kept and dropped, and why
 
 **What you do:** on the **Results** tab, switch the **stage** view to look at the pages a
 given step kept or dropped, and open the AI's verdict on individual pages.
@@ -66,14 +66,14 @@ this page?" for any row.
 > slurry here means concrete'. If you disagree with a call, you've just found something to fix in the
 > criteria."
 
-![Screenshot — a stage view on the Results tab: rows of pages with keep/drop, score and a plain-English reason](screenshots/5-2-kept-dropped-rows.png)
+![Screenshot — a stage view on the Results tab: rows of pages with keep/drop, score and a plain-English reason](screenshots/6-2-kept-dropped-rows.png)
 
 **Why it matters:** a shortlist you can audit row by row is one you can defend — and every
 disagreement you spot is a concrete edit for the include/exclude criteria or a new Keep/Drop example.
 
 ---
 
-## 5.3 — Seeing the AI results (the two-phase pipeline)
+## 6.3 — Seeing the AI results (the two-phase pipeline)
 
 **What you do:** open the **Runs** tab (its first sub-tab, **Pipeline Runs**). Click **New Run** —
 it creates a run and opens that run's own page, where you give it a name and press **Start Run**.
@@ -101,7 +101,7 @@ details.
 reached"** / **"page cap"** — so you can tell a clean run from one that needs attention or a re-run.
 While a run is working, a live line shows **"still evaluating… N done · M left"**.
 
-![Screenshot — the Pipeline Runs table: several runs with status, cost, and a red "low balance" stop chip on one](screenshots/5-3a-run-history.png)
+![Screenshot — the Pipeline Runs table: several runs with status, cost, and a red "low balance" stop chip on one](screenshots/6-3a-run-history.png)
 
 > Say: "Running the AI is two passes: a generous first read that scores and keeps, then a strict
 > second read that only removes. You start one with New Run, it runs on the server, and every run is
@@ -109,7 +109,7 @@ While a run is working, a live line shows **"still evaluating… N done · M lef
 > why — right down to 'top up your Anthropic credit' — and a click carries on, or re-tries just the
 > pages that failed. No guessing why a run didn't finish."
 
-![Screenshot — the Run details page: the Run outcome panel at the top (status + why it didn't finish + any failures) above the two LLM phases (Inclusion → Exclusion) with pages, keep/drop, tokens and cost](screenshots/5-3b-run-details.png)
+![Screenshot — the Run details page: the Run outcome panel at the top (status + why it didn't finish + any failures) above the two LLM phases (Inclusion → Exclusion) with pages, keep/drop, tokens and cost](screenshots/6-3b-run-details.png)
 
 **Why it matters:** you're not trusting a single opaque score. You can see both passes, what each
 cost, whether the run actually finished, and exactly what failed if it didn't — and fix it without
@@ -117,7 +117,7 @@ starting over.
 
 ---
 
-## 5.4 — Letting the AI reframe your question
+## 6.4 — Letting the AI reframe your question
 
 Sometimes the shortlist is *nearly* right but wobbles — the same borderline pages flip between runs.
 The tool can turn the AI on *itself* to fix that, and it offers it in two places.
@@ -146,7 +146,7 @@ review the wording, keep what carries your intent, and Save.
 > straight into its box. The tool helps you ask a better question — then re-generates the shortlist
 > from it."
 
-![Screenshot — Compare Runs: the AI prompt-review output (diagnosis + suggested include/exclude criteria and Keep/Drop examples) and the "Apply to shortlist" card with accept/skip ticks](screenshots/5-4-prompt-review-apply.png)
+![Screenshot — Compare Runs: the AI prompt-review output (diagnosis + suggested include/exclude criteria and Keep/Drop examples) and the "Apply to shortlist" card with accept/skip ticks](screenshots/6-4-prompt-review-apply.png)
 
 **Why it matters:** this closes the loop from Journey 3 — the coin-flip examples you could write by
 hand, the AI can now suggest from real evidence, so the shortlist gets steadier every pass.
@@ -161,6 +161,6 @@ hand, the AI can now suggest from real evidence, so the shortlist gets steadier 
 
 ## Links
 
-- Previous: [Journey 4 — Download a shortlist](4-download-a-shortlist.md)
+- Previous: [Journey 5 — Download a shortlist](5-download-a-shortlist.md)
 - Back to the start: [Journey 2 — What is a shortlist?](2-what-is-a-shortlist.md)
 - The criteria you'll be tuning live in [Journey 3.4](3-create-a-shortlist.md#34--prompts-include-exclude-and-sorting-out-the-coin-flips-llm-inference).

@@ -1,4 +1,4 @@
-# Journey 4 — Download a shortlist
+# Journey 5 — Download a shortlist
 
 *What this shows: getting the shortlist out of the tool as a file — choosing the columns you need
 and the format that suits where it's going next.*
@@ -36,7 +36,7 @@ list as a specific run judged it, so the file matches exactly the version you're
 
 ---
 
-## 4.1 — The fields you can export
+## 5.1 — The fields you can export
 
 **What you do:** tick the columns you want from a grouped picker. **URL is always included** (it's
 the one column every downstream use needs, so it's locked on). The rest are grouped so you can grab
@@ -68,7 +68,7 @@ current.* Grab a theme rather than hunting field by field.
 
 ---
 
-## 4.2 — Formats
+## 5.2 — Formats
 
 **What you do:** pick an **Output type**:
 
@@ -94,5 +94,5 @@ The file extension is added for you.
 
 ## Links
 
-- Previous: [Journey 3 — Create a shortlist](3-create-a-shortlist.md)
-- Next: [Journey 5 — How was this built? Is it what I want?](5-how-was-this-built.md)
+- Previous: [Journey 4 — Run the AI](4-run-the-ai.md)
+- Next: [Journey 6 — How was this built? Is it what I want?](6-how-was-this-built.md)
