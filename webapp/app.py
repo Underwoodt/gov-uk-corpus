@@ -5046,21 +5046,7 @@ _EXPLAIN_CARD_SYSTEM = (
     "problems. No preamble, no headings, 2–4 sentences, British English. Always say 'Inclusion "
     "Phase' / 'Exclusion Phase', never 'Phase 1' or 'Phase 2'.")
 
-_PROMPT_REVIEW_SYSTEM = (
-    "You are a prompt engineer improving the REPEATABILITY of an LLM pipeline that shortlists "
-    "GOV.UK pages in two phases: an INCLUSION PHASE scores each page 0.0–1.0 and keeps any positive "
-    "score; an EXCLUSION PHASE re-checks the keeps and may only DROP. You are given the current "
-    "INCLUDE / EXCLUDE criteria and KEEP / DROP examples the team edits (the base template around "
-    "them is FIXED — do not rewrite it), a DATA DIAGNOSIS of how two identical-config runs diverged, "
-    "and concrete FLIPPING pages (kept by one run, dropped by the other) with each run's reason. "
-    "Explain what is driving the run-to-run variance and propose concrete, minimal, paste-ready edits "
-    "that would make future runs repeatable. Generalise — never hard-code URLs or overfit single "
-    "pages. Use the DIAGNOSIS to identify which phase is at fault: if the flips are in EXCLUSION on "
-    "low-confidence pages, sharpen the EXCLUDE criteria with a single decisive, testable rule and add "
-    "2–4 KEEP and DROP examples drawn from the flipping pages; only edit INCLUDE if the diagnosis "
-    "blames the Inclusion Phase. If an edit changes what the shortlist MEANS (e.g. dropping incidental "
-    "mentions), call it out as an explicit editorial choice. Always say 'Inclusion Phase' / "
-    "'Exclusion Phase', never 'Phase 1' or 'Phase 2'.\n\n"
+_PROMPT_REVIEW_FORMAT = (
     "Reply in concise GitHub-flavored markdown, using EXACTLY this structure and nothing else:\n"
     "## Diagnosis\n(1–2 sentences on the cause and which phase is at fault.)\n"
     "## Suggested criteria\n"
@@ -5083,11 +5069,88 @@ _PROMPT_REVIEW_SYSTEM = (
     "Keep the prose tight — the fenced paste-ready blocks may be as long as needed, but all other "
     "text combined must stay under the word limit stated in the user message.")
 
+_PROMPT_REVIEW_SYSTEM = (
+    "You are a prompt engineer improving the REPEATABILITY of an LLM pipeline that shortlists "
+    "GOV.UK pages in two phases: an INCLUSION PHASE scores each page 0.0–1.0 and keeps any positive "
+    "score; an EXCLUSION PHASE re-checks the keeps and may only DROP. You are given the current "
+    "INCLUDE / EXCLUDE criteria and KEEP / DROP examples the team edits (the base template around "
+    "them is FIXED — do not rewrite it), a DATA DIAGNOSIS of how two identical-config runs diverged, "
+    "and concrete FLIPPING pages (kept by one run, dropped by the other) with each run's reason. "
+    "Explain what is driving the run-to-run variance and propose concrete, minimal, paste-ready edits "
+    "that would make future runs repeatable. Generalise — never hard-code URLs or overfit single "
+    "pages. Use the DIAGNOSIS to identify which phase is at fault: if the flips are in EXCLUSION on "
+    "low-confidence pages, sharpen the EXCLUDE criteria with a single decisive, testable rule and add "
+    "2–4 KEEP and DROP examples drawn from the flipping pages; only edit INCLUDE if the diagnosis "
+    "blames the Inclusion Phase. If an edit changes what the shortlist MEANS (e.g. dropping incidental "
+    "mentions), call it out as an explicit editorial choice. Always say 'Inclusion Phase' / "
+    "'Exclusion Phase', never 'Phase 1' or 'Phase 2'.\n\n"
+    + _PROMPT_REVIEW_FORMAT)
+
+_PROMPT_REVIEW_SINGLE_SYSTEM = (
+    "You are a prompt engineer improving an LLM pipeline that shortlists GOV.UK pages in two phases: "
+    "an INCLUSION PHASE scores each page 0.0–1.0 and keeps any positive score; an EXCLUSION PHASE "
+    "re-checks the keeps and may only DROP. You are given the current INCLUDE / EXCLUDE criteria and "
+    "KEEP / DROP examples the team edits (the base template around them is FIXED — do not rewrite it) "
+    "and a DATA DIAGNOSIS of ONE completed run: how the pages scored, how many keeps are low-confidence "
+    "(borderline), and concrete borderline KEEP pages (plus any EXCLUSION drops) with the model's "
+    "reason and score. There is no second run to compare, so judge from this run alone: a large share "
+    "of low-confidence keeps — or many keeps piled on a single low score — means the INCLUDE criteria "
+    "are too broad or vague; borderline keeps that are really out of scope mean the EXCLUDE criteria "
+    "need a decisive, testable rule. Propose concrete, minimal, paste-ready edits that make keeps more "
+    "decisive and better targeted, and add 2–4 KEEP / DROP examples drawn from the borderline pages "
+    "when they would help. Generalise — never hard-code URLs or overfit single pages. If an edit "
+    "changes what the shortlist MEANS (e.g. dropping incidental mentions), call it out. Always say "
+    "'Inclusion Phase' / 'Exclusion Phase', never 'Phase 1' or 'Phase 2'.\n\n"
+    + _PROMPT_REVIEW_FORMAT)
+
+
+def _prompt_review_single(conn, cid: int, category: dict, base: str, max_words: int) -> dict:
+    """Single-run critique: no second run to compare, so critique this run's own decisions — the
+    low-confidence (borderline) keeps and any exclusion drops — and propose paste-ready edits.
+    Returns the {prompt, system, reviewed} bundle for the shared _ai_chat call."""
+    disc = _discriminability(conn, cid, base)
+    ib = _reasons_map(conn, base)
+    # The criteria's borderline decisions: low-confidence keeps (0 < score <= 0.35), lowest first.
+    bl = sorted(((u, d) for u, d in ib.items() if d.get("keep") == 1 and 0 < (d.get("score") or 0) <= 0.35),
+                key=lambda t: (t[1].get("score") or 0))
+    _, b_excl = _chain_of(conn, base)
+    eb = _reasons_map(conn, b_excl and b_excl["run_id"]) if b_excl else {}
+    drops = [(u, d) for u, d in eb.items() if d.get("keep") == 0][:6]
+    head = [u for u, _ in bl[:12]] + [u for u, _ in drops]
+    titles = {}
+    if head:
+        ph = ",".join([shortlist._P] * len(head))
+        for r in conn.execute(f"SELECT url, title FROM content WHERE url IN ({ph})", tuple(head)).fetchall():
+            d = dict(r); titles[d["url"]] = d.get("title") or ""
+    keep_cases = [f"- {(titles.get(u, '') or u)[:80]}\n  score {d.get('score')} — {d.get('reason') or '(none)'}"
+                  for u, d in bl[:12]]
+    drop_cases = [f"- {(titles.get(u, '') or u)[:80]}\n  dropped — {d.get('reason') or '(none)'}"
+                  for u, d in drops]
+    diag = (f"One completed run. Inclusion Phase: {disc['scored']} pages scored, {disc['kept']} kept, "
+            f"{disc['dropped']} dropped. Low-confidence keeps (score <= 0.35): {disc['borderline_keeps']} "
+            f"({disc['borderline_pct']}% of keeps)"
+            + (f"; {disc['top_share']}% of keeps piled on a single score ({disc['top_score']})"
+               if disc.get('top_score') is not None else "") + ".")
+    prompt = (
+        f"TOPIC: {category.get('display_name') or ''}\n\n"
+        f"CURRENT INCLUDE CRITERIA:\n{category.get('inclusion_context') or '(none)'}\n\n"
+        f"CURRENT EXCLUDE CRITERIA:\n{category.get('exclusion_context') or '(none)'}\n\n"
+        f"CURRENT KEEP EXAMPLES:\n{category.get('adjudication_hints_keep') or '(none)'}\n\n"
+        f"CURRENT DROP EXAMPLES:\n{category.get('adjudication_hints_drop') or '(none)'}\n\n"
+        f"DATA DIAGNOSIS (one run):\n{diag}\n\n"
+        f"BORDERLINE KEEPS (lowest-confidence, {len(bl)} total):\n"
+        f"{chr(10).join(keep_cases) or '(none — no low-confidence keeps)'}\n\n"
+        f"EXCLUSION DROPS (sample):\n{chr(10).join(drop_cases) or '(none — no exclusion run, or nothing dropped)'}\n\n"
+        f"COMMENTARY WORD LIMIT: {max_words} words (applies to prose only, not the fenced "
+        "paste-ready blocks).\n\nCritique the criteria from this single run and propose the edits.")
+    return {"prompt": prompt, "system": _PROMPT_REVIEW_SINGLE_SYSTEM, "reviewed": len(bl)}
+
 
 @app.post("/api/categories/{cid}/analysis/prompt-review")
 async def api_analysis_prompt_review(request: Request, cid: int):
-    """Ask the model to critique the inclusion/exclusion prompts using the run-to-run divergence
-    data + the flipping borderline pages, and propose paste-ready edits. Suggest-only."""
+    """Ask the model to critique the inclusion/exclusion prompts and propose paste-ready edits.
+    Suggest-only. With two runs it uses the run-to-run divergence + flipping pages; with one run
+    (comparison omitted) it critiques that run's own borderline keeps / exclusion drops."""
     if not authed(request):
         return JSONResponse({"error": "auth"}, status_code=401)
     body = await request.json()
@@ -5097,13 +5160,30 @@ async def api_analysis_prompt_review(request: Request, cid: int):
     except (ValueError, TypeError):
         max_words = 150
     max_words = max(40, min(max_words, 800))
-    if not (base and comp):
+    if not base:
         return JSONResponse({"error": "bad request"}, status_code=400)
     conn = connect()
     try:
-        if not (_own_run(conn, cid, base) and _own_run(conn, cid, comp)):
-            return JSONResponse({"error": "Pick two inclusion runs of this shortlist."}, status_code=400)
+        if not _own_run(conn, cid, base) or (comp and not _own_run(conn, cid, comp)):
+            return JSONResponse({"error": "Pick a run of this shortlist."}, status_code=400)
         category = cat.get_category(conn, cid) or {}
+        budget, spent = _budget(conn), _daily_spend(conn)
+        if budget > 0 and spent >= budget:
+            return JSONResponse({"error": f"Daily AI budget of ${budget:.2f} reached "
+                                 f"(${spent:.4f} spent today)."}, status_code=402)
+        # ---- Single-run critique (no comparison run) ----
+        if not comp:
+            sr = _prompt_review_single(conn, cid, category, base, max_words)
+            cfg = _ai_config_for_phase(conn, "exclusion")
+            res = await run_in_threadpool(_ai_chat, cfg, sr["system"],
+                                          [{"role": "user", "content": sr["prompt"]}], 1800)
+            if res.get("error") or res.get("fatal"):
+                return JSONResponse({"error": res.get("error") or "AI error"}, status_code=502)
+            _log_ai_usage(conn, res.get("cost_usd") or 0.0, res.get("input_tokens"),
+                          res.get("output_tokens"), "prompt-review")
+            return JSONResponse({"review": (res.get("reply") or "").strip(), "model": res.get("actual_model"),
+                                 "cost": res.get("cost_usd"), "flips": sr["reviewed"], "single": True})
+        # ---- Two-run divergence critique ----
         p1 = _phase1_compare(conn, cid, base, comp)
         p2 = _phase2_compare(conn, cid, base, comp)
         ov = _overall_compare(conn, cid, base, comp)
@@ -5153,10 +5233,6 @@ async def api_analysis_prompt_review(request: Request, cid: int):
             f"COMMENTARY WORD LIMIT: {max_words} words (applies to prose only, not the fenced "
             "paste-ready blocks).\n\nExplain the variance and propose the edits.")
         cfg = _ai_config_for_phase(conn, "exclusion")
-        budget, spent = _budget(conn), _daily_spend(conn)
-        if budget > 0 and spent >= budget:
-            return JSONResponse({"error": f"Daily AI budget of ${budget:.2f} reached "
-                                 f"(${spent:.4f} spent today)."}, status_code=402)
         res = await run_in_threadpool(_ai_chat, cfg, _PROMPT_REVIEW_SYSTEM,
                                       [{"role": "user", "content": prompt}], 1800)
         if res.get("error") or res.get("fatal"):
