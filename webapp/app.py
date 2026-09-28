@@ -5954,7 +5954,6 @@ def settings_page(request: Request, saved: int = 0, user_ok: int = 0, user_error
         accounts_mode=accounts_mode, users=users, account_roles=accounts.ROLES,
         user_ok=user_ok, user_error=user_error,
         providers=list(PROVIDERS.keys()),
-        provider_keys={k: _provider_configured(k) for k in PROVIDERS},
         daily_budget=_budget(conn), max_docs=_max_docs(conn),
         spent_today=round(_daily_spend(conn), 4), saved=saved,
         prompts=_ai_prompts()))
