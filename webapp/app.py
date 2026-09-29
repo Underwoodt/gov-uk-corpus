@@ -5531,11 +5531,8 @@ def profile_page(request: Request, details_ok: int = 0, pw_ok: int = 0,
         ("simple", "Simple",
          "Build shortlists, run the AI phase, and review and download the final results."),
         ("advanced", "Advanced",
-         "Adds detailed data on the selection — almost log level."),
-        ("expert", "Expert",
-         "See everything except system configuration."),
-        ("admin", "Admin",
-         "See everything."),
+         "Adds the detailed selection data, run performance, the SQL panels, and other "
+         "power-user controls — almost log level."),
     ]
     resp = templates.TemplateResponse("profile.html", ctx(
         conn, request, levels=levels, accounts_mode=(AUTH_MODE == "accounts"),

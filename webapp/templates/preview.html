@@ -213,17 +213,19 @@
           <button class="btn secondary-btn" id="gc-next" type="button">Next ›</button>
         </div>
         <p id="gc-status" class="secondary" style="margin:8px 0 0;"></p>
-        <details id="gc-queries-box" class="sql-details" data-level="expert" hidden>
+        {% if is_admin %}
+        <details id="gc-queries-box" class="sql-details" data-level="advanced" hidden>
           <summary>Queries sent to the GOV.UK Search API</summary>
           <pre class="mono sql-pre" id="gc-queries"></pre>
         </details>
+        {% endif %}
       </div>
     </section>
 
     <span class="pane-id" id="pane-id"></span>
   </div>
 
-  <p class="secondary" style="margin:22px 0 0;font-size:14px;" data-level="expert">
+  <p class="secondary" style="margin:22px 0 0;font-size:14px;" data-level="advanced">
     <a href="{{ url_for('download_audit', cid=category.id) }}">Download Audit File (Debugging only)</a>
     &nbsp;·&nbsp;
     <a href="{{ url_for('download_category_bundle', cid=category.id) }}">Download shortlist for a test environment</a>
@@ -345,15 +347,16 @@
             + `Any "GOV.UK Search only" gap here is a true search-technique difference, not a threshold limit.`;
           warn.hidden = false;
         } else { warn.hidden = true; }
-        // Expert-only: the exact GOV.UK Search API queries we sent, with a threshold header.
+        // Admin-only: the exact GOV.UK Search API queries we sent, with a threshold header.
+        // The box only renders for admins (is_admin gate), so guard against it being absent.
         const qbox = document.getElementById("gc-queries-box"), qpre = document.getElementById("gc-queries");
         const queries = sum.query_urls || [];
-        if (queries.length) {
+        if (qbox && qpre && queries.length) {
           const header = ran ? gcThresholdComments(th) + "\n\n" : "";
           qpre.textContent = header + queries.map(q => (q && q.url != null)
             ? `-- ${q.comment || ""}\n${q.url}` : String(q)).join("\n\n");
           qbox.hidden = false;
-        } else { qbox.hidden = true; }
+        } else if (qbox) { qbox.hidden = true; }
         if (!sum.total) {
           document.getElementById("gc-controls").hidden = true;
           document.getElementById("gc-download").hidden = true;
