@@ -137,6 +137,36 @@ def update_category(conn, cid: int, data: Dict[str, Any]) -> None:
     conn.commit()
 
 
+# The fields the shortlist form edits that define the shortlist and what a run evaluates. A
+# change to any of these means the shortlist should be rebuilt and re-run; Name, slug and owner
+# do not. (The extra_guidance/law URL fields are not on this form, so they're not compared here.)
+SHORTLIST_PARAM_FIELDS = (
+    "dept_slugs", "include_child_orgs", "document_type_slugs", "keywords",
+    "inclusion_context", "exclusion_context", "adjudication_hints_keep", "adjudication_hints_drop",
+)
+# Fields compared order-insensitively as sets of tokens (a reorder isn't a real change).
+_LIST_PARAM_FIELDS = frozenset(("dept_slugs", "document_type_slugs", "keywords"))
+
+
+def shortlist_params_changed(old: Dict[str, Any], new_data: Dict[str, Any]) -> bool:
+    """True when any shortlist-defining field differs between the stored category `old` and the
+    submitted `new_data` (both coerced) — i.e. the shortlist needs rebuilding and a fresh run.
+    List fields (organisations, document types, keywords, URL lists) are compared as sets, so a
+    reorder alone doesn't count. Name / slug / owner changes return False."""
+    a, b = _coerce(old), _coerce(new_data)
+    for f in SHORTLIST_PARAM_FIELDS:
+        if f in _LIST_PARAM_FIELDS:
+            if set(parse_list(a.get(f))) != set(parse_list(b.get(f))):
+                return True
+        else:
+            va = a.get(f); vb = b.get(f)
+            va = va.strip() if isinstance(va, str) else ("" if va is None else va)
+            vb = vb.strip() if isinstance(vb, str) else ("" if vb is None else vb)
+            if va != vb:
+                return True
+    return False
+
+
 def set_url_checklist(conn, cid: int, should_include_urls: str, should_exclude_urls: str) -> None:
     """Persist the URL-check lists (guc-0018) for a category. These are managed only on the
     URL check page — the category form doesn't carry them — so this updates just these two

@@ -64,6 +64,11 @@
     {% endif %}
   </div>
 
+  {% if saved %}
+  <div class="success" style="margin:0 0 16px;">Saved. Nothing that changes the shortlist was edited,
+    so no new run was needed.</div>
+  {% endif %}
+
   {% if errors %}
   <div class="error-summary" role="alert">
     <h2>There is a problem</h2>

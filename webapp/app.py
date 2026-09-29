@@ -927,6 +927,17 @@ def _slug_errors(conn, data: dict) -> list:
     return errors
 
 
+def _create_inclusion_run(conn, cid: int, trial: dict = None) -> str:
+    """Create a fresh, unstarted inclusion run for the category and make it the active run.
+    Returns the new run id. The user starts it from the run's details page (guc-0006)."""
+    cfg = _ai_config_for_phase(conn, evaluate.PHASE_INCLUSION)
+    run_id = evaluate.create_run(conn, cid, cfg["model"], cfg["provider"],
+                                 phase=evaluate.PHASE_INCLUSION,
+                                 prompt_spec=_prompt_spec_json(conn, cid, evaluate.PHASE_INCLUSION, trial))
+    settings.set_setting(conn, f"active_run_{cid}", run_id)
+    return run_id
+
+
 @app.post("/categories/new")
 async def create_category(request: Request):
     if not authed(request):
@@ -942,10 +953,13 @@ async def create_category(request: Request):
     if errors:
         return templates.TemplateResponse("form.html", _form_ctx(conn, request, None, data, errors))
     cid = cat.create_category(conn, data)
+    # A new shortlist is all-new parameters: create a fresh run and land on it after the rebuild.
+    run_id = _create_inclusion_run(conn, cid)
     conn.close()
-    # The shortlist rebuild + eval reconcile run on the interstitial (guc-0021), which shows
-    # progress and then moves on to the Keyword Matching view (guc-0003a).
-    return RedirectResponse(url=str(request.url_for("rebuild_category_page", cid=cid)), status_code=303)
+    # The interstitial (guc-0021) rebuilds the shortlist + reconciles eval, then opens the new
+    # run's details page (guc-0006) where the user presses Start Run.
+    return RedirectResponse(
+        url=str(request.url_for("rebuild_category_page", cid=cid)) + f"?run={run_id}", status_code=303)
 
 
 @app.post("/categories/{cid}/copy")
@@ -982,14 +996,16 @@ async def delete_category_route(request: Request, cid: int):
 
 # ---- edit ---------------------------------------------------------------
 @app.get("/categories/{cid}/edit", response_class=HTMLResponse)
-def edit_category_page(request: Request, cid: int):
+def edit_category_page(request: Request, cid: int, saved: int = 0):
     if not authed(request):
         return login_redirect(request)
     conn = connect()
     category = cat.get_category(conn, cid)
     if not category:
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
-    return templates.TemplateResponse("form.html", _form_ctx(conn, request, category, category, []))
+    c = _form_ctx(conn, request, category, category, [])
+    c["saved"] = saved
+    return templates.TemplateResponse("form.html", c)
 
 
 @app.post("/categories/{cid}/edit")
@@ -1006,18 +1022,28 @@ async def update_category(request: Request, cid: int):
     if errors:
         merged = {**category, **data}
         return templates.TemplateResponse("form.html", _form_ctx(conn, request, category, merged, errors))
+    # Did anything that defines the shortlist (filters or AI criteria) change? Name/owner alone don't.
+    changed = cat.shortlist_params_changed(category, data)
     cat.update_category(conn, cid, data)
+    if not changed:
+        conn.close()
+        # Nothing to rebuild or re-run — return to Filter Parameters with a saved confirmation.
+        return RedirectResponse(
+            url=str(request.url_for("edit_category_page", cid=cid)) + "?saved=1", status_code=303)
+    # Shortlist-defining change: create a fresh run and land on it after the rebuild.
+    run_id = _create_inclusion_run(conn, cid)
     conn.close()
-    # The shortlist rebuild + eval reconcile run on the interstitial (guc-0021), which shows
-    # progress and then moves on to the Keyword Matching view (guc-0003a).
-    return RedirectResponse(url=str(request.url_for("rebuild_category_page", cid=cid)), status_code=303)
+    # The interstitial (guc-0021) rebuilds the shortlist + reconciles eval, then opens the new
+    # run's details page (guc-0006) where the user presses Start Run.
+    return RedirectResponse(
+        url=str(request.url_for("rebuild_category_page", cid=cid)) + f"?run={run_id}", status_code=303)
 
 
 # ---- post-save rebuild interstitial (guc-0021) --------------------------
 @app.get("/categories/{cid}/rebuilding", response_class=HTMLResponse)
-def rebuild_category_page(request: Request, cid: int):
+def rebuild_category_page(request: Request, cid: int, run: str = ""):
     """Progress page shown after a definition is saved: it drives the shortlist rebuild and
-    the evaluation reconcile (as staged POSTs), then moves on to guc-0003a."""
+    the evaluation reconcile (as staged POSTs), then opens the run's details page (guc-0006)."""
     if not authed(request):
         return login_redirect(request)
     conn = connect()
@@ -1026,10 +1052,10 @@ def rebuild_category_page(request: Request, cid: int):
         conn.close()
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
     category["display_name"] = cat.display_name(category)
-    # After the rebuild, land on the latest run's details page (guc-0006). If the shortlist has
-    # never been run, fall back to Pipeline Runs (guc-0004c) so the user can start one.
-    latest = evaluate.latest_inclusion_run(conn, cid)
-    next_url = (str(request.url_for("run_detail_page", cid=cid, run_id=latest)) if latest
+    # After the rebuild, open the run just created for this save (guc-0006), where the user
+    # presses Start Run. Fall back to the latest run, or Pipeline Runs if the shortlist has none.
+    target = run if (run and evaluate.get_run(conn, run)) else evaluate.latest_inclusion_run(conn, cid)
+    next_url = (str(request.url_for("run_detail_page", cid=cid, run_id=target)) if target
                 else str(request.url_for("ai_pipeline_page", cid=cid)))
     resp = templates.TemplateResponse("rebuilding.html", ctx(
         conn, request, category=category, hybrid_on_save=True, next_url=next_url))  # hybrid search always runs on save
@@ -1080,6 +1106,7 @@ def _form_ctx(conn, request, category, values, errors) -> dict:
         conn, request,
         is_edit=category is not None,
         category=category,
+        saved=0,   # overridden by edit_category_page after a no-op save
         # When editing, title the page with the shortlist's own name; new shortlists get the generic label.
         form_title=(cat.display_name(category) if category else "Build a New Shortlist"),
         action=(str(request.url_for("update_category", cid=category["id"])) if category
@@ -2066,11 +2093,7 @@ async def api_new_run(request: Request, cid: int):
     if not cat.get_category(conn, cid):
         conn.close()
         return JSONResponse({"error": "not found"}, status_code=404)
-    cfg = _ai_config_for_phase(conn, evaluate.PHASE_INCLUSION)   # new manual run = a fresh inclusion run
-    run_id = evaluate.create_run(conn, cid, cfg["model"], cfg["provider"],
-                                 phase=evaluate.PHASE_INCLUSION,
-                                 prompt_spec=_prompt_spec_json(conn, cid, evaluate.PHASE_INCLUSION, trial))
-    settings.set_setting(conn, f"active_run_{cid}", run_id)
+    run_id = _create_inclusion_run(conn, cid, trial)   # new manual run = a fresh inclusion run
     run = evaluate.get_run(conn, run_id)
     conn.close()
     return JSONResponse({"run_id": run_id, "run": run})
