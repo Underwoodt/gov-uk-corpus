@@ -168,7 +168,14 @@
       });
 
       function pageId() { const el = document.querySelector(".page-id"); return el ? el.textContent.trim() : ""; }
-      function pageTitle() { const h = document.querySelector("h1"); return (h ? h.textContent : document.title).trim().slice(0, 200); }
+      function pageTitle() {
+        const h = document.querySelector("h1");
+        const ht = h ? h.textContent.trim() : "";
+        // Prefer a non-empty <h1>; otherwise the page's own title (some headings fill in via JS
+        // after load, so the h1 can be empty at submit time). Strip the app-name suffix.
+        const t = (ht || (document.title || "").replace(/\s*[—-]\s*Content Shortlist Builder\s*$/, "")).trim();
+        return t.slice(0, 200);
+      }
       function show(on) {
         modal.hidden = !on;
         if (on) { document.getElementById("fb-pid").textContent = "Page " + (pageId() || "—"); statusEl.textContent = ""; }
