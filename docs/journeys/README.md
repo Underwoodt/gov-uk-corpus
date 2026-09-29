@@ -54,12 +54,18 @@ don't pick pages by hand. Open a shortlist and you get a row of tabs:
 Open a single run (from **Pipeline Runs**) to reach its **Run details** page: the two AI phases, a
 **Run outcome** panel (did it finish, what failed, why not), and the per-page decisions.
 
-> **A note on interface levels.** The app has a simple, advanced and expert setting, and these
-> journeys describe the simple interface a basic user sees. A few things stay hidden until you switch
-> to advanced: the **Run performance** tab, the **Trial (A/B)** run options (prompt wording, pages at
-> a time, caching), the per-run trial summary line, and the "Example completed prompts" rolldown.
-> Everything else the journeys mention (Pipeline Runs, Selection funnel, Compare Runs and Run
-> details) a basic user sees on the simple interface.
+> **A note on interface levels.** Every user has one **display level**, set on their Profile, with
+> two settings: **Simple** (the default) and **Advanced**. These journeys describe the Simple
+> interface. Switching to Advanced reveals more detail for anyone — the **Run performance** tab, the
+> **Trial (A/B)** run options (prompt wording, pages at a time, caching), the per-run trial summary
+> line, the **Show SQL** panels, the Results **Stage**/**Run** filters and **Retry unparsable**, the
+> **Hybrid Search** tab, and the "Example completed prompts" rolldown. Everything else the journeys
+> mention (Pipeline Runs, Selection funnel, Compare Runs and Run details) is on the Simple interface.
+>
+> The display level is only about how much detail is shown; it grants no extra permissions. A few
+> areas are **Admin-only**, restricted to the Admin account role rather than a display level: the
+> **Settings** page and its tabs (see the [systems administration guide](admin-systems-administration.md)),
+> and the raw GOV.UK Search query SQL on a shortlist's Preview page.
 
 ## House style for these scripts
 
