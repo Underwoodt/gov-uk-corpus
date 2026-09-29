@@ -88,6 +88,19 @@ class TestCrud(unittest.TestCase):
         cat.delete_category(self.conn, cid)
         self.assertIsNone(cat.get_category(self.conn, cid))
 
+    def test_update_preserves_fields_absent_from_the_form(self):
+        # extra_guidance_urls is not carried by the edit form, so an update that omits it must
+        # leave the stored value intact rather than blanking it.
+        cid = cat.create_category(self.conn, _valid_data(
+            extra_guidance_urls="https://www.gov.uk/guidance/slurry"))
+        self.assertEqual(cat.get_category(self.conn, cid)["extra_guidance_urls"],
+                         "https://www.gov.uk/guidance/slurry")
+        cat.update_category(self.conn, cid, _valid_data(keywords="slurry\nmanure"))  # no extra_* keys
+        got = cat.get_category(self.conn, cid)
+        self.assertEqual(got["keywords"], "slurry\nmanure")                     # the edit applied
+        self.assertEqual(got["extra_guidance_urls"],
+                         "https://www.gov.uk/guidance/slurry")                  # and this survived
+
     def test_boolean_coercion(self):
         cid = cat.create_category(self.conn, _valid_data(only_use_extra_law_urls="Y"))
         self.assertEqual(cat.get_category(self.conn, cid)["only_use_extra_law_urls"], 1)

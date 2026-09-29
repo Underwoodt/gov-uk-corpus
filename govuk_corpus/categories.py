@@ -130,7 +130,12 @@ def create_category(conn, data: Dict[str, Any]) -> int:
 
 def update_category(conn, cid: int, data: Dict[str, Any]) -> None:
     d = _coerce(data)
-    sets = {**{f: d.get(f) for f in USER_FIELDS}, "updated_at": now_iso()}
+    # Only write the fields the caller actually submitted (present in `data`), so fields the
+    # form doesn't carry — e.g. the extra_guidance/law URL lists — are preserved rather than
+    # blanked. Checks the raw `data`, not the coerced `d`, because _coerce injects the boolean
+    # keys even when they were absent.
+    fields = [f for f in USER_FIELDS if f in data]
+    sets = {**{f: d.get(f) for f in fields}, "updated_at": now_iso()}
     assignments = ",".join(f"{k}={_P}" for k in sets)
     conn.execute(f"UPDATE categories SET {assignments} WHERE id={_P}",
                  tuple(sets.values()) + (cid,))
