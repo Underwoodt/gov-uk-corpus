@@ -3,8 +3,8 @@
 Narrated walkthroughs of the main things you do in the Shortlist Builder. Each one does double duty:
 
 - Read it as a guide: plain language, outcome before mechanics, so a new analyst can follow along.
-- Read it aloud as a demo: every step has a `> Say:` line you can narrate over a screen recording,
-  and each journey opens with a short **Journey Overview**.
+- Read it aloud as a demo: every step opens with a short narration quote you can read over a screen
+  recording, and each journey opens with a short **Journey Overview**.
 
 They describe the app as it is today (real page names, tab labels, field names and buttons), so they
 double as living documentation. When a screen changes, update the script.
@@ -65,8 +65,8 @@ Open a single run (from **Pipeline Runs**) to reach its **Run details** page: th
 
 - Lead with the outcome, then the mechanics.
 - Each journey opens with a short **Journey Overview** (one H1 section), then numbered steps.
-- Keep the per-step rhythm: **What you do**, **What you see**, a `> Say:` line, a screenshot, and a
-  short **How this helps you**.
+- Keep the per-step rhythm: a short narration quote directly under the header, then **What you do**,
+  **What you see**, a screenshot, and a short **How this helps you**.
 - Use bold only for real UI labels (button, tab and field names). Avoid decorative emphasis.
 - Prefer plain prose over bulleting a paragraph. Reserve lists for genuine lists.
 - No em dashes. Rework sentences with commas, brackets or full stops. Titles and headings use a

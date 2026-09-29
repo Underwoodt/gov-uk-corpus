@@ -18,6 +18,9 @@ describing gives you a re-runnable, explainable list.
 
 ## How the form is laid out
 
+> "Notice the shape of the form: filters first, because they're cheap and certain, then the AI
+> criteria, because that's the judgement. The tool works in exactly that order."
+
 Open **Build a new shortlist**. The **Filter Parameters** form runs top to bottom, in the order the
 tool applies things: an **Owner email** and a **Name** for the shortlist (say, "Farm slurry
 storage"); then **Pre-Inference Filtering**, the fast, exact narrowing that runs before any AI
@@ -25,12 +28,13 @@ storage"); then **Pre-Inference Filtering**, the fast, exact narrowing that runs
 you tell the AI (what to include, what to exclude, and optional examples of tricky pages). Everything
 above the AI section is deterministic, and saving at the bottom generates or rebuilds the shortlist.
 
-> Say: "Notice the shape of the form: filters first, because they're cheap and certain, then the AI
-> criteria, because that's the judgement. The tool works in exactly that order."
-
 ![Screenshot: the whole Filter Parameters form scrolled to show its order, Owner and Name, Pre-Inference Filtering (Organisations, Page Types, Keywords), then LLM Inference](screenshots/3-0-form-overview.png)
 
 ## 3.1: Organisation
+
+> "Start with who owns it. Pick DEFRA, or a specific agency, and if you want the whole family,
+> tick 'Include child organisations' to pull in its agencies too. The page counts next to each one
+> keep you honest about how much you're letting in."
 
 **What you do:** under **Pre-Inference Filtering**, in **Organisations**, tick the department or body
 that owns the pages you want. It's a searchable tree of parents with their agencies underneath, and
@@ -39,10 +43,6 @@ a department's agencies as well as the department itself.
 
 **What you see:** the tree filters as you type, and the counts tell you how big each branch is.
 
-> Say: "Start with who owns it. Pick DEFRA, or a specific agency, and if you want the whole family,
-> tick 'Include child organisations' to pull in its agencies too. The page counts next to each one
-> keep you honest about how much you're letting in."
-
 ![Screenshot: the Organisations tree, with a search box, a department expanded to its agencies with page counts, and "Include child organisations" ticked](screenshots/3-1-organisations.png)
 
 **How this helps you:** ownership is the most reliable signal on GOV.UK and the biggest single cut.
@@ -50,13 +50,13 @@ One tick takes you from all of government to this organisation's pages.
 
 ## 3.2: Document types
 
+> "Next, what kind of page. Usually you want guidance and detailed guides, not news stories or
+> consultation outcomes. Ticking the page types strips out the formats that aren't the job."
+
 **What you do:** in **Page Types**, tick the kinds of page you want (guidance, detailed guides,
 publications, and so on). It's searchable, like Organisations.
 
 **What you see:** the shortlist-to-be narrows again, to just those formats.
-
-> Say: "Next, what kind of page. Usually you want guidance and detailed guides, not news stories or
-> consultation outcomes. Ticking the page types strips out the formats that aren't the job."
 
 ![Screenshot: the Page Types picker, a searchable list with "guidance" and "detailed guide" ticked](screenshots/3-2-page-types.png)
 
@@ -65,15 +65,15 @@ removes whole categories of noise (press releases, transparency data) before the
 
 ## 3.3: Keywords
 
+> "Finally, the words the page has to actually contain. This is a blunt instrument on purpose,
+> the cheap keyword net that catches the obvious candidates. It will over-catch, and that's fine,
+> because the AI is about to sort the true matches from the passing mentions."
+
 **What you do:** in **Inclusion Keyword(s)**, list the words a page must contain, one per line or
 comma-separated (say, "slurry", "nitrate").
 
 **What you see:** the last mechanical cut. Only pages whose text contains your keywords survive to
 the AI stage.
-
-> Say: "Finally, the words the page has to actually contain. This is a blunt instrument on purpose,
-> the cheap keyword net that catches the obvious candidates. It will over-catch, and that's fine,
-> because the AI is about to sort the true matches from the passing mentions."
 
 ![Screenshot: the Inclusion Keyword(s) box with "slurry" and "nitrate" entered](screenshots/3-3-keywords.png)
 
@@ -89,18 +89,22 @@ guidance you give it here.
 
 ### What pages do you want to include?
 
+> "Describe what you actually mean, not keywords but meaning. 'Pages about storing and spreading
+> livestock slurry and the rules around it.' That sentence is the ruler the AI measures every page
+> with."
+
 **What you do:** in a few sentences, describe what genuinely belongs, the scope in your own words.
 
 **What you see:** this becomes the AI's inclusion criteria, the yardstick it scores each page against
 (0 to 1, keeping anything above zero).
 
-> Say: "Describe what you actually mean, not keywords but meaning. 'Pages about storing and spreading
-> livestock slurry and the rules around it.' That sentence is the ruler the AI measures every page
-> with."
-
 ![Screenshot: the "What pages do you want to include?" box with a plain-English scope sentence typed in](screenshots/3-4a-include.png)
 
 ### What pages do you want to exclude from here?
+
+> "Then the traps. 'Slurry can mean coal or concrete, drop those. Drop sewage sludge and
+> biosolids.' This is a second, stricter read whose only job is to take out the impostors the first
+> pass let through."
 
 **What you do:** describe the look-alikes that should be dropped even though they passed the keyword
 net.
@@ -108,13 +112,13 @@ net.
 **What you see:** this becomes the exclusion criteria, a second AI pass that re-checks the kept pages
 and can only remove.
 
-> Say: "Then the traps. 'Slurry can mean coal or concrete, drop those. Drop sewage sludge and
-> biosolids.' This is a second, stricter read whose only job is to take out the impostors the first
-> pass let through."
-
 ![Screenshot: the "What pages do you want to exclude from here?" box with the look-alike traps typed in](screenshots/3-4b-exclude.png)
 
 ### Examples of tricky pages (optional)
+
+> "For the genuinely borderline pages, don't argue with the AI in the abstract, show it. A
+> couple of 'keep this even though...' and 'drop this because...' examples turn a coin-flip into a
+> rule. It's the single biggest thing you can do to make runs repeatable."
 
 Some pages sit right on the line: a grant page that funds slurry stores but is mostly about payments,
 or a page that mentions slurry once in passing. On a borderline page the AI is essentially flipping a
@@ -126,10 +130,6 @@ Drop example such as "sewage sludge or biosolids, not animal slurry".
 
 **What you see:** these examples steer the borderline calls, so the coin lands the same way each time
 and the shortlist stops wobbling between runs.
-
-> Say: "For the genuinely borderline pages, don't argue with the AI in the abstract, show it. A
-> couple of 'keep this even though...' and 'drop this because...' examples turn a coin-flip into a
-> rule. It's the single biggest thing you can do to make runs repeatable."
 
 ![Screenshot: the "Examples of tricky pages" section, with the Keep and Drop boxes holding one example each](screenshots/3-4c-tricky-keep-drop.png)
 
@@ -144,6 +144,9 @@ covers it.
 
 ## Save, and the shortlist is generated
 
+> "Save, and the tool generates the shortlist there and then. From here you can look at what it
+> produced, run the AI over it, and download it, which is exactly where we go next."
+
 **What you do:** press **Save** at the bottom of the form.
 
 **What you see:** the tool generates (or rebuilds) the shortlist from your parameters and moves you on
@@ -151,9 +154,6 @@ to see it, the pages the filters kept, ready for the AI pass. Running that pass 
 [Journey 4: Run the AI](4-run-the-ai.md); getting the list out is
 [Journey 5: Download a shortlist](5-download-a-shortlist.md); checking how it was built is
 [Journey 6: How was this built?](6-how-was-this-built.md).
-
-> Say: "Save, and the tool generates the shortlist there and then. From here you can look at what it
-> produced, run the AI over it, and download it, which is exactly where we go next."
 
 ![Screenshot: the Save button at the foot of the Filter Parameters form, then the generated Results tab it lands on](screenshots/3-5-save-generated.png)
 

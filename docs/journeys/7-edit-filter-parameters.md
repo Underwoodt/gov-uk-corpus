@@ -19,6 +19,9 @@ data, not your intent.
 
 ## 7.1: Change the parameters
 
+> "Same form you filled in to create it. Change the bits that need it and save. The org, the
+> page types, the keywords, and the words that guide the AI are all editable, any time."
+
 **What you do:** open the **Filter Parameters** tab for your shortlist. Change whatever isn't quite
 right, whether that's the organisation, document types or keywords that pick the pages, or the
 inclusion and exclusion criteria and the Keep and Drop examples that steer the AI. Then press
@@ -27,15 +30,16 @@ inclusion and exclusion criteria and the Keep and Drop examples that steer the A
 **What you see:** on save, the tool regenerates the shortlist from your new parameters (the
 mechanical filters take effect straight away) and moves you on.
 
-> Say: "Same form you filled in to create it. Change the bits that need it and save. The org, the
-> page types, the keywords, and the words that guide the AI are all editable, any time."
-
 ![Screenshot: the Filter Parameters edit form, with the inclusion and exclusion criteria boxes, the Keep and Drop examples, and the Save button](screenshots/7-1-edit.png)
 
 **How this helps you:** the shortlist is a living definition, not a one-off, and tuning the parameters
 is the normal way you make it sharper.
 
 ## 7.2: Editing changes the next run, so run again
+
+> "This is the one thing people trip over. Saving new criteria does not rewrite the results you
+> already have; those are a snapshot. To see your changes in the AI's verdicts, start a new run. Edit,
+> save, re-run: that's the loop."
 
 **What you do:** after you save, start a **New Run** from **Pipeline Runs** ([Journey 4: Run the
 AI](4-run-the-ai.md)).
@@ -45,16 +49,17 @@ and prompts as they were when it ran. Changing the criteria doesn't re-judge old
 what a new run will do. So the AI's keep and drop decisions only reflect your edits after you run
 again.
 
-> Say: "This is the one thing people trip over. Saving new criteria does not rewrite the results you
-> already have; those are a snapshot. To see your changes in the AI's verdicts, start a new run. Edit,
-> save, re-run: that's the loop."
-
 ![Screenshot: after saving on Filter Parameters, the Pipeline Runs tab with the New Run button highlighted](screenshots/7-2-new-run-required.png)
 
 **How this helps you:** it keeps every run honest and comparable, because a run always shows what it
 decided, not what a later edit would have decided. The price is that you re-run to apply a change.
 
 ## 7.3: Let the AI suggest how to sharpen the prompts
+
+> "Once you've got a run or two, the AI reads them back and tells you where the wording is
+> letting borderline pages wobble, then hands you tighter inclusion and exclusion text and the exact
+> Keep and Drop examples that would settle them. One click drops each into the box. It turns your own
+> results into a better prompt."
 
 **What you do:** once you've done at least one run, the Filter Parameters page shows a card at the
 top, **"Do you want to try to improve your prompt with AI?"**. Set a word limit if you like, then
@@ -67,17 +72,17 @@ and Keep and Drop examples. Each suggestion has an **Apply to field** button tha
 straight into its box, and a **Copy** button. It works even after a single run, critiquing that one
 on its own.
 
-> Say: "Once you've got a run or two, the AI reads them back and tells you where the wording is
-> letting borderline pages wobble, then hands you tighter inclusion and exclusion text and the exact
-> Keep and Drop examples that would settle them. One click drops each into the box. It turns your own
-> results into a better prompt."
-
 ![Screenshot: the "Do you want to try to improve your prompt with AI?" card, the review output with suggested criteria, each with an "Apply to field" button](screenshots/7-3-improve-with-ai.png)
 
 **How this helps you:** the hardest part of tuning is knowing what to change. This points you at the
 specific wording your own runs suggest would make future runs steadier and more decisive.
 
 ## 7.4: Read the suggestions as inspiration, not instructions
+
+> "One honest caveat. These suggestions come from your data, not your purpose. They make the AI
+> more consistent and more decisive, which is usually what you want, but they can't know what you mean
+> the shortlist to be. So take them as a well-informed draft: keep what fits, change what doesn't,
+> save, and run again. You're using the AI to improve your specificity, not to decide your intent."
 
 **What you do:** before you accept a suggestion, read it against what you actually need.
 
@@ -90,11 +95,6 @@ intent.
 
 Keep the parts that match your use case, edit the rest, **Save**, and start a **New Run** to see the
 effect.
-
-> Say: "One honest caveat. These suggestions come from your data, not your purpose. They make the AI
-> more consistent and more decisive, which is usually what you want, but they can't know what you mean
-> the shortlist to be. So take them as a well-informed draft: keep what fits, change what doesn't,
-> save, and run again. You're using the AI to improve your specificity, not to decide your intent."
 
 ![Screenshot: the "Use this as a starting point, not a final answer" note on the AI review card](screenshots/7-4-inspiration-caveat.png)
 

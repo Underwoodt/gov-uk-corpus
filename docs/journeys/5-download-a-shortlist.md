@@ -18,14 +18,14 @@ shortlist behind it.
 
 ## Getting to the download
 
+> "From the Results tab, hit Download. You get one screen: which version to export, which
+> columns, and which file type. The defaults are already chosen, so tweak only what you care about."
+
 **What you do:** open the **Results** tab for your shortlist and choose **Download**.
 
 **What you see:** a download page with three choices: which run to export, which fields to include,
 and what format to produce. It opens with sensible defaults, so you can download straight away or
 fine-tune first.
-
-> Say: "From the Results tab, hit Download. You get one screen: which version to export, which
-> columns, and which file type. The defaults are already chosen, so tweak only what you care about."
 
 ![Screenshot: the Download page, with the Run selector, the field picker, and the Output type dropdown](screenshots/5-0-download-page.png)
 
@@ -33,6 +33,10 @@ fine-tune first.
 list as a specific run judged it, so the file matches exactly the version you're talking about.
 
 ## 5.1: The fields you can export
+
+> "Think about who's reading the file. A policy colleague might want title, URL and the AI's
+> reason. An analyst might add view counts and freshness. Someone loading it into another system
+> might take the raw JSON. Tick the groups you need, and URL always comes along."
 
 **What you do:** tick the columns you want from a grouped picker. URL is always included, since it's
 the one column every downstream use needs, so it's locked on. The rest are grouped so you can grab a
@@ -50,10 +54,6 @@ whole theme at once:
 - **Freshness:** when the page was last updated.
 
 **What you see:** only the ticked columns appear in the file, in a tidy order.
-
-> Say: "Think about who's reading the file. A policy colleague might want title, URL and the AI's
-> reason. An analyst might add view counts and freshness. Someone loading it into another system
-> might take the raw JSON. Tick the groups you need, and URL always comes along."
 
 ![Screenshot: the grouped field picker (Content, Provenance, Popularity, Matching and AI, Ownership, Quality, Freshness), with URL ticked and locked on](screenshots/5-1-field-picker.png)
 
@@ -138,6 +138,9 @@ For the exact columns in each group, and what each one holds, expand the referen
 
 ## 5.2: Formats
 
+> "CSV if in doubt, since it opens anywhere. Excel if a person's going to live in the
+> spreadsheet. JSON if a machine's going to read it. Same data, three shapes."
+
 **What you do:** pick an **Output type**:
 
 - **CSV (.csv):** opens anywhere and loads into anything. The safe default for sharing.
@@ -147,9 +150,6 @@ For the exact columns in each group, and what each one holds, expand the referen
 The file extension is added for you.
 
 **What you see:** the file downloads with the columns you picked, named after the shortlist.
-
-> Say: "CSV if in doubt, since it opens anywhere. Excel if a person's going to live in the
-> spreadsheet. JSON if a machine's going to read it. Same data, three shapes."
 
 ![Screenshot: the Output type dropdown open, showing CSV (.csv), Excel (.xlsx) and JSON (.json)](screenshots/5-2-formats.png)
 

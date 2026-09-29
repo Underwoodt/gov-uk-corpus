@@ -24,6 +24,10 @@ the server, so a non-admin can neither see nor reach it. The page has four tabs:
 
 ## Available Models
 
+> "This is the catalogue of models and their prices. Pick which model runs the inclusion pass
+> and which runs the exclusion pass, add a new model with its rates, and set each supplier's peak
+> hours so the cost is worked out correctly."
+
 **What you do:** on the **Available Models** tab, manage the AI models the tool can use. The table
 lists each model by supplier and model ID, with its full price grid: input tokens (cache hit and
 cache miss, each at off-peak and peak rates) and output tokens (off-peak and peak). You can mark one
@@ -35,10 +39,6 @@ its rates), and open **Peak / off-peak hours** to set each supplier's weekly pea
 **What you see:** the models available to a run, the rate the cost engine will charge, and which
 model each phase currently uses.
 
-> Say: "This is the catalogue of models and their prices. Pick which model runs the inclusion pass
-> and which runs the exclusion pass, add a new model with its rates, and set each supplier's peak
-> hours so the cost is worked out correctly."
-
 ![Screenshot: the Available Models tab, the models table with the price grid, the "Add a model" form, and the Peak / off-peak hours link](screenshots/admin-1-models.png)
 
 **How this helps you:** models and prices change often. Keeping them here, rather than in code, means
@@ -46,6 +46,9 @@ you can switch models, add a new one, or correct a rate without a deploy, and ev
 against the current numbers.
 
 ## Execution Guardrails
+
+> "Two safety limits. A daily budget, so a runaway job can't spend the month in an afternoon,
+> and a per-run page cap, so a run does a sensible batch and then stops for you to continue."
 
 **What you do:** on the **Execution Guardrails** tab, set two limits. The **Daily AI budget (USD)**
 caps total spend across all AI calls in a day; the tool warns within 10% and stops when the day's
@@ -55,9 +58,6 @@ guardrails**.
 
 **What you see:** the day's spend so far, and the two limits that protect it.
 
-> Say: "Two safety limits. A daily budget, so a runaway job can't spend the month in an afternoon,
-> and a per-run page cap, so a run does a sensible batch and then stops for you to continue."
-
 ![Screenshot: the Execution Guardrails tab, showing spent-today against budget, the Daily AI budget field, and the Maximum documents per run field](screenshots/admin-2-guardrails.png)
 
 **How this helps you:** the budget is the main defence against surprise cost, and the per-run cap
@@ -66,16 +66,16 @@ either reason, its Run outcome says so, and the user carries on with Complete ru
 
 ## AI Prompts
 
+> "The prompts are here to read, not to edit. They live in git, so changing one is a code
+> commit rather than an in-app change, and every run records the exact prompt it used, so old runs
+> stay reproducible whatever changes later."
+
 **What you do:** on the **AI Prompts** tab, read the prompts behind each AI feature. They are shown
 read-only, because the prompts live in **git** (`govuk_corpus/evaluate.py`, `prompts.py`,
 `category_interview.py`), which is the single source of truth. Each prompt shows its version (a git
 short SHA), the placeholders it fills in at run time, and its full text.
 
 **What you see:** exactly what the AI is asked, and which version is current.
-
-> Say: "The prompts are here to read, not to edit. They live in git, so changing one is a code
-> commit rather than an in-app change, and every run records the exact prompt it used, so old runs
-> stay reproducible whatever changes later."
 
 ![Screenshot: the AI Prompts tab, a prompt expanded read-only, with its git version and placeholders](screenshots/admin-3-prompts.png)
 
@@ -84,6 +84,9 @@ who wants to see it, without risk of an accidental edit changing behaviour mid-f
 
 ## User Management
 
+> "User management is a link through to the User administration page, where you add people,
+> change roles, and reset passwords. The two roles that matter day to day are User and Admin."
+
 **What you do:** on the **User Management** tab, go to the **User administration** page. There you
 view and edit every account, add new ones, and set each person's role. This tab and page apply when
 the app runs in accounts mode (`AUTH_MODE=accounts`); in shared-password mode there are no individual
@@ -91,9 +94,6 @@ users to manage.
 
 **What you see:** the list of accounts with their roles and status, and the controls to add a user,
 change a role, or send a password reset.
-
-> Say: "User management is a link through to the User administration page, where you add people,
-> change roles, and reset passwords. The two roles that matter day to day are User and Admin."
 
 ![Screenshot: the User administration page, the list of accounts with role and status, and the add-user and edit controls](screenshots/admin-4-users.png)
 
