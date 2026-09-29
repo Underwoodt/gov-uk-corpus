@@ -54,10 +54,19 @@ class TestRender(unittest.TestCase):
         # A section heading gets an id matching the GitHub-style anchor (colon-titled headings).
         self.assertIn('id="41-start-a-run"', self.body)
 
-    def test_images_become_captions_when_file_absent(self):
-        # Journey 4 has no screenshot files, so its images render as captions, not broken <img>.
-        self.assertIn("help-figure", self.body)
-        self.assertNotIn("<img", self.body)
+    def test_missing_image_is_caption_not_broken_img(self):
+        out = h._image_html("some alt", "screenshots/does-not-exist-xyz.png")
+        self.assertIn("help-figure", out)
+        self.assertNotIn("<img", out)
+
+    def test_tables_and_rolldown_render(self):
+        # Journey 5 has the exportable-fields rolldown with a table per group.
+        _, b5 = h.render("5-download-a-shortlist")
+        self.assertIn("<details>", b5)
+        self.assertIn("<summary>Full list of exportable fields</summary>", b5)
+        self.assertIn('<table class="help-table">', b5)
+        self.assertIn("<th>Field name</th>", b5)
+        self.assertIn("</details>", b5)
 
     def test_existing_screenshot_renders_as_img(self):
         # Journey 1's screenshots are committed, so they render as real served images.

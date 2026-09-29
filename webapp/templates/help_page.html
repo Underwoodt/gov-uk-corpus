@@ -20,6 +20,15 @@
   .help-article .help-figure {
     margin: 12px 0; padding: 10px 14px; border: 1px dashed var(--grey-border,#b1b4b6);
     border-radius: 6px; color: var(--grey-text,#505a5f); font-size: 14px; background: var(--surface-2,#f8f8f8); }
+  /* Tables (e.g. the exportable-fields reference) */
+  .help-article table.help-table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; }
+  .help-article table.help-table th, .help-article table.help-table td {
+    border: 1px solid var(--grey-border,#b1b4b6); padding: 6px 10px; text-align: left; vertical-align: top; }
+  .help-article table.help-table th { background: var(--surface-2,#f3f2f1); }
+  /* Rolldowns */
+  .help-article details { margin: 14px 0; border: 1px solid var(--grey-border,#b1b4b6); border-radius: 8px; padding: 0 14px; }
+  .help-article details[open] { padding-bottom: 10px; }
+  .help-article details > summary { cursor: pointer; font-weight: 700; padding: 12px 0; }
   /* Real screenshots (served from docs/journeys/screenshots/) */
   .help-article figure.help-shot { margin: 16px 0; }
   .help-article figure.help-shot img {

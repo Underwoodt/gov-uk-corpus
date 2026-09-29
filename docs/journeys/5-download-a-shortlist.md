@@ -61,6 +61,81 @@ whole theme at once:
 did it come from, is it read, did the AI keep it and why, who owns it, is it any good, and is it
 current. So you grab a theme rather than hunting field by field.
 
+For the exact columns in each group, and what each one holds, expand the reference below.
+
+<details>
+<summary>Full list of exportable fields</summary>
+
+### Content
+
+| Field name | What it shows |
+|---|---|
+| URL | The page's canonical GOV.UK URL. Always included. |
+| Title | The page title. |
+| Parent document type | For `html_publication` pages, the parent publication's type. |
+| Body text (search_text) | The full page text. Can make the download very large. |
+| Content (raw JSON) | The raw page JSON. Can make the download very large. |
+
+### Provenance
+
+| Field name | What it shows |
+|---|---|
+| Source / provenance | How the page entered the shortlist: corpus keyword, GOV.UK Search, or both. |
+
+### Popularity
+
+| Field name | What it shows |
+|---|---|
+| View count | GOV.UK Search pageviews (about the last 14 days). For attachment or guide-part sub-pages this is the parent publication's count. |
+| View count source | `page` = the page's own count; `parent` = inherited from the parent publication. |
+| View count collected | The date the view count was collected. |
+
+### Matching & AI decision
+
+| Field name | What it shows |
+|---|---|
+| Run ID | The inclusion run the AI columns come from. Always included, so rows from several runs can be told apart in one file. |
+| Organisations | All linked organisation slugs. |
+| Document type | The page's document type. |
+| Matched keywords | The shortlist keywords this page matched. |
+| Inclusion reason | From the latest AI run; blank for pages not evaluated. |
+| Exclusion reason | From the latest AI run's exclusion pass. |
+| Inclusion raw reply | The model's verbatim inclusion reply. Can be long. |
+| Exclusion raw reply | The model's verbatim exclusion reply. Can be long. |
+| Stage | The funnel stage or phase these rows are shown at. |
+| Stage decision | The AI verdict for the page: Keep, Drop, or Unscored, from the run relevant to the stage. |
+| Furthest stage reached | How far the page got in the funnel: Keyword search, Reached LLM inclusion, Reached exclusion, or Final shortlist. |
+| Confidence | How central the topic is, from the inclusion score: Wrong sense, Mentioned in passing, Discussed a moderate amount, or Major focus. |
+| Primary topic | From the latest inclusion run: what the page is mainly about, a short noun phrase grounded in its title and description. |
+| Matched in | From the latest inclusion run: which fields carried the topic (title, description, body). |
+| Evidence quotes | From the latest inclusion run: the verbatim passages quoted as grounding for the decision. |
+
+### Ownership
+
+| Field name | What it shows |
+|---|---|
+| Primary publishing organisation | The main organisation responsible for the page. |
+
+### Quality attributes
+
+| Field name | What it shows |
+|---|---|
+| Size | The page size. |
+| Readability score | The reading-age / readability signal for the page text. |
+| GDS number of issues | How many GDS plain-English issues were found. |
+| GDS issues text | The GDS issues themselves. |
+| GDS stars | A star rating from the GDS check. |
+
+### Freshness
+
+| Field name | What it shows |
+|---|---|
+| First published at | When the page was first published. |
+| Public updated at | When the page was last updated on GOV.UK. |
+| Last seen (crawl) | When our corpus last saw the page. |
+
+</details>
+
 ## 5.2: Formats
 
 **What you do:** pick an **Output type**:

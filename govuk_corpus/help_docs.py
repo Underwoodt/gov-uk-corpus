@@ -157,7 +157,16 @@ def _strip_presenter(text: str) -> str:
     return "\n".join(out)
 
 
-_BLOCK_START = re.compile(r"^(#{1,6}\s|[-*]\s|\d+\.\s|>|!\[|-{3,}$|\*{3,}$)")
+# Paragraph/list breakers now include a table row (|) and raw block HTML (<) so those aren't
+# swallowed into a preceding paragraph or list item.
+_BLOCK_START = re.compile(r"^(#{1,6}\s|[-*]\s|\d+\.\s|>|!\[|\||<|-{3,}$|\*{3,}$)")
+# Rolldown tags we pass through verbatim (content is repo-authored, i.e. trusted).
+_RAW_HTML = re.compile(r"^(</?details(?:\s+open)?>|<summary>.*</summary>)$", re.IGNORECASE)
+_TABLE_SEP = re.compile(r"^\|?[\s:\-|]+\|?$")
+
+
+def _split_row(row: str) -> List[str]:
+    return [c.strip() for c in row.strip().strip("|").split("|")]
 
 
 def _md_to_html(text: str, cur_slug: str) -> str:
@@ -168,6 +177,22 @@ def _md_to_html(text: str, cur_slug: str) -> str:
         if not s:
             i += 1
             continue
+        if _RAW_HTML.match(s):               # <details> / <summary> / </details> — pass through
+            parts.append(s); i += 1; continue
+        if s.startswith("|") and i + 1 < n:  # Markdown table: header row + a dashes separator row
+            sep = lines[i + 1].strip()
+            if "|" in sep and "-" in sep and _TABLE_SEP.match(sep):
+                header = _split_row(s); i += 2
+                body = []
+                while i < n and lines[i].strip().startswith("|"):
+                    body.append(_split_row(lines[i].strip())); i += 1
+                th = "".join(f"<th>{_inline(h, cur_slug)}</th>" for h in header)
+                rows_html = "".join(
+                    "<tr>" + "".join(f"<td>{_inline(c, cur_slug)}</td>" for c in r) + "</tr>"
+                    for r in body)
+                parts.append(f'<table class="help-table"><thead><tr>{th}</tr></thead>'
+                             f'<tbody>{rows_html}</tbody></table>')
+                continue
         if re.match(r"^(-{3,}|\*{3,})$", s):
             parts.append("<hr>"); i += 1; continue
         m = re.match(r"^(#{1,6})\s+(.*)$", s)
