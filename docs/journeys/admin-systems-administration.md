@@ -83,20 +83,34 @@ who wants to see it, without risk of an accidental edit changing behaviour mid-f
 
 ## User Management
 
-> "User management lives right here on this tab: add people, change roles, and reset passwords.
-> The two roles that matter day to day are User and Admin."
+> "User management lives right here on this tab: add people, change roles, reset passwords, and
+> disable anyone who should no longer have access. The two roles that matter day to day are User and
+> Admin."
 
-**What you do:** on the **User Management** tab, view and edit every account, add new ones, and set
-each person's role, all in place. This tab applies when the app runs in accounts mode
-(`AUTH_MODE=accounts`); in shared-password mode there are no individual users to manage.
+**What you do:** on the **User Management** tab, view and edit every account, add new ones, set each
+person's role, and **Disable** or **Enable** an account, all in place. This tab applies when the app
+runs in accounts mode (`AUTH_MODE=accounts`); in shared-password mode there are no individual users
+to manage.
 
-**What you see:** the list of accounts with their roles and status, and the controls to add a user,
-change a role, or send a password reset.
+**What you see:** the list of accounts with their roles and status, the controls to add a user,
+change a role or send a password reset, and a red **Disable** button on the far right of each row
+(it reads **Enable** once an account is disabled).
 
-![Screenshot: the User Management tab, the list of accounts with role and status, and the add-user and edit controls](screenshots/admin-4-users.png)
+![Screenshot: the User Management tab, the list of accounts with role and status, the add-user and edit controls, and the red Disable button on each row](screenshots/admin-4-users.png)
 
 **How this helps you:** roles decide who can reach this admin area at all. Grant Admin only to the
 people who should manage the tool; everyone else is a User.
+
+### Disabling an account
+
+To stop someone signing in without deleting their record, press the red **Disable** button on their
+row. Their status becomes **disabled**: they can no longer sign in, and any session they already have
+stops working on its next request. Nothing else is removed — their shortlists and history stay — and
+the button turns into **Enable**, so you can restore access with a single click.
+
+Two safeguards mean the button simply isn't shown in those cases: you can't disable **your own**
+account (so you can't lock yourself out mid-session), and the **break-glass admin** below can't be
+disabled at all.
 
 ### The break-glass admin
 
