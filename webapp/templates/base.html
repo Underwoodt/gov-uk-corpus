@@ -173,7 +173,16 @@
         const ht = h ? h.textContent.trim() : "";
         // Prefer a non-empty <h1>; otherwise the page's own title (some headings fill in via JS
         // after load, so the h1 can be empty at submit time). Strip the app-name suffix.
-        const t = (ht || (document.title || "").replace(/\s*[—-]\s*Content Shortlist Builder\s*$/, "")).trim();
+        let t = (ht || (document.title || "").replace(/\s*[—-]\s*Content Shortlist Builder\s*$/, "")).trim();
+        // On a tabbed page, append the active tab(s) so the context is clear (e.g. the outer tab
+        // plus the sub-tab). Active tabs are marked with class "current" in the tab bars.
+        const seen = new Set(), tabs = [];
+        document.querySelectorAll(".tabs .current, .stab.current, .subtab.current, .gtabs a.current").forEach(el => {
+          if (el.offsetParent === null && !el.getClientRects().length) return;   // skip hidden
+          const label = (el.textContent || "").trim().replace(/\s+/g, " ");
+          if (label && label !== t && !seen.has(label)) { seen.add(label); tabs.push(label); }
+        });
+        if (tabs.length) t = (t ? t + " — " : "") + tabs.join(" · ");
         return t.slice(0, 200);
       }
       function show(on) {
