@@ -5518,40 +5518,6 @@ def download_category_bundle(request: Request, cid: int):
                     headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
-@app.post("/admin/import-category")
-async def admin_import_category(request: Request):
-    """Admin-only: upload a category bundle and load it into THIS environment, reassigning
-    the category to the importing user. Intended for a test environment, to reproduce and
-    fix a live category."""
-    if not authed(request):
-        return login_redirect(request)
-    if not _require_admin(request):
-        return RedirectResponse(url=_users_tab_url(request), status_code=303)
-    form = await request.form()
-    upload = form.get("bundle")
-    if upload is None or not hasattr(upload, "read"):
-        return RedirectResponse(url=_users_tab_url(request, "import_error=No+file+chosen"), status_code=303)
-    raw = await upload.read()
-    try:
-        if raw[:2] == b"\x1f\x8b":            # gzip magic
-            raw = gzip.decompress(raw)
-        bundle = category_transfer.loads(raw.decode("utf-8"))
-    except Exception:
-        return RedirectResponse(url=_users_tab_url(request, "import_error=Could+not+read+the+bundle"), status_code=303)
-    cu = current_user(request)
-    owner = cu.get("email") if cu else None
-    conn = connect()
-    try:
-        summary = category_transfer.import_bundle(conn, bundle, owner_email=owner)
-    except Exception as e:
-        conn.close()
-        return RedirectResponse(url=_users_tab_url(request, f"import_error={quote(f'{type(e).__name__}: {e}')}"),
-                                status_code=303)
-    conn.close()
-    msg = f"Imported shortlist {summary['slug']} ({summary['content']} pages, {summary['runs']} runs)."
-    return RedirectResponse(url=_users_tab_url(request, f"import_ok={quote(msg)}"), status_code=303)
-
-
 @app.get("/profile", response_class=HTMLResponse)
 def profile_page(request: Request, details_ok: int = 0, pw_ok: int = 0,
                  details_error: str = "", pw_error: str = ""):
@@ -5645,15 +5611,13 @@ def _users_tab_url(request: Request, query: str = "") -> str:
 
 
 @app.get("/admin/users", response_class=HTMLResponse)
-def admin_users_page(request: Request, user_ok: int = 0, user_error: str = "",
-                     import_ok: str = "", import_error: str = ""):
+def admin_users_page(request: Request, user_ok: int = 0, user_error: str = ""):
     """User administration now lives on the Settings → User Management tab; this old
     path just forwards there (kept for bookmarks and existing links)."""
     if not authed(request):
         return login_redirect(request)
     q = urlencode({k: v for k, v in
-                   {"user_ok": user_ok or "", "user_error": user_error,
-                    "import_ok": import_ok, "import_error": import_error}.items() if v})
+                   {"user_ok": user_ok or "", "user_error": user_error}.items() if v})
     return RedirectResponse(url=_users_tab_url(request, q), status_code=303)
 
 
@@ -5821,8 +5785,7 @@ def _admin_guard(request: Request):
 
 
 @app.get("/settings", response_class=HTMLResponse)
-def settings_page(request: Request, saved: int = 0, user_ok: int = 0, user_error: str = "",
-                  import_ok: str = "", import_error: str = ""):
+def settings_page(request: Request, saved: int = 0, user_ok: int = 0, user_error: str = ""):
     if not authed(request):
         return login_redirect(request)
     if (redir := _admin_guard(request)):
@@ -5852,7 +5815,6 @@ def settings_page(request: Request, saved: int = 0, user_ok: int = 0, user_error
         accounts_mode=accounts_mode, users=users, account_roles=accounts.ROLES,
         list_sql=_display_sql(_usql, _uparams),
         user_ok=user_ok, user_error=user_error,
-        import_ok=import_ok, import_error=import_error,
         providers=list(PROVIDERS.keys()),
         daily_budget=_budget(conn), max_docs=_max_docs(conn),
         spent_today=round(_daily_spend(conn), 4), saved=saved,
