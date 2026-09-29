@@ -536,6 +536,28 @@ def create_run(conn, category_id: int, model: str, provider: str,
     return run_id
 
 
+def reusable_fresh_run(conn, category_id: int) -> Optional[str]:
+    """An inclusion run for the category that was never started (run_status IS NULL and no
+    results), so a fresh save or New Run can reuse it instead of stacking another empty run.
+    Newest first, or None."""
+    row = conn.execute(
+        f"SELECT run_id FROM evaluation_runs r "
+        f"WHERE r.category_id = {_P} AND r.phase = {_P} AND r.source_run_id IS NULL "
+        f"AND r.run_status IS NULL "
+        f"AND NOT EXISTS (SELECT 1 FROM evaluation_results er WHERE er.run_id = r.run_id) "
+        f"ORDER BY r.started_at DESC LIMIT 1", (category_id, PHASE_INCLUSION)).fetchone()
+    return row["run_id"] if row else None
+
+
+def restamp_run(conn, run_id: str, model: str, provider: str, prompt_spec: Optional[str]) -> None:
+    """Update an unstarted run's model / provider / prompt snapshot to the current config —
+    used when reusing a fresh run for a new save, so it reflects the latest parameters."""
+    conn.execute(
+        f"UPDATE evaluation_runs SET model = {_P}, provider = {_P}, prompt_spec = {_P} "
+        f"WHERE run_id = {_P}", (model, provider, prompt_spec, run_id))
+    conn.commit()
+
+
 def norm_sampling(sampling) -> Dict:
     """Validated sampling controls: temperature (float in [0, 1] or None = provider default),
     thinking (a `thinking` request dict or None = not sent), effort (str or None)."""

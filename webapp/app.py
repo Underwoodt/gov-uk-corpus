@@ -928,12 +928,18 @@ def _slug_errors(conn, data: dict) -> list:
 
 
 def _create_inclusion_run(conn, cid: int, trial: dict = None) -> str:
-    """Create a fresh, unstarted inclusion run for the category and make it the active run.
-    Returns the new run id. The user starts it from the run's details page (guc-0006)."""
+    """Make an unstarted inclusion run the active run and return its id. Reuses an existing
+    never-started run (re-stamped with the current model + prompt snapshot) rather than
+    stacking another empty one; otherwise creates a fresh run. The user starts it from the
+    run's details page (guc-0006)."""
     cfg = _ai_config_for_phase(conn, evaluate.PHASE_INCLUSION)
-    run_id = evaluate.create_run(conn, cid, cfg["model"], cfg["provider"],
-                                 phase=evaluate.PHASE_INCLUSION,
-                                 prompt_spec=_prompt_spec_json(conn, cid, evaluate.PHASE_INCLUSION, trial))
+    spec = _prompt_spec_json(conn, cid, evaluate.PHASE_INCLUSION, trial)
+    run_id = evaluate.reusable_fresh_run(conn, cid)
+    if run_id:
+        evaluate.restamp_run(conn, run_id, cfg["model"], cfg["provider"], spec)
+    else:
+        run_id = evaluate.create_run(conn, cid, cfg["model"], cfg["provider"],
+                                     phase=evaluate.PHASE_INCLUSION, prompt_spec=spec)
     settings.set_setting(conn, f"active_run_{cid}", run_id)
     return run_id
 

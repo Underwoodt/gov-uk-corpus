@@ -88,6 +88,22 @@ class TestRuns(unittest.TestCase):
         # ...but run_b still sees ALL pages (per-run history)
         self.assertEqual(len(evaluate.run_candidates(self.conn, run_b, 1, 10, **self.flt)), 3)
 
+    def test_reusable_fresh_run_and_restamp(self):
+        self.assertIsNone(evaluate.reusable_fresh_run(self.conn, 1))
+        fresh = evaluate.create_run(self.conn, 1, "m", "anthropic", prompt_spec='{"v": 1}')
+        self.assertEqual(evaluate.reusable_fresh_run(self.conn, 1), fresh)   # brand-new -> reusable
+        evaluate.restamp_run(self.conn, fresh, "m2", "deepseek", '{"v": 2}')
+        r = evaluate.get_run(self.conn, fresh)
+        self.assertEqual((r["model"], r["provider"]), ("m2", "deepseek"))    # config updated
+        self.assertEqual(evaluate.run_prompt_spec(self.conn, fresh), {"v": 2})
+        evaluate.mark_run_running(self.conn, fresh)                          # once started...
+        self.assertIsNone(evaluate.reusable_fresh_run(self.conn, 1))         # ...not reusable
+        other = evaluate.create_run(self.conn, 1, "m", "anthropic")
+        self.assertEqual(evaluate.reusable_fresh_run(self.conn, 1), other)
+        evaluate.save_page(self.conn, other, 1, "https://www.gov.uk/x",
+                           {"keep": 1, "score": 0.8, "reason": "ok"}, 100)   # once it has a result...
+        self.assertIsNone(evaluate.reusable_fresh_run(self.conn, 1))         # ...not reusable
+
     def test_run_totals_update(self):
         run = evaluate.create_run(self.conn, 1, "m", "anthropic")
         evaluate.save_page(self.conn, run, 1, "https://www.gov.uk/p0", {"keep": 1, "score": 0.9, "reason": "a"}, 100)
