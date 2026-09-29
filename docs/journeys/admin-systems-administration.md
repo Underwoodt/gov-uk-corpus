@@ -139,6 +139,8 @@ sub-tab — so it reads like *"Slurry docs — Runs · Selection funnel"* or *"S
 pinning the feedback to the exact view even though several views share one page code. The
 **Show SQL** rolldown reveals the exact query behind the list.
 
+![Screenshot: the Feedback tab — cards of star ratings and comments, each showing the page title with its tab context and the page code, the three star answers, the comment, and who left it and when](screenshots/admin-5-feedback.png)
+
 **How this helps you:** it turns scattered per-page reactions into one place you can scan. The page
 title (with its tab context) and code on each card tell you exactly where a problem was reported, so
 you can act on the pages people actually struggle with.
