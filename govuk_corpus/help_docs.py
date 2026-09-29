@@ -36,6 +36,16 @@ def _num_key(slug: str) -> tuple:
     return (int(m.group(1)) if m else 999, slug)
 
 
+# A journey carrying this marker (anywhere in the file) is listed and rendered in the in-app Help
+# ONLY for administrators. Other users never see it. (Distinct from the admin-*.md docs, which are
+# excluded from Help entirely — repo-only.)
+_ADMIN_MARK = re.compile(r"<!--\s*audience:\s*admin\s*-->", re.IGNORECASE)
+
+
+def is_admin_journey(text: str) -> bool:
+    return bool(_ADMIN_MARK.search(text or ""))
+
+
 def _read(slug: str) -> Optional[str]:
     if not _SLUG_RE.match(slug) or f"{slug}.md" not in _files():
         return None
@@ -62,13 +72,18 @@ def _title_and_blurb(text: str) -> Tuple[str, str]:
     return title, blurb
 
 
-def list_journeys() -> List[Dict]:
-    """All journeys in order: [{slug, title, blurb}]."""
+def list_journeys(include_admin: bool = False) -> List[Dict]:
+    """Journeys in order: [{slug, title, blurb, admin}]. Admin-only journeys (those carrying the
+    '<!-- audience: admin -->' marker) are included only when include_admin is True."""
     out = []
     for f in _files():
         slug = f[:-3]
-        title, blurb = _title_and_blurb(_read(slug) or "")
-        out.append({"slug": slug, "title": title or slug, "blurb": blurb})
+        text = _read(slug) or ""
+        admin = is_admin_journey(text)
+        if admin and not include_admin:
+            continue
+        title, blurb = _title_and_blurb(text)
+        out.append({"slug": slug, "title": title or slug, "blurb": blurb, "admin": admin})
     out.sort(key=lambda d: _num_key(d["slug"]))
     return out
 
@@ -177,6 +192,8 @@ def _md_to_html(text: str, cur_slug: str) -> str:
         if not s:
             i += 1
             continue
+        if s.startswith("<!--") and s.endswith("-->"):
+            i += 1; continue                 # HTML comment (e.g. the admin-audience marker) — drop
         if _RAW_HTML.match(s):               # <details> / <summary> / </details> — pass through
             parts.append(s); i += 1; continue
         if s.startswith("|") and i + 1 < n:  # Markdown table: header row + a dashes separator row
@@ -233,11 +250,14 @@ def _md_to_html(text: str, cur_slug: str) -> str:
     return "\n".join(parts)
 
 
-def render(slug: str) -> Optional[Tuple[str, str]]:
-    """(title, body_html) for a journey, or None if the slug is unknown/invalid.
-    The H1 is returned as the title and dropped from the body (the page shows it as the heading)."""
+def render(slug: str, include_admin: bool = False) -> Optional[Tuple[str, str]]:
+    """(title, body_html) for a journey, or None if the slug is unknown/invalid, or it is an
+    admin-only journey and include_admin is False. The H1 is returned as the title and dropped
+    from the body (the page shows it as the heading)."""
     text = _read(slug)
     if text is None:
+        return None
+    if is_admin_journey(text) and not include_admin:
         return None
     title, _ = _title_and_blurb(text)
     body = re.sub(r"^\s*#\s+.*\n", "", text, count=1)   # remove the first H1

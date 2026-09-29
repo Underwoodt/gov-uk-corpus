@@ -314,6 +314,14 @@ def ctx(conn, request: Request, **extra) -> dict:
 
 
 # ---- Help (in-app user guides, rendered from docs/journeys/*.md) ---------
+def _user_is_admin(request: Request, conn) -> bool:
+    """True if the effective role is Administrator (accounts mode: the user's role; shared mode:
+    the single global role). Used to gate admin-only Help journeys."""
+    user = current_user(request)
+    role = user["role"] if (AUTH_MODE == "accounts" and user) else roles.get_role(conn)
+    return roles.allows(role, roles.ADMINISTRATOR)
+
+
 @app.get("/help", response_class=HTMLResponse)
 def help_index(request: Request):
     if not authed(request):
@@ -321,7 +329,8 @@ def help_index(request: Request):
     conn = connect()
     try:
         return templates.TemplateResponse("help_index.html", ctx(
-            conn, request, active_nav="help", journeys=help_docs.list_journeys()))
+            conn, request, active_nav="help",
+            journeys=help_docs.list_journeys(include_admin=_user_is_admin(request, conn))))
     finally:
         conn.close()
 
@@ -342,12 +351,14 @@ def help_screenshot(request: Request, name: str):
 def help_page(request: Request, slug: str):
     if not authed(request):
         return login_redirect(request)
-    rendered = help_docs.render(slug)   # None for an unknown/invalid slug (also blocks traversal)
-    if rendered is None:
-        return RedirectResponse(url=str(request.url_for("help_index")), status_code=303)
-    title, body = rendered
     conn = connect()
     try:
+        # None for an unknown/invalid slug (also blocks traversal) or an admin-only journey a
+        # non-admin requested — both redirect to the index.
+        rendered = help_docs.render(slug, include_admin=_user_is_admin(request, conn))
+        if rendered is None:
+            return RedirectResponse(url=str(request.url_for("help_index")), status_code=303)
+        title, body = rendered
         return templates.TemplateResponse("help_page.html", ctx(
             conn, request, active_nav="help", title=title, body=body))
     finally:
