@@ -244,7 +244,6 @@ CREATE TABLE IF NOT EXISTS categories (
     id                            INTEGER PRIMARY KEY,   -- epoch-ms, assigned in Python
     created_at                    TEXT,
     updated_at                    TEXT,
-    status                        TEXT DEFAULT 'draft',  -- draft | published | archived
     slug                          TEXT,                  -- identifier/name: lowercase, digits, hyphens/underscores
     owner_email                   TEXT,
     description                   TEXT,

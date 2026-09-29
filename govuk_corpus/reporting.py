@@ -43,7 +43,7 @@ def overview(conn) -> List[dict]:
     the top-level dashboard table. `pages_kept` is org+doctype (no keyword);
     `membership_count` is the full org+dept+keyword shortlist."""
     return _rows(conn, """
-        SELECT k.id, k.slug, k.description, k.owner_email, k.status, k.updated_at,
+        SELECT k.id, k.slug, k.description, k.owner_email, k.updated_at,
                pc.pages_kept, pc.computed_at,
                (SELECT COUNT(*) FROM category_shortlist_pages m WHERE m.category_id = k.id)
                    AS membership_count

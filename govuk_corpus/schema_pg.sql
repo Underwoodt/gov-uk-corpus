@@ -221,7 +221,6 @@ CREATE TABLE IF NOT EXISTS categories (
     id                            bigint PRIMARY KEY,
     created_at                    text,
     updated_at                    text,
-    status                        text DEFAULT 'draft',
     slug                          text,   -- identifier/name: lowercase, digits, hyphens/underscores
     owner_email                   text,
     description                   text,

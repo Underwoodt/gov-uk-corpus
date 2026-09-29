@@ -76,13 +76,11 @@ class TestCrud(unittest.TestCase):
         self.assertIsInstance(cid, int)
         got = cat.get_category(self.conn, cid)
         self.assertEqual(got["description"], "Slurry docs")
-        self.assertEqual(got["status"], "draft")
         self.assertEqual(got["only_use_extra_guidance_urls"], 0)
 
-        cat.update_category(self.conn, cid, _valid_data(description="Updated"), status="published")
+        cat.update_category(self.conn, cid, _valid_data(description="Updated"))
         got = cat.get_category(self.conn, cid)
         self.assertEqual(got["description"], "Updated")
-        self.assertEqual(got["status"], "published")
 
         rows = cat.list_categories(self.conn)
         self.assertEqual(len(rows), 1)
