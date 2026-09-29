@@ -26,6 +26,9 @@ finished, what it cost, and if something went wrong, what to do about it, whethe
 **What you do:** open the **Runs** tab and go to **Pipeline Runs**, where every run lives. Click
 **New Run**. The tool creates a run and opens its own page. Give the run a name (the **Start Run**
 button stays greyed out until the name is more than three characters), then press **Start Run**.
+(Saving your Filter Parameters after a change also sets up a run and brings you straight to this same
+page — see [Journey 3](3-create-a-shortlist.md) and [Journey 7](7-edit-filter-parameters.md) — so you
+often arrive here ready to start without clicking New Run at all.)
 
 **What you see:** the run starts working on the server, in the background. You can leave the page and
 come back while it keeps going, and a note on the page says so.

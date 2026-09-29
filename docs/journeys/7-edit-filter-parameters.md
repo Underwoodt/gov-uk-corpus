@@ -5,15 +5,16 @@ once you run again, and how the AI can read your previous results and suggest sh
 
 **Who / when:** you've run the AI at least once (Journey 4) and reviewed the results (Journey 6), and
 the shortlist is close but you want to tighten what it keeps or drops.
-**Pages used:** the **Filter Parameters** tab, and **Runs**, then **Pipeline Runs**.
+**Pages used:** the **Filter Parameters** tab, and the **run details** page a save takes you to.
 
 # Journey Overview
 
 A shortlist is never carved in stone; you tune it. Open **Filter Parameters**, change what you want,
-and save. The one thing to remember is that editing changes what the next run does: your existing
-results don't rewrite themselves, so you run again. And if you're not sure how to sharpen the
-wording, the tool reads your own runs and suggests it, though those suggestions are informed by your
-data, not your intent.
+and save. If the change affects the shortlist, saving rebuilds it and sets up a fresh run for you to
+start. The one thing to remember is that editing changes what the next run does: your existing
+results don't rewrite themselves, so you start that run to apply the change. And if you're not sure
+how to sharpen the wording, the tool reads your own runs and suggests it, though those suggestions are
+informed by your data, not your intent.
 
 ---
 
@@ -27,32 +28,36 @@ right, whether that's the organisation, document types or keywords that pick the
 inclusion and exclusion criteria and the Keep and Drop examples that steer the AI. Then press
 **Save**.
 
-**What you see:** on save, the tool regenerates the shortlist from your new parameters (the
-mechanical filters take effect straight away) and moves you on.
+**What you see:** on save, if you changed anything that defines the shortlist — the organisation,
+document types or keywords, or the inclusion and exclusion criteria and the Keep and Drop examples —
+the tool rebuilds the shortlist from your new parameters and takes you straight to a fresh run's
+**details page**, ready to start. (If you reopen the form and save without changing any of those, say
+you only fixed the name, it simply saves and leaves you on Filter Parameters, with no new run.)
 
 ![Screenshot: the Filter Parameters edit form, with the inclusion and exclusion criteria boxes, the Keep and Drop examples, and the Save button](screenshots/7-1-edit.png)
 
 **How this helps you:** the shortlist is a living definition, not a one-off, and tuning the parameters
 is the normal way you make it sharper.
 
-## 7.2: Editing changes the next run, so run again
+## 7.2: Editing changes the next run, so start the run save set up
 
 > "This is the one thing people trip over. Saving new criteria does not rewrite the results you
-> already have; those are a snapshot. To see your changes in the AI's verdicts, start a new run. Edit,
-> save, re-run: that's the loop."
+> already have; those are a snapshot. To see your changes in the AI's verdicts you run again — and
+> saving now hands you that run, ready on its details page. Edit, save, Start Run: that's the loop."
 
-**What you do:** after you save, start a **New Run** from **Pipeline Runs** ([Journey 4: Run the
-AI](4-run-the-ai.md)).
+**What you do:** on the run **details page** that saving dropped you on, press **Start Run** ([Journey
+4: Run the AI](4-run-the-ai.md)). Saving a change reuses a run you haven't started yet rather than
+piling up empty ones, so repeated edits keep landing you on the same fresh run.
 
 **What you see:** your existing runs are unchanged, because each one is a fixed record of the pages
 and prompts as they were when it ran. Changing the criteria doesn't re-judge old results; it changes
-what a new run will do. So the AI's keep and drop decisions only reflect your edits after you run
-again.
+what the new run will do. So the AI's keep and drop decisions only reflect your edits after you start
+that run.
 
-![Screenshot: after saving on Filter Parameters, the Pipeline Runs tab with the New Run button highlighted](screenshots/7-2-new-run-required.png)
+![Screenshot: the fresh run's details page after saving, with the Start Run button](screenshots/7-2-new-run-required.png)
 
 **How this helps you:** it keeps every run honest and comparable, because a run always shows what it
-decided, not what a later edit would have decided. The price is that you re-run to apply a change.
+decided, not what a later edit would have decided. The price is that you start a run to apply a change.
 
 ## 7.3: Let the AI suggest how to sharpen the prompts
 
@@ -93,8 +98,8 @@ repeatable and better at telling keep from drop. But the AI doesn't know your po
 or the real-world call you're making, so wording that scores well on consistency can still miss your
 intent.
 
-Keep the parts that match your use case, edit the rest, **Save**, and start a **New Run** to see the
-effect.
+Keep the parts that match your use case, edit the rest, **Save**, and start the run it sets up to see
+the effect.
 
 ![Screenshot: the "Use this as a starting point, not a final answer" note on the AI review card](screenshots/7-4-inspiration-caveat.png)
 

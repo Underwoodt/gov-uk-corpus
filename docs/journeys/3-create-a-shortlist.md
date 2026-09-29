@@ -26,7 +26,8 @@ tool applies things: an **Owner email** and a **Name** for the shortlist (say, "
 storage"); then **Pre-Inference Filtering**, the fast, exact narrowing that runs before any AI
 (**Organisations**, then **Page Types**, then **Inclusion Keyword(s)**); then **LLM Inference**, what
 you tell the AI (what to include, what to exclude, and optional examples of tricky pages). Everything
-above the AI section is deterministic, and saving at the bottom generates or rebuilds the shortlist.
+above the AI section is deterministic, and saving at the bottom generates or rebuilds the shortlist
+and sets up a run for you to start.
 
 ![Screenshot: the whole Filter Parameters form scrolled to show its order, Owner and Name, Pre-Inference Filtering (Organisations, Page Types, Keywords), then LLM Inference](screenshots/3-0-form-overview.png)
 
@@ -144,18 +145,18 @@ covers it.
 
 ## Save, and the shortlist is generated
 
-> "Save, and the tool generates the shortlist there and then. From here you can look at what it
-> produced, run the AI over it, and download it, which is exactly where we go next."
+> "Save, and the tool builds the shortlist there and then and sets up a run for it. It drops you on
+> that run's details page, so the next step — starting the AI over your pages — is one click away."
 
 **What you do:** press **Save** at the bottom of the form.
 
-**What you see:** the tool generates (or rebuilds) the shortlist from your parameters and moves you on
-to see it, the pages the filters kept, ready for the AI pass. Running that pass is
+**What you see:** the tool builds the shortlist from your parameters and creates a fresh run over it,
+then takes you to that run's **details page**, ready to press **Start Run**. Starting that pass is
 [Journey 4: Run the AI](4-run-the-ai.md); getting the list out is
 [Journey 5: Download a shortlist](5-download-a-shortlist.md); checking how it was built is
 [Journey 6: How did we build the shortlist?](6-how-was-this-built.md).
 
-![Screenshot: the Save button at the foot of the Filter Parameters form, then the generated Results tab it lands on](screenshots/3-5-save-generated.png)
+![Screenshot: the Save button at the foot of the Filter Parameters form, then the fresh run's details page it lands on, with the Start Run button](screenshots/3-5-save-generated.png)
 
 ## Links
 
