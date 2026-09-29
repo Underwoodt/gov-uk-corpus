@@ -5757,6 +5757,34 @@ async def admin_reset_link(request: Request, user_id: str):
     return RedirectResponse(url=edit + "?reset_link=" + quote(link), status_code=303)
 
 
+@app.post("/admin/users/{user_id}/status")
+async def admin_set_user_status(request: Request, user_id: str):
+    """Admin enables or disables an account. A disabled account can't sign in and its live
+    sessions stop resolving. The break-glass account can't be disabled (update_user forces it
+    back to active), and an admin can't disable their own account."""
+    if not authed(request):
+        return login_redirect(request)
+    if not _require_admin(request):
+        return RedirectResponse(url=_users_tab_url(request), status_code=303)
+    form = await request.form()
+    status = form.get("account_status") if form.get("account_status") in accounts.STATUSES else None
+    if status is None:
+        return RedirectResponse(url=_users_tab_url(request), status_code=303)
+    actor = current_user(request)
+    if status == "disabled" and actor and str(actor.get("id")) == str(user_id):
+        return RedirectResponse(
+            url=_users_tab_url(request, "user_error=" + quote("You can't disable your own account.")),
+            status_code=303)
+    conn = connect()
+    try:
+        accounts.update_user(conn, user_id, account_status=status)
+        accounts.audit(conn, "account_" + ("disabled" if status == "disabled" else "enabled"),
+                       user_id=user_id, actor_id=(actor or {}).get("id"), ip=_client_ip(request))
+    finally:
+        conn.close()
+    return RedirectResponse(url=_users_tab_url(request, "user_ok=1"), status_code=303)
+
+
 _PROMPT_NOTES = {
     "inclusion": "Sent once per page in an inclusion run — keep or drop, with a score and reason.",
     "exclusion": "Recall-priority re-check of the pages Phase 1 kept — only ever turns a keep into a drop.",
@@ -5814,6 +5842,8 @@ def settings_page(request: Request, saved: int = 0, user_ok: int = 0, user_error
         m["is_exclusion"] = str(m["id"]) == str(excl_id)
     accounts_mode = AUTH_MODE == "accounts"
     users = accounts.list_users(conn) if accounts_mode else None
+    for u in (users or []):     # flag the break-glass account so the UI can protect it
+        u["is_breakglass"] = accounts.is_breakglass_email(u.get("email"))
     _usql, _uparams = accounts.list_users_query()
     _msql, _mparams = ai_models.list_models_query()
     resp = templates.TemplateResponse("settings.html", ctx(
