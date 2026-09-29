@@ -173,7 +173,9 @@ def import_bundle(conn, bundle: dict, owner_email: Optional[str] = None) -> dict
         _insert(conn, "page_organisations", r,
                 conflict=["page_url", "organisation_content_id", "role"])
 
-    # The category and its own rows.
+    # The category and its own rows. Drop the retired `status` column if an older
+    # bundle still carries it, so the insert matches the current schema.
+    category.pop("status", None)
     _insert(conn, "categories", category, conflict=["id"], update=True)
     for r in bundle.get("counts", []):
         _insert(conn, "category_page_counts", r, conflict=["category_id"], update=True)

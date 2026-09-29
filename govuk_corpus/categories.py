@@ -112,7 +112,7 @@ def _coerce(data: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
-def create_category(conn, data: Dict[str, Any], status: str = "draft") -> int:
+def create_category(conn, data: Dict[str, Any]) -> int:
     d = _coerce(data)
     cid = int(time.time() * 1000)
     # Guard against PK collisions when two categories are created in the same
@@ -120,19 +120,17 @@ def create_category(conn, data: Dict[str, Any], status: str = "draft") -> int:
     while conn.execute(f"SELECT 1 FROM categories WHERE id={_P}", (cid,)).fetchone():
         cid += 1
     ts = now_iso()
-    cols = ["id", "created_at", "updated_at", "status"] + USER_FIELDS
-    vals = [cid, ts, ts, status] + [d.get(f) for f in USER_FIELDS]
+    cols = ["id", "created_at", "updated_at"] + USER_FIELDS
+    vals = [cid, ts, ts] + [d.get(f) for f in USER_FIELDS]
     ph = ",".join([_P] * len(cols))
     conn.execute(f"INSERT INTO categories ({','.join(cols)}) VALUES ({ph})", tuple(vals))
     conn.commit()
     return cid
 
 
-def update_category(conn, cid: int, data: Dict[str, Any], status: Optional[str] = None) -> None:
+def update_category(conn, cid: int, data: Dict[str, Any]) -> None:
     d = _coerce(data)
     sets = {**{f: d.get(f) for f in USER_FIELDS}, "updated_at": now_iso()}
-    if status is not None:
-        sets["status"] = status
     assignments = ",".join(f"{k}={_P}" for k in sets)
     conn.execute(f"UPDATE categories SET {assignments} WHERE id={_P}",
                  tuple(sets.values()) + (cid,))
@@ -208,10 +206,10 @@ def _copy_slug(conn, base: str) -> str:
 
 
 def copy_category(conn, cid: int, owner_email: Optional[str] = None) -> Optional[int]:
-    """Duplicate a category's rules into a new draft. Returns the new id, or None if
-    the source is missing. The copy gets a fresh, distinct slug (`<slug>-copy`), starts
-    as a draft, and carries over every rule field — including the URL-check lists, which
-    live outside USER_FIELDS. Pass owner_email to reassign the copy to the current user."""
+    """Duplicate a category's rules into a new one. Returns the new id, or None if
+    the source is missing. The copy gets a fresh, distinct slug (`<slug>-copy`) and
+    carries over every rule field — including the URL-check lists, which live outside
+    USER_FIELDS. Pass owner_email to reassign the copy to the current user."""
     src = get_category(conn, cid)
     if not src:
         return None
@@ -219,7 +217,7 @@ def copy_category(conn, cid: int, owner_email: Optional[str] = None) -> Optional
     data["slug"] = _copy_slug(conn, src.get("slug") or "")
     if owner_email:
         data["owner_email"] = owner_email
-    new_id = create_category(conn, data, status="draft")
+    new_id = create_category(conn, data)
     inc = (src.get("should_include_urls") or "").strip()
     exc = (src.get("should_exclude_urls") or "").strip()
     if inc or exc:
@@ -235,7 +233,7 @@ def get_category(conn, cid: int) -> Optional[Dict[str, Any]]:
 def list_categories_query():
     """(sql, params) for the categories list — so the page can show the SQL it ran."""
     return ("SELECT id, slug, description, owner_email, dept_slugs, document_type_slugs, "
-            "status, created_at, updated_at "
+            "created_at, updated_at "
             "FROM categories ORDER BY created_at DESC", [])
 
 
