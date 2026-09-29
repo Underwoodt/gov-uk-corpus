@@ -263,7 +263,7 @@
       <div style="border:1px solid var(--border-mid,#b1b4b6);border-radius:8px;padding:14px 16px;background:var(--white);display:flex;flex-direction:column;gap:8px;">
         <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;">
           <strong style="font-size:15px;line-height:1.3;">{{ f.page_title or '(untitled page)' }}</strong>
-          {% if f.page_id %}<span class="mono secondary" style="font-size:12px;white-space:nowrap;">{{ f.page_id }}</span>{% endif %}
+          <span class="mono secondary" style="font-size:12px;white-space:nowrap;" title="Page code">{{ f.page_id or '—' }}</span>
         </div>
         <dl style="margin:0;display:grid;grid-template-columns:1fr auto;gap:2px 12px;font-size:13px;">
           {% for field, question in feedback_questions %}
