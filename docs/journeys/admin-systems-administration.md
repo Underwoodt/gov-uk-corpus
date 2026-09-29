@@ -134,11 +134,14 @@ it's a review.
 **What you see:** one **card per submission**, newest first. Each card shows the **page title** and
 its **page code** (the `guc-####` id), the three star answers — *Does this page do what you need?*,
 *Is it easy to use?*, *Quality of the results / output?* — the comment, and who left it and when.
-The **Show SQL** rolldown reveals the exact query behind the list.
+On a tabbed page the title also carries the **active tab** for context — the outer tab and any
+sub-tab — so it reads like *"Slurry docs — Runs · Selection funnel"* or *"Settings — Feedback"*,
+pinning the feedback to the exact view even though several views share one page code. The
+**Show SQL** rolldown reveals the exact query behind the list.
 
 **How this helps you:** it turns scattered per-page reactions into one place you can scan. The page
-title and code on each card tell you exactly where a problem was reported, so you can act on the
-pages people actually struggle with.
+title (with its tab context) and code on each card tell you exactly where a problem was reported, so
+you can act on the pages people actually struggle with.
 
 ## Links
 
