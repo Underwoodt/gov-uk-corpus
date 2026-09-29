@@ -22,7 +22,7 @@ double as living documentation. When a screen changes, update the script.
 | 4.1 to 4.4 | Start, watch the two passes, read the outcome, fix a stop | Doing the run and reading it | Pipeline Runs, Run details |
 | 5 | [Download a shortlist](5-download-a-shortlist.md) | How do I get the list out? | Results, Download |
 | 5.1 to 5.2 | The fields you can export, and formats | Columns and file types | Download |
-| 6 | [How was this built?](6-how-was-this-built.md) | Trust and tuning | Results, Runs, Compare Runs |
+| 6 | [How did we build the shortlist?](6-how-was-this-built.md) | Trust and tuning | Results, Runs, Compare Runs |
 | 6.1 to 6.5 | Funnel, filter breakdowns, kept/dropped, reading a run, reframing the question | Seeing and trusting the working | Selection funnel, Results, Run details, Compare Runs |
 | 7 | [Edit your Filter Parameters](7-edit-filter-parameters.md) | How do I tune it, and why re-run? | Filter Parameters, Pipeline Runs |
 | 7.1 to 7.4 | Edit, re-run, the AI suggests, the caveat | Sharpening the prompts from your own results | Filter Parameters, Pipeline Runs |

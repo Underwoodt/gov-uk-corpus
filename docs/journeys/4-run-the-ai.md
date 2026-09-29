@@ -121,5 +121,5 @@ either to get a clean run.
 
 - Previous: [Journey 3: Create a shortlist](3-create-a-shortlist.md)
 - Next: [Journey 5: Download a shortlist](5-download-a-shortlist.md)
-- Go deeper: [Journey 6: How was this built?](6-how-was-this-built.md), on reading the results,
+- Go deeper: [Journey 6: How did we build the shortlist?](6-how-was-this-built.md), on reading the results,
   comparing runs, and letting the AI sharpen your criteria.

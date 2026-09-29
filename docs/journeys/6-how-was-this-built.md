@@ -1,4 +1,4 @@
-# Journey 6: How was this built?
+# Journey 6: How did we build the shortlist?
 
 *What this shows: how to trust a shortlist. See how the Filter Parameters generated it, which pages
 were kept or dropped and why, what the AI decided, and how the AI can help you sharpen the question.*

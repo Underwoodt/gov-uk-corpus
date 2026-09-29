@@ -153,7 +153,7 @@ covers it.
 to see it, the pages the filters kept, ready for the AI pass. Running that pass is
 [Journey 4: Run the AI](4-run-the-ai.md); getting the list out is
 [Journey 5: Download a shortlist](5-download-a-shortlist.md); checking how it was built is
-[Journey 6: How was this built?](6-how-was-this-built.md).
+[Journey 6: How did we build the shortlist?](6-how-was-this-built.md).
 
 ![Screenshot: the Save button at the foot of the Filter Parameters form, then the generated Results tab it lands on](screenshots/3-5-save-generated.png)
 
@@ -161,4 +161,4 @@ to see it, the pages the filters kept, ready for the AI pass. Running that pass 
 
 - Previous: [Journey 2: What is a shortlist?](2-what-is-a-shortlist.md)
 - Next: [Journey 4: Run the AI](4-run-the-ai.md)
-- See it work: [Journey 6: How was this built?](6-how-was-this-built.md)
+- See it work: [Journey 6: How did we build the shortlist?](6-how-was-this-built.md)

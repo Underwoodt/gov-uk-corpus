@@ -111,4 +111,4 @@ password by changing that environment value and restarting.
 
 - The everyday workflow these settings support starts at [Journey 2: What is a shortlist?](2-what-is-a-shortlist.md).
 - Budgets and per-run limits show up to users in [Journey 4: Run the AI](4-run-the-ai.md).
-- Models and prices are the same catalogue the cost figures in [Journey 6: How was this built?](6-how-was-this-built.md) draw on.
+- Models and prices are the same catalogue the cost figures in [Journey 6: How did we build the shortlist?](6-how-was-this-built.md) draw on.

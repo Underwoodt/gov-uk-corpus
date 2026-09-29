@@ -156,4 +156,4 @@ The file extension is added for you.
 ## Links
 
 - Previous: [Journey 4: Run the AI](4-run-the-ai.md)
-- Next: [Journey 6: How was this built?](6-how-was-this-built.md)
+- Next: [Journey 6: How did we build the shortlist?](6-how-was-this-built.md)
