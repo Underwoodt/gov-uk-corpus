@@ -47,10 +47,16 @@ def add_feedback(conn, *, page_id: str, page_title: str, feedback_text: str,
     return fid
 
 
+def list_feedback_query(limit: int = 500):
+    """(sql, params) for the admin feedback list — so the page can show the SQL it ran."""
+    return (
+        "SELECT id, page_id, page_title, feedback_text, q_functionality, q_ease, q_quality, "
+        f"created_at, created_by, created_by_email FROM page_feedback ORDER BY created_at DESC LIMIT {_P}",
+        [limit])
+
+
 def list_feedback(conn, limit: int = 500) -> List[Dict[str, Any]]:
-    """All feedback, newest first (for a future admin view)."""
-    rows = conn.execute(
-        f"SELECT id, page_id, page_title, feedback_text, q_functionality, q_ease, q_quality, "
-        f"created_at, created_by_email FROM page_feedback ORDER BY created_at DESC LIMIT {_P}",
-        (limit,)).fetchall()
+    """All feedback, newest first (for the admin Feedback tab)."""
+    sql, params = list_feedback_query(limit)
+    rows = conn.execute(sql, tuple(params)).fetchall()
     return [dict(r) for r in rows]

@@ -5806,12 +5806,15 @@ def settings_page(request: Request, saved: int = 0, user_ok: int = 0, user_error
         u["is_breakglass"] = accounts.is_breakglass_email(u.get("email"))
     _usql, _uparams = accounts.list_users_query()
     _msql, _mparams = ai_models.list_models_query()
+    _fsql, _fparams = feedback.list_feedback_query()
     resp = templates.TemplateResponse("settings.html", ctx(
         conn, request, active_nav="settings", models=models,
         models_sql=_display_sql(_msql, _mparams),
         accounts_mode=accounts_mode, users=users, account_roles=accounts.ROLES,
         list_sql=_display_sql(_usql, _uparams),
         user_ok=user_ok, user_error=user_error,
+        feedbacks=feedback.list_feedback(conn), feedback_questions=feedback.QUESTIONS,
+        feedback_sql=_display_sql(_fsql, _fparams),
         providers=list(PROVIDERS.keys()),
         daily_budget=_budget(conn), max_docs=_max_docs(conn),
         spent_today=round(_daily_spend(conn), 4), saved=saved,

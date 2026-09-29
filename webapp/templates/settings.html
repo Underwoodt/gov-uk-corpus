@@ -14,6 +14,7 @@
     <a href="#" class="stab" data-tab="guardrails">Execution Guardrails</a>
     <a href="#" class="stab" data-tab="prompts">AI Prompts</a>
     <a href="#" class="stab" data-tab="users">User Management</a>
+    <a href="#" class="stab" data-tab="feedback">Feedback</a>
   </div>
 
   <!-- Tab 1: Available Models -->
@@ -248,6 +249,41 @@
       </div>
     </details>
     {% endfor %}
+  </section>
+
+  <!-- Tab: Feedback (admin-only, like the whole Settings page) -->
+  <section class="stabpanel" data-tab="feedback" hidden>
+    <h2 style="margin-bottom:10px;">Feedback</h2>
+    <p class="hint" style="max-width:680px;">Every rating and comment left through the per-page
+      feedback widget, newest first. Each card shows the page it was left on, the star answers, the
+      comment, and who left it and when.</p>
+    {% if feedbacks %}
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;margin:18px 0;">
+      {% for f in feedbacks %}
+      <div style="border:1px solid var(--border-mid,#b1b4b6);border-radius:8px;padding:14px 16px;background:var(--white);display:flex;flex-direction:column;gap:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;">
+          <strong style="font-size:15px;line-height:1.3;">{{ f.page_title or '(untitled page)' }}</strong>
+          {% if f.page_id %}<span class="mono secondary" style="font-size:12px;white-space:nowrap;">{{ f.page_id }}</span>{% endif %}
+        </div>
+        <dl style="margin:0;display:grid;grid-template-columns:1fr auto;gap:2px 12px;font-size:13px;">
+          {% for field, question in feedback_questions %}
+          <dt class="secondary" style="margin:0;">{{ question }}</dt>
+          <dd style="margin:0;white-space:nowrap;letter-spacing:1px;" title="{{ f[field] or '—' }}{{ '/5' if f[field] }}">
+            {% if f[field] %}<span style="color:var(--blue,#1d70b8);">{{ '★' * f[field] }}</span><span style="color:var(--grey-border,#b1b4b6);">{{ '☆' * (5 - f[field]) }}</span>{% else %}<span class="secondary">—</span>{% endif %}
+          </dd>
+          {% endfor %}
+        </dl>
+        {% if f.feedback_text %}
+        <p style="margin:2px 0 0;font-size:14px;line-height:1.45;white-space:pre-wrap;">{{ f.feedback_text }}</p>
+        {% else %}<p class="secondary" style="margin:2px 0 0;font-size:13px;font-style:italic;">No comment left.</p>{% endif %}
+        <div class="secondary" style="font-size:12px;margin-top:2px;border-top:1px solid var(--border,#e6e6e6);padding-top:8px;">
+          {{ f.created_by_email or f.created_by or 'anonymous' }} · {{ (f.created_at | string)[:16] | replace('T', ' ') }}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {{ sql_details(feedback_sql) }}
+    {% else %}<p class="secondary">No feedback yet.</p>{% endif %}
   </section>
 
   <script>
