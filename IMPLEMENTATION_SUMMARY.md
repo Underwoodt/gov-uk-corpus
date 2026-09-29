@@ -79,7 +79,7 @@ A complete, production-ready system for collecting, enriching, and searching ~1 
   - Progress tracking with ETA calculation
   - Report generation
 - **requirements.txt** - 8 dependencies (psycopg2, requests, FastAPI, etc.)
-- **.env.example** - Environment template
+- **crawler.env.example** - Environment template
 
 ### Deployment ✅
 - **Dockerfile** (30 lines) - Container image
@@ -127,7 +127,7 @@ cd /Users/tomunderwood/AI\ Brain/gov-uk-corpus
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env  # Edit with your PostgreSQL password
+cp crawler.env.example .env  # Edit with your PostgreSQL password
 ```
 
 ### Database Setup (5 minutes)
@@ -246,7 +246,7 @@ gov-uk-corpus/
 ├── Dockerfile                  # Container image
 ├── docker-compose.yml          # Full stack containerization
 ├── requirements.txt            # Python dependencies
-├── .env.example                # Environment template
+├── crawler.env.example         # Environment template
 ├── README.md                   # Main documentation
 ├── SETUP.md                    # Deployment guide
 └── IMPLEMENTATION_SUMMARY.md  # This file

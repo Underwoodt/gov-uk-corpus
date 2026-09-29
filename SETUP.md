@@ -62,7 +62,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # Copy and configure .env
-cp .env.example .env
+cp crawler.env.example .env
 # Edit .env with your actual PostgreSQL password
 nano .env
 ```
