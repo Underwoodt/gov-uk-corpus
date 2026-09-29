@@ -48,7 +48,7 @@ class TestRender(unittest.TestCase):
         self.assertIn('href="/help/5-download-a-shortlist"', self.body)
         # a cross-doc anchor link (Journey 7 → Journey 6, section 6.4)
         _, b7 = h.render("7-edit-filter-parameters")
-        self.assertIn('href="/help/6-how-was-this-built#64-letting-the-ai-reframe-your-question"', b7)
+        self.assertIn('href="/help/6-how-was-this-built#65-letting-the-ai-reframe-your-question"', b7)
 
     def test_heading_ids_present_and_match_anchor_scheme(self):
         # A section heading gets an id matching the GitHub-style anchor (colon-titled headings).

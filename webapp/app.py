@@ -1026,8 +1026,13 @@ def rebuild_category_page(request: Request, cid: int):
         conn.close()
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
     category["display_name"] = cat.display_name(category)
+    # After the rebuild, land on the latest run's details page (guc-0006). If the shortlist has
+    # never been run, fall back to Pipeline Runs (guc-0004c) so the user can start one.
+    latest = evaluate.latest_inclusion_run(conn, cid)
+    next_url = (str(request.url_for("run_detail_page", cid=cid, run_id=latest)) if latest
+                else str(request.url_for("ai_pipeline_page", cid=cid)))
     resp = templates.TemplateResponse("rebuilding.html", ctx(
-        conn, request, category=category, hybrid_on_save=True))  # GOV.UK hybrid search always runs on save
+        conn, request, category=category, hybrid_on_save=True, next_url=next_url))  # hybrid search always runs on save
     conn.close()
     return resp
 

@@ -15,7 +15,10 @@
   <a class="back" style="margin-left:18px;" href="{{ url_for('gold_page', cid=category.id) }}?run={{ (chain[0].run_id if chain else run.run_id) }}">Label gold from this run ›</a>
   <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:18px 0 4px;">
     <h1 id="run-title" style="margin:0;">Run Details for {{ run.name or run.run_id }}</h1>
-    <a class="btn" style="white-space:nowrap;" href="{{ url_for('download_page', cid=category.id) }}?run={{ (chain[0].run_id if chain else run.run_id) }}&amp;stage=final" title="Download this run's final shortlist (choose columns/format on the download page)">Download this run</a>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <a class="btn secondary-btn" style="white-space:nowrap;" href="{{ url_for('rebuild_category_page', cid=category.id) }}" title="Re-apply the saved Filter Parameters: rebuild the shortlist (organisation, document type, keyword) and reconcile the results, then return here">↻ Refresh shortlist</a>
+      <a class="btn" style="white-space:nowrap;" href="{{ url_for('download_page', cid=category.id) }}?run={{ (chain[0].run_id if chain else run.run_id) }}&amp;stage=final" title="Download this run's final shortlist (choose columns/format on the download page)">Download this run</a>
+    </div>
   </div>
   <p class="secondary" style="margin:0 0 18px;">{{ category.display_name }}
     (<span class="mono">{{ category.slug or '' }}</span>) · run <span class="mono">{{ run.run_id }}</span></p>

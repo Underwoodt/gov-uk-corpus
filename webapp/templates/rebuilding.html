@@ -48,20 +48,20 @@
       {% endif %}
       <li class="rb-step pending" id="st-done">
         <span class="rb-ico"><span class="dot"></span></span>
-        <span><span class="rb-title">Opening results</span></span>
+        <span><span class="rb-title">Opening run details</span></span>
       </li>
     </ul>
 
     <p id="rb-error" class="error-summary" role="alert" hidden style="margin-top:18px;">
       <span id="rb-error-msg">Something went wrong.</span>
-      <a href="{{ url_for('preview_category_page', cid=category.id) }}">Continue to results</a> ·
+      <a href="{{ next_url }}">Continue</a> ·
       <a href="{{ url_for('edit_category_page', cid=category.id) }}">back to edit</a>
     </p>
   </div>
 
   <script>
     const CID = {{ category.id }};
-    const PREVIEW = "{{ url_for('preview_category_page', cid=category.id) }}";
+    const NEXT_URL = "{{ next_url }}";
     function running(id){ var el=document.getElementById(id); el.classList.remove("pending");
       el.querySelector(".rb-ico").innerHTML = '<span class="spinner"></span>'; }
     function done(id){ var el=document.getElementById(id); el.classList.remove("pending");
@@ -101,7 +101,7 @@
         }
         {% endif %}
         done("st-done");
-        setTimeout(function () { window.location.replace(PREVIEW); }, 500);
+        setTimeout(function () { window.location.replace(NEXT_URL); }, 500);
       } catch (e) {
         // Mark the running step failed and offer manual links.
         ["st-shortlist","st-reconcile"].forEach(function (id) {
