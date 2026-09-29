@@ -5,16 +5,15 @@ in the repo for administrators. It covers the **Settings** page and its tabs: mo
 execution guardrails, the AI prompts, and user management.*
 
 **Who / when:** administrators setting the tool up or keeping it running.
-**Pages used:** **Settings** (`/settings`, admins only), the **User administration** page
-(`/admin/users`), and the per-provider peak-hours editor.
+**Pages used:** **Settings** (`/settings`, admins only) — its Available Models, Execution Guardrails,
+AI Prompts and User Management tabs — and the per-provider peak-hours editor.
 
 # Journey Overview
 
 Almost everything a normal user does needs no admin. Administration is the small set of behind-the
 -scenes controls: which AI models are available and what they cost, how much the tool is allowed to
 spend and how much it does per run, a read-only view of the prompts, and who has an account and what
-role they hold. All of it lives on the **Settings** page, which only administrators can see, plus the
-**User administration** page it links to.
+role they hold. All of it lives on the **Settings** page, which only administrators can see.
 
 The **Settings** link appears in the top navigation only for admins, and the page is checked again on
 the server, so a non-admin can neither see nor reach it. The page has four tabs: **Available Models**,
@@ -71,9 +70,9 @@ either reason, its Run outcome says so, and the user carries on with Complete ru
 > stay reproducible whatever changes later."
 
 **What you do:** on the **AI Prompts** tab, read the prompts behind each AI feature. They are shown
-read-only, because the prompts live in **git** (`govuk_corpus/evaluate.py`, `prompts.py`,
-`category_interview.py`), which is the single source of truth. Each prompt shows its version (a git
-short SHA), the placeholders it fills in at run time, and its full text.
+read-only, because the prompts live in **git** (`govuk_corpus/evaluate.py` and `prompts.py`), which
+is the single source of truth. There are two: the inclusion and exclusion passes. Each shows its
+version (a git short SHA), the placeholders it fills in at run time, and its full text.
 
 **What you see:** exactly what the AI is asked, and which version is current.
 
@@ -84,18 +83,17 @@ who wants to see it, without risk of an accidental edit changing behaviour mid-f
 
 ## User Management
 
-> "User management is a link through to the User administration page, where you add people,
-> change roles, and reset passwords. The two roles that matter day to day are User and Admin."
+> "User management lives right here on this tab: add people, change roles, and reset passwords.
+> The two roles that matter day to day are User and Admin."
 
-**What you do:** on the **User Management** tab, go to the **User administration** page. There you
-view and edit every account, add new ones, and set each person's role. This tab and page apply when
-the app runs in accounts mode (`AUTH_MODE=accounts`); in shared-password mode there are no individual
-users to manage.
+**What you do:** on the **User Management** tab, view and edit every account, add new ones, and set
+each person's role, all in place. This tab applies when the app runs in accounts mode
+(`AUTH_MODE=accounts`); in shared-password mode there are no individual users to manage.
 
 **What you see:** the list of accounts with their roles and status, and the controls to add a user,
 change a role, or send a password reset.
 
-![Screenshot: the User administration page, the list of accounts with role and status, and the add-user and edit controls](screenshots/admin-4-users.png)
+![Screenshot: the User Management tab, the list of accounts with role and status, and the add-user and edit controls](screenshots/admin-4-users.png)
 
 **How this helps you:** roles decide who can reach this admin area at all. Grant Admin only to the
 people who should manage the tool; everyone else is a User.
@@ -106,15 +104,8 @@ There is one permanent emergency admin, **breakglass_admin@defra.gov.uk**. It is
 with the password held in the server environment (`BREAKGLASS_ADMIN_PASSWORD`), even if the database
 is in a bad state, and it cannot be demoted, disabled or locked out. Use it to get in and grant a
 normal Admin account (or to recover if admin access is ever lost), rather than as a day-to-day login.
-Other admins are created the ordinary way, on the User administration page. Rotate the break-glass
+Other admins are created the ordinary way, on the User Management tab. Rotate the break-glass
 password by changing that environment value and restarting.
-
-## A note on the other admin-only areas
-
-The top navigation shows a few more admin-only links that these journeys don't cover: **GOV.UK
-search** (a direct search tool) and **AI Assistant** (a scratch prototype for trying prompts against
-the model). They are not part of the core build-a-shortlist workflow, and the AI Assistant in
-particular is experimental.
 
 ## Links
 
