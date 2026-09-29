@@ -162,7 +162,6 @@
     <p class="lede" style="margin:0 0 20px;max-width:680px;">Everyone with an account. Open a user to edit
       their name, role and status, or reset their password. Creating an account here follows the same rules as sign-up.</p>
 
-    {% if user_ok %}<div class="success" style="margin-bottom:16px;">Saved.</div>{% endif %}
     {% if user_error %}<div class="error-summary"><h2>There is a problem</h2><ul><li>{{
       'An account with that email address already exists.' if user_error == 'exists' else user_error }}</li></ul></div>{% endif %}
 
