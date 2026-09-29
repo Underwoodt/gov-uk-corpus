@@ -6,7 +6,7 @@ execution guardrails, the AI prompts, and user management.*
 
 **Who / when:** administrators setting the tool up or keeping it running.
 **Pages used:** **Settings** (`/settings`, admins only) — its Available Models, Execution Guardrails,
-AI Prompts and User Management tabs — and the per-provider peak-hours editor.
+AI Prompts, User Management and Feedback tabs — and the per-provider peak-hours editor.
 
 # Journey Overview
 
@@ -16,8 +16,8 @@ spend and how much it does per run, a read-only view of the prompts, and who has
 role they hold. All of it lives on the **Settings** page, which only administrators can see.
 
 The **Settings** link appears in the top navigation only for admins, and the page is checked again on
-the server, so a non-admin can neither see nor reach it. The page has four tabs: **Available Models**,
-**Execution Guardrails**, **AI Prompts**, and **User Management**.
+the server, so a non-admin can neither see nor reach it. The page has five tabs: **Available Models**,
+**Execution Guardrails**, **AI Prompts**, **User Management**, and **Feedback**.
 
 ---
 
@@ -120,6 +120,25 @@ is in a bad state, and it cannot be demoted, disabled or locked out. Use it to g
 normal Admin account (or to recover if admin access is ever lost), rather than as a day-to-day login.
 Other admins are created the ordinary way, on the User Management tab. Rotate the break-glass
 password by changing that environment value and restarting.
+
+## Feedback
+
+> "The Feedback tab is where the star ratings and comments people leave through the per-page widget
+> land. It's a read-only review — one card per submission, newest first — so you can see what's
+> working and what isn't, page by page."
+
+**What you do:** open the **Feedback** tab to read everything left through the small feedback widget
+that sits on every page (the star questions and a free-text comment). There's nothing to set here;
+it's a review.
+
+**What you see:** one **card per submission**, newest first. Each card shows the **page title** and
+its **page code** (the `guc-####` id), the three star answers — *Does this page do what you need?*,
+*Is it easy to use?*, *Quality of the results / output?* — the comment, and who left it and when.
+The **Show SQL** rolldown reveals the exact query behind the list.
+
+**How this helps you:** it turns scattered per-page reactions into one place you can scan. The page
+title and code on each card tell you exactly where a problem was reported, so you can act on the
+pages people actually struggle with.
 
 ## Links
 
