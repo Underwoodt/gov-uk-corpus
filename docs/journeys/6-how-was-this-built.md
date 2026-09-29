@@ -43,7 +43,32 @@ where Inclusion scores and keeps and Exclusion re-checks and drops.
 **How this helps you:** the funnel turns "trust me" into "look". You can see which single filter did
 the heavy lifting, and whether the drop at each step matches what you intended.
 
-## 6.2: What was kept or dropped, and why
+## 6.2: How organisation, document type and keywords narrow the field
+
+**What you do:** stay on the **Selection funnel** sub-tab and scroll below the funnel to the
+**Organisation, Document Types and Keyword filtering analysis** breakdowns.
+
+**What you see:** three views that explain *why* each deterministic stage cut what it did. **Which
+organisations matched** ranks the publishers behind the pages (they overlap, so they don't sum to the
+total). **Which document types matched** counts the shortlist by page type, each page once. And the
+keyword views show **Which terms matched** — the pages each keyword caught — alongside a **Keyword
+overlap** diagram, where each bar is a combination of terms and the pages matching exactly that set,
+with dots marking which terms it covers.
+
+> Say: "The funnel gives you the headline drop at each stage; these breakdowns give you the reasons.
+> One organisation or one keyword usually does most of the work — here 'Fish' alone caught 1,189
+> pages while the rarer terms add a handful each. If a keyword matches almost nothing, or one
+> organisation dominates far more than you expected, that's exactly what to adjust in the Filter
+> Parameters before you spend any AI budget."
+
+![Screenshot: the Organisation, Document Types and Keyword filtering analysis — bar charts of organisations and document types, an UpSet keyword-overlap diagram, and a Which-terms-matched bar chart](screenshots/6-5-org-doc-type-filtering.png)
+
+**How this helps you:** every page these deterministic filters remove is a page the AI never has to
+read, so tightening them is the cheapest way to cut both cost and noise. The breakdowns show which
+filter is pulling its weight and which keyword or organisation is too broad or too narrow, so you can
+shrink the set forwarded to the AI with intent rather than guesswork.
+
+## 6.3: What was kept or dropped, and why
 
 **What you do:** on the **Results** tab, switch the stage view to see the pages a given step kept or
 dropped, and open the AI's verdict on individual pages.
@@ -63,7 +88,7 @@ page?" for any row.
 disagreement you spot is a concrete edit for the include or exclude criteria, or a new Keep or Drop
 example.
 
-## 6.3: Reading the two-phase pipeline
+## 6.4: Reading the two-phase pipeline
 
 **What you do:** open a run from **Pipeline Runs** to reach its **Run details** page. Starting,
 completing and repairing runs is [Journey 4: Run the AI](4-run-the-ai.md); here we're reading what a
@@ -84,7 +109,7 @@ ones you saw on the Results stages.
 **How this helps you:** you're not trusting a single opaque score. You can see both passes, what each
 cost, and whether the run actually finished, so a kept page has clearly earned its place.
 
-## 6.4: Letting the AI reframe your question
+## 6.5: Letting the AI reframe your question
 
 **What you do:** open **Runs**, then **Compare Runs**. Pick a baseline run and it's set against your
 recent runs, so you can see how repeatable they are: the spread of scores, and where the Inclusion

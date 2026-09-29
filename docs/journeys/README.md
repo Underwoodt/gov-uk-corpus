@@ -23,7 +23,7 @@ double as living documentation. When a screen changes, update the script.
 | 5 | [Download a shortlist](5-download-a-shortlist.md) | How do I get the list out? | Results, Download |
 | 5.1 to 5.2 | The fields you can export, and formats | Columns and file types | Download |
 | 6 | [How was this built?](6-how-was-this-built.md) | Trust and tuning | Results, Runs, Compare Runs |
-| 6.1 to 6.4 | Funnel, kept/dropped, reading a run, reframing the question | Seeing and trusting the working | Selection funnel, Results, Run details, Compare Runs |
+| 6.1 to 6.5 | Funnel, filter breakdowns, kept/dropped, reading a run, reframing the question | Seeing and trusting the working | Selection funnel, Results, Run details, Compare Runs |
 | 7 | [Edit your Filter Parameters](7-edit-filter-parameters.md) | How do I tune it, and why re-run? | Filter Parameters, Pipeline Runs |
 | 7.1 to 7.4 | Edit, re-run, the AI suggests, the caveat | Sharpening the prompts from your own results | Filter Parameters, Pipeline Runs |
 
@@ -35,20 +35,20 @@ don't pick pages by hand. Open a shortlist and you get a row of tabs:
 **Results**, **Runs**, **GDS Compliance**, **URL check**, **Filter Parameters**.
 
 - **Results** holds the list those parameters generated, with per-stage kept and dropped views and
-  the row-level AI verdicts (Journeys 5 and 6.2).
+  the row-level AI verdicts (Journeys 5 and 6.3).
 - **Runs** is where you run the AI and see everything about those runs. Its sub-tabs are:
   - **Pipeline Runs**: start a run with **New Run** and see the history of every run (Journey 4). This
     merges what used to be separate "Active Run" and "Run History" tabs.
-  - **Selection funnel**: how each filter narrowed the corpus, with the Keyword Matching breakdowns
-    folded in (Journey 6.1).
+  - **Selection funnel**: how each filter narrowed the corpus, with the organisation, document-type
+    and keyword filtering breakdowns folded in (Journeys 6.1 and 6.2).
   - **Compare Runs**: compares your recent runs and lets the AI suggest sharper criteria (Journey
-    6.4). Renamed from "Data Analysis".
+    6.5). Renamed from "Data Analysis".
   - **Run performance**: a side-by-side metrics table. Advanced interface only, so a basic user on
     the simple interface does not see this tab.
 - **Filter Parameters** is where you set what generates the shortlist (Journey 3), then later edit it
   and re-run (Journey 7): organisation, document types, keywords, and the AI include and exclude
   criteria. Once a run has finished it also shows a "Do you want to try to improve your prompt with
-  AI?" review card (Journeys 3.4, 6.4 and 7.3).
+  AI?" review card (Journeys 3.4, 6.5 and 7.3).
 - **GDS Compliance** and **URL check** are supporting checks, not covered by these journeys.
 
 Open a single run (from **Pipeline Runs**) to reach its **Run details** page: the two AI phases, a

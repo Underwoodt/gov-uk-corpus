@@ -107,4 +107,4 @@ yours.
 - Previous: [Journey 6: How was this built?](6-how-was-this-built.md)
 - The parameters explained from scratch: [Journey 3: Create a shortlist](3-create-a-shortlist.md)
 - Applying changes: [Journey 4: Run the AI](4-run-the-ai.md)
-- The same AI review from the Compare Runs side: [Journey 6.4](6-how-was-this-built.md#64-letting-the-ai-reframe-your-question)
+- The same AI review from the Compare Runs side: [Journey 6.5](6-how-was-this-built.md#65-letting-the-ai-reframe-your-question)
