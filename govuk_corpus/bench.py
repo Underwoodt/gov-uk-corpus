@@ -235,8 +235,8 @@ def run(conn, cid: int, config: str, repeats: int = DEFAULT_REPEATS, concurrency
     status = "complete"
     for m in configs(config):
         cfg = _cfg(conn, m)
-        if not cfg.get("key") and not dry_run:
-            raise SystemExit(f"no API key for {cfg['label']}")
+        if not llm.provider_configured(cfg["provider"]) and not dry_run:
+            raise SystemExit(f"no credentials for {cfg['label']}")
         for k in range(1, repeats + 1):
             name = p1_name(m, k)
             p1 = find_run(conn, cid, name, sha)
