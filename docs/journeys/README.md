@@ -26,8 +26,10 @@ double as living documentation. When a screen changes, update the script.
 | 6.1 to 6.5 | Funnel, filter breakdowns, kept/dropped, reading a run, reframing the question | Seeing and trusting the working | Selection funnel, Results, Run details, Compare Runs |
 | 7 | [Edit your Filter Parameters](7-edit-filter-parameters.md) | How do I tune it, and why re-run? | Filter Parameters, Pipeline Runs |
 | 7.1 to 7.4 | Edit, re-run, the AI suggests, the caveat | Sharpening the prompts from your own results | Filter Parameters, Pipeline Runs |
-| 8 (admin) | [Settings and administration](8-systems-settings.md) | Setting the tool up and keeping it running | Settings |
-| 8.1 to 8.5 | Models, guardrails, prompts, user management, feedback | The admin-only controls | Settings tabs |
+| 8 | [Check specific URLs](8-url-check.md) | Are the pages I expect in — and the ones I don't, out? | URL check |
+| 8.1 to 8.2 | The two URL lists, and reading the check | Validating a shortlist against known URLs | URL check |
+| 9 (admin) | [Settings and administration](9-systems-settings.md) | Setting the tool up and keeping it running | Settings |
+| 9.1 to 9.5 | Models, guardrails, prompts, user management, feedback | The admin-only controls | Settings tabs |
 
 ## The map of the app (so the journeys hang together)
 
@@ -66,7 +68,7 @@ Open a single run (from **Pipeline Runs**) to reach its **Run details** page: th
 >
 > The display level is only about how much detail is shown; it grants no extra permissions. A few
 > areas are **Admin-only**, restricted to the Admin account role rather than a display level: the
-> **Settings** page and its tabs (see [Journey 8: Settings and administration](8-systems-settings.md)),
+> **Settings** page and its tabs (see [Journey 9: Settings and administration](9-systems-settings.md)),
 > and the raw GOV.UK Search query SQL on a shortlist's Preview page.
 
 ## House style for these scripts

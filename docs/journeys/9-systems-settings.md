@@ -1,5 +1,5 @@
 <!-- audience: admin -->
-# Journey 8: Settings and administration
+# Journey 9: Settings and administration
 
 *Admin-only. This journey appears in the Help only for administrators, and covers the **Settings**
 page and its tabs: models and pricing, execution guardrails, the AI prompts, user management, and
@@ -22,7 +22,7 @@ the server, so a non-admin can neither see nor reach it. The page has five tabs:
 
 ---
 
-## 8.1: Available Models
+## 9.1: Available Models
 
 > "This is the catalogue of models and their prices. Pick which model runs the inclusion pass and
 > which runs the exclusion pass, add a new model with its rates, and set each supplier's peak hours so
@@ -45,7 +45,7 @@ each phase currently uses.
 you can switch models, add a new one, or correct a rate without a deploy, and every run is costed
 against the current numbers.
 
-## 8.2: Execution Guardrails
+## 9.2: Execution Guardrails
 
 > "Two safety limits. A daily budget, so a runaway job can't spend the month in an afternoon, and a
 > per-run page cap, so a run does a sensible batch and then stops for you to continue."
@@ -64,7 +64,7 @@ guardrails**.
 a large shortlist moving in steady batches rather than one unbounded run. When a run stops for either
 reason, its Run outcome says so, and the user carries on with Complete run.
 
-## 8.3: AI Prompts
+## 9.3: AI Prompts
 
 > "The prompts are here to read, not to edit. They live in git, so changing one is a code commit
 > rather than an in-app change, and every run records the exact prompt it used, so old runs stay
@@ -82,7 +82,7 @@ run time, and its full text.
 **How this helps you:** you can always check what the AI is actually being asked, and satisfy anyone
 who wants to see it, without risk of an accidental edit changing behaviour mid-flight.
 
-## 8.4: User Management
+## 9.4: User Management
 
 > "User management lives right here on this tab: add people, change roles, and reset passwords. The
 > two roles that matter day to day are User and Admin."
@@ -119,7 +119,7 @@ Admin account, or to recover if admin access is ever lost, rather than as a day-
 admins are created the ordinary way, on the User Management tab. Rotate the break-glass password by
 changing that environment value and restarting.
 
-## 8.5: Feedback
+## 9.5: Feedback
 
 > "The Feedback tab is where the star ratings and comments people leave through the per-page widget
 > land. It's a read-only review — one card per submission, newest first — so you can see what's
