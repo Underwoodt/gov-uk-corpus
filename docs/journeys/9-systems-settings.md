@@ -143,6 +143,25 @@ pinning the feedback to the exact view even though several views share one page 
 title (with its tab context) and code on each card tell you exactly where a problem was reported, so
 you can act on the pages people actually struggle with.
 
+## 9.6: Gold labelling (experimental)
+
+> "Gold labelling is a testing tool, not part of the everyday workflow. It lets an admin mark a run's
+> per-page decisions as ground truth so the pipeline can be measured against them. It's experimental
+> and admin-only."
+
+**What you do:** from a run's **details page**, follow **Label gold from this run** to rate that run's
+outcomes page by page (keep / drop, right / wrong). The labels build a "gold" set the benchmarking
+tools score the AI against.
+
+**What you see:** the gold-labelling pages — the labelling list and wizard, and the agreement /
+adjudication view when more than one person labels. All of it, and the "Label gold from this run"
+link itself, is **restricted to the Admin role** and checked on the server, so ordinary users neither
+see nor can reach it.
+
+**How this helps you:** it's how we test whether a change to the models or prompts actually improves
+accuracy, rather than just changes it. Treat it as an experimental measurement feature for testing —
+it doesn't affect the shortlists real users build.
+
 ## Links
 
 - The everyday workflow these settings support starts at [Journey 2: What is a shortlist?](2-what-is-a-shortlist.md).
