@@ -46,25 +46,27 @@ don't pick pages by hand. Open a shortlist and you get a row of tabs:
   - **Selection funnel**: how each filter narrowed the corpus, with the organisation, document-type
     and keyword filtering breakdowns folded in (Journeys 6.1 and 6.2).
   - **Compare Runs**: compares your recent runs and lets the AI suggest sharper criteria (Journey
-    6.5). Renamed from "Data Analysis".
+    6.5). Renamed from "Data Analysis". Advanced interface only.
   - **Run performance**: a side-by-side metrics table. Advanced interface only, so a basic user on
     the simple interface does not see this tab.
 - **Filter Parameters** is where you set what generates the shortlist (Journey 3), then later edit it
   and re-run (Journey 7): organisation, document types, keywords, and the AI include and exclude
   criteria. Once a run has finished it also shows a "Do you want to try to improve your prompt with
   AI?" review card (Journeys 3.4, 6.5 and 7.3).
-- **GDS Compliance** and **URL check** are supporting checks, not covered by these journeys.
+- **URL check** validates a shortlist against known gov.uk URLs (Journey 8). **GDS Compliance** is a
+  supporting check not covered by these journeys.
 
 Open a single run (from **Pipeline Runs**) to reach its **Run details** page: the two AI phases, a
 **Run outcome** panel (did it finish, what failed, why not), and the per-page decisions.
 
 > **A note on interface levels.** Every user has one **display level**, set on their Profile, with
 > two settings: **Simple** (the default) and **Advanced**. These journeys describe the Simple
-> interface. Switching to Advanced reveals more detail for anyone — the **Run performance** tab, the
-> **Trial (A/B)** run options (prompt wording, pages at a time, caching), the per-run trial summary
-> line, the **Show SQL** panels, the Results **Stage**/**Run** filters and **Retry unparsable**, the
-> **Hybrid Search** tab, and the "Example completed prompts" rolldown. Everything else the journeys
-> mention (Pipeline Runs, Selection funnel, Compare Runs and Run details) is on the Simple interface.
+> interface. Switching to Advanced reveals more detail for anyone — the **Compare Runs** and **Run
+> performance** tabs, the **Trial (A/B)** run options (prompt wording, pages at a time, caching), the
+> per-run trial summary line, the **Show SQL** panels, the Results **Stage**/**Run** filters and
+> **Retry unparsable**, the **Hybrid Search** tab, and the "Example completed prompts" rolldown.
+> Everything else the journeys mention (Pipeline Runs, Selection funnel and Run details) is on the
+> Simple interface.
 >
 > The display level is only about how much detail is shown; it grants no extra permissions. A few
 > areas are **Admin-only**, restricted to the Admin account role rather than a display level: the

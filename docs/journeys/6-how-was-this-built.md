@@ -14,11 +14,11 @@ filter narrowed the corpus, open any page to see whether the AI kept or dropped 
 that the run finished cleanly, and, if the same pages keep flipping between runs, let the AI suggest
 sharper criteria and run it again. Every step shows its working.
 
-> **On the simple interface** you see everything in this journey: Pipeline Runs, the Selection
-> funnel, Compare Runs, and each run's details. Two power-user extras stay hidden until you switch to
-> the advanced interface: the **Run performance** metrics tab, and the **Trial (A/B)** run options
-> (prompt wording, pages at a time, prompt caching) on New Run. You need neither to build, run, check
-> and tune a shortlist.
+> **On the simple interface** you see Pipeline Runs, the Selection funnel, and each run's details.
+> A few power-user extras stay hidden until you switch to the advanced interface: the **Compare Runs**
+> tab (§6.5), the **Run performance** metrics tab, and the **Trial (A/B)** run options (prompt
+> wording, pages at a time, prompt caching) on New Run. You need none of them to build, run, check and
+> tune a shortlist.
 
 ---
 
