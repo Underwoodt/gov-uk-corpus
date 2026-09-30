@@ -2930,6 +2930,8 @@ def gold_wizard_page(request: Request, cid: int, run: str = ""):
 def _gold_page(request: Request, cid: int, run: str, wizard: bool):
     if not authed(request):
         return login_redirect(request)
+    if (redir := _admin_guard(request)):     # gold labelling is admin-only
+        return redir
     conn = connect()
     try:
         category = cat.get_category(conn, cid)
@@ -2969,6 +2971,8 @@ async def api_gold_label(request: Request, cid: int):
     outcome of the given inclusion run's chain."""
     if not authed(request):
         return JSONResponse({"error": "auth"}, status_code=401)
+    if not _settings_admin_ok(request):
+        return JSONResponse({"error": "admin only"}, status_code=403)
     body = await request.json()
     run_id = str(body.get("run") or ""); url = str(body.get("url") or "")
     verdict = str(body.get("verdict") or ""); rationale = str(body.get("rationale") or "")
@@ -3016,6 +3020,8 @@ def gold_agreement_page(request: Request, cid: int):
     the labellers disagree on with an adjudicate control, and the adjudications so far."""
     if not authed(request):
         return login_redirect(request)
+    if (redir := _admin_guard(request)):     # gold labelling is admin-only
+        return redir
     conn = connect()
     try:
         category = cat.get_category(conn, cid)
@@ -3050,6 +3056,8 @@ async def api_gold_adjudicate(request: Request, cid: int):
     """Set (label + note) or clear (empty label) the adjudicated consensus for one page."""
     if not authed(request):
         return JSONResponse({"error": "auth"}, status_code=401)
+    if not _settings_admin_ok(request):
+        return JSONResponse({"error": "admin only"}, status_code=403)
     body = await request.json()
     url = str(body.get("url") or ""); label = str(body.get("label") or "")
     note = str(body.get("note") or ""); name = str(body.get("adjudicator") or "").strip()[:80]
@@ -3078,6 +3086,8 @@ async def api_gold_sample(request: Request, cid: int):
     minimum gold set). Returns the resulting selection so the page can repaint."""
     if not authed(request):
         return JSONResponse({"error": "auth"}, status_code=401)
+    if not _settings_admin_ok(request):
+        return JSONResponse({"error": "admin only"}, status_code=403)
     body = await request.json()
     run_id = str(body.get("run") or "")
     targets_in = body.get("targets") or {}
@@ -3110,6 +3120,8 @@ def gold_sheet_download(request: Request, cid: int):
     """The labelling sheet (govuk_corpus.gold export) pre-filled with the labels so far."""
     if not authed(request):
         return login_redirect(request)
+    if (redir := _admin_guard(request)):     # gold labelling is admin-only
+        return redir
     conn = connect()
     try:
         category = cat.get_category(conn, cid)

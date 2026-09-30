@@ -116,12 +116,12 @@ class TestHelpers(unittest.TestCase):
 
 class TestAdminGating(unittest.TestCase):
     def test_admin_journey_hidden_by_default(self):
-        self.assertNotIn("8-systems-settings", [j["slug"] for j in h.list_journeys()])
-        self.assertIsNone(h.render("8-systems-settings"))
+        self.assertNotIn("9-systems-settings", [j["slug"] for j in h.list_journeys()])
+        self.assertIsNone(h.render("9-systems-settings"))
 
     def test_admin_journey_visible_to_admins(self):
-        self.assertIn("8-systems-settings", [j["slug"] for j in h.list_journeys(include_admin=True)])
-        r = h.render("8-systems-settings", include_admin=True)
+        self.assertIn("9-systems-settings", [j["slug"] for j in h.list_journeys(include_admin=True)])
+        r = h.render("9-systems-settings", include_admin=True)
         self.assertIsNotNone(r)
         _, b = r
         self.assertNotIn("<!--", b)              # audience marker comment is stripped
@@ -129,8 +129,9 @@ class TestAdminGating(unittest.TestCase):
 
     def test_ordinary_journeys_not_flagged_admin(self):
         adm = {j["slug"]: j["admin"] for j in h.list_journeys(include_admin=True)}
-        self.assertTrue(adm.get("8-systems-settings"))
+        self.assertTrue(adm.get("9-systems-settings"))
         self.assertFalse(adm.get("1-create-an-account"))
+        self.assertFalse(adm.get("8-url-check"))          # URL check is a user journey
 
 
 if __name__ == "__main__":
