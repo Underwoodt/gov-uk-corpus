@@ -27,7 +27,7 @@ USER_FIELDS = [
     "extra_law_urls", "only_use_extra_law_urls", "hybrid_on_save",
 ]
 REQUIRED_FIELDS = [
-    "owner_email", "description", "dept_slugs", "document_type_slugs", "inclusion_context",
+    "owner_email", "description", "inclusion_context",
 ]
 MAX_LEN = {
     "slug": 64,
@@ -87,6 +87,14 @@ def validate(data: Dict[str, Any]) -> List[str]:
     for f in REQUIRED_FIELDS:
         if not str(data.get(f) or "").strip():
             errors.append(f"{label(f)} is required.")
+    # Organisations / page types / keywords are each optional (empty = search everything
+    # at that stage), but at least one must bound the shortlist — otherwise it would be
+    # the whole corpus.
+    if (not str(data.get("dept_slugs") or "").strip()
+            and not str(data.get("document_type_slugs") or "").strip()
+            and not str(data.get("keywords") or "").strip()):
+        errors.append("Set at least one filter — organisations, page types or keywords — "
+                      "otherwise the shortlist would be the whole corpus.")
     email = str(data.get("owner_email") or "").strip()
     if email and not _EMAIL_RE.match(email):
         errors.append("Please enter a valid email address.")
