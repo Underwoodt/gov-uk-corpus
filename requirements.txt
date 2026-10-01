@@ -4,6 +4,10 @@ psycopg[binary]>=3.1,<4
 requests==2.31.0
 python-dotenv==1.0.0
 fastapi==0.104.1
+# httpx is imported directly (stage_*, view_counts) and by starlette's TestClient.
+# Must stay <0.28: httpx 0.28 removed the `app=` Client shortcut that starlette 0.27's
+# TestClient relies on, which breaks every TestClient-based test.
+httpx>=0.25,<0.28
 uvicorn==0.24.0
 pydantic==2.5.0
 APScheduler==3.10.4
