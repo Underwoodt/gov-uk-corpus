@@ -305,9 +305,9 @@ flowchart LR
   target `webapp.app` and the package schema.
 - **AI Assistant** (`/assistant`, `assistant.html`) is an explicit scratch prototype, not core.
 - **Root `dashboard.py` / `ui_common.py`** — a separate older metrics dashboard, not wired into the app.
-- **Dependency note:** corpus ingestion imports **httpx**, but `requirements.txt` pins **requests** and
-  does not list httpx (present only transitively via the Anthropic SDK). Ingestion therefore relies on
-  an unpinned transitive dependency — worth pinning `httpx` explicitly.
+- **Dependency note:** corpus ingestion imports **httpx**, which is pinned explicitly in
+  `requirements.txt` (`>=0.25,<0.28` — the ceiling is starlette 0.27's TestClient, which breaks
+  on httpx 0.28's removal of the `app=` shortcut).
 - **No CSP** yet (inline scripts/styles); a future hardening step.
 - **Single-box runtime:** evaluation is in-process, so horizontal scale / restart-survival would need a
   real job queue.
