@@ -79,7 +79,8 @@
       <section class="wiz-step" data-key="orgs" hidden>
         <p class="wiz-progress" aria-hidden="true">Step 2 of 7</p>
         <h2>Which organisations' pages should it search?</h2>
-        <p class="wiz-error" data-for="orgs">Choose at least one organisation.</p>
+        <p class="wiz-lede">Optional. Leave all unticked to search every organisation, then narrow if the
+          candidate list is too big.</p>
         {{ field_orgs(label='Organisations') }}
         <div class="wiz-nav"><button type="button" class="btn wiz-next">Continue</button></div>
       </section>
@@ -88,7 +89,7 @@
       <section class="wiz-step" data-key="doctypes" hidden>
         <p class="wiz-progress" aria-hidden="true">Step 3 of 7</p>
         <h2>Which page types should it include?</h2>
-        <p class="wiz-error" data-for="doctypes">Choose at least one page type.</p>
+        <p class="wiz-lede">Optional. Leave all unticked to include every page type.</p>
         {{ field_doctypes(label='Page types') }}
         <div class="wiz-nav"><button type="button" class="btn wiz-next">Continue</button></div>
       </section>
@@ -176,9 +177,9 @@
         if (e) e.classList.toggle("show", !!show);
       }
       function requiredOk(key) {
+        // Organisations and page types are optional (empty = all), matching the backend's
+        // REQUIRED_FIELDS. Only the name and the include goal are required.
         if (key === "name") return !!val("#name");
-        if (key === "orgs") return checkedLabels("#org-list").length > 0;
-        if (key === "doctypes") return checkedLabels("#dt-list").length > 0;
         if (key === "include") return !!val("#inclusion_context");
         return true;
       }
@@ -224,10 +225,10 @@
         summaryEl.innerHTML = "";
         var name = val("#name");
         summaryEl.appendChild(row("Name", name || "Enter a name", "name", !name));
-        var orgs = listOrNone("#org-list", "All organisations");
-        summaryEl.appendChild(row("Organisations", orgs.v, "orgs", orgs.missing));
-        var dts = listOrNone("#dt-list", "All page types");
-        summaryEl.appendChild(row("Page types", dts.v, "doctypes", dts.missing));
+        var orgs = checkedLabels("#org-list");
+        summaryEl.appendChild(row("Organisations", orgs.length ? orgs.join(", ") : "All organisations", "orgs", false));
+        var dts = checkedLabels("#dt-list");
+        summaryEl.appendChild(row("Page types", dts.length ? dts.join(", ") : "All page types", "doctypes", false));
         var kw = val("#keywords").split(/[\n,]+/).map(function (s) { return s.trim(); }).filter(Boolean);
         summaryEl.appendChild(row("Keywords", kw.length ? kw.join(", ") : "None", "keywords", !kw.length));
         var inc = textOrNone("#inclusion_context", "Describe what to include");
