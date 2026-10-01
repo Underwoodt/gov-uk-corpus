@@ -31,7 +31,8 @@
     .org-caret-spacer { flex:0 0 auto; width:20px; }
     .org-count-badge { color:var(--muted,#6b7477); font-size:13px; font-weight:400; font-variant-numeric:tabular-nums; }
     .org-children[hidden] { display:none; }
-    /* Page Types is disabled until an organisation is chosen (counts are org-scoped). */
+    /* Page Types disabled state (reserved — the widget now shows corpus-wide counts
+       when no organisation is chosen, so it is never locked). */
     .dt-disabled .checklist, .dt-disabled .chk-search, .dt-disabled .sel-box {
       opacity:.55; background:var(--surface-2,#f3f2f1); pointer-events:none; }
     .dt-disabled .chk-search { cursor:not-allowed; }
@@ -283,12 +284,13 @@
 
     <div class="field" id="dt-field">
       <label class="q" for="dt-filter">Page Types <span class="secondary" style="font-weight:400;">(Pre-Inference Filtering: 2)</span></label>
-      <p class="hint">Choose one or more organisations above to see the document types they publish, each
-        with its page count (for example <code>Guidance (8,829)</code>), largest first. Tick the ones to
-        include, or tick none to include every type. This is locked until an organisation is chosen.</p>
+      <p class="hint">The document types for the organisations above — or across the whole corpus
+        when none are selected — each with its page count (for example <code>Guidance (8,829)</code>),
+        largest first. Tick the ones to include, or tick none to include every type.</p>
       <details><summary>How this narrows your search</summary>
         <div class="detail"><p>A page has to match both an organisation (if you set any) and one of these
-          types. The counts come from the corpus for the chosen organisations.</p></div></details>
+          types. The counts come from the corpus for the chosen organisations, or the whole
+          corpus when none are selected.</p></div></details>
       <div class="sel-box" id="dt-selected" aria-live="polite"></div>
       <input type="search" id="dt-filter" class="chk-search" placeholder="Search document types…" autocomplete="off">
       <div class="checklist" id="dt-list">
@@ -486,7 +488,8 @@
     })();
 
     // Page Types checkbox list: fetch the document types (with counts) the ticked organisations
-    // publish, rebuild "Guidance (345)" sorted by count, preserving ticks; search filters the list.
+    // publish — or corpus-wide when none are ticked — rebuild "Guidance (345)" sorted by
+    // count, preserving ticks; search filters the list.
     (function () {
       var orgList = document.getElementById("org-list");
       var dtList = document.getElementById("dt-list");
@@ -513,14 +516,8 @@
       var seq = 0;
       async function refresh() {
         var keep = currentTypes().filter(Boolean), orgs = selectedOrgs();
-        if (!orgs.length) {
-          // No organisation chosen — page-type counts are org-scoped, so lock the widget.
-          setLocked(true);
-          dtList.innerHTML = "";
-          renderSelected(dtList, dtBox, DT_EMPTY);
-          if (note) note.textContent = "Pick one or more organisations above to choose page types.";
-          return;
-        }
+        // No organisation chosen — show corpus-wide counts instead of locking, so a
+        // type-only filter (e.g. all Guidance across GOV.UK) can still be picked.
         setLocked(false);
         var params = new URLSearchParams();
         if (orgs.length) params.set("orgs", orgs.join(","));

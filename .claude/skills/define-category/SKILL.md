@@ -99,7 +99,9 @@ question. If it's clearly two topics, gently suggest two categories.
 - Ask: **"Should this include the department's agencies and arms-length bodies too?"** If
   yes, set `include_child_orgs` on (expands e.g. Defra to the Environment Agency, Natural
   England, etc.). Recommend **yes** unless they specifically want just the core department.
-- At least one organisation is required — it's the starting point of the whole funnel.
+- Organisations are optional — leave empty to search all organisations. But at least one
+  filter overall (organisations, document types or keywords) must be set, or the
+  shortlist would be the whole corpus.
 
 ### Step 2 — What kind of pages? *(Document types)*
 > "For the topic you described, I'd suggest these page types: … — keep, add to, or change them?"
@@ -174,8 +176,9 @@ email typed into the chat trips the input guardrails.
   though it looks relevant. Keep them distinct.
 - **Two topics in one.** If the Include context has an "and" joining unrelated ideas,
   suggest splitting into two categories.
-- **Empty everything.** No org = the funnel can't start (org is required). No keywords/types
-  is allowed but means a very wide shortlist — make sure that's intended.
+- **Empty everything.** No org/types/keywords at all = the whole corpus, which is blocked
+  — at least one filter must be set. A single broad filter (e.g. keywords only across
+  all organisations) is allowed but means a very wide shortlist — make sure that's intended.
 
 ## Final output
 

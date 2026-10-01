@@ -30,9 +30,24 @@ class TestValidation(unittest.TestCase):
         self.assertEqual(cat.validate(_valid_data()), [])
 
     def test_required_missing(self):
-        errs = cat.validate(_valid_data(owner_email="", dept_slugs=""))
+        errs = cat.validate(_valid_data(owner_email="", description="",
+                                         inclusion_context=""))
         self.assertTrue(any("Owner Email" in e for e in errs))
-        self.assertTrue(any("Departments" in e for e in errs))
+        self.assertTrue(any("Name is required" in e for e in errs))
+        self.assertTrue(any("Include description" in e for e in errs))
+
+    def test_empty_org_and_doc_types_valid(self):
+        # Empty org / page-type filters mean "search everything" at that stage.
+        self.assertEqual(cat.validate(_valid_data(dept_slugs="",
+                                                  document_type_slugs="")), [])
+        self.assertEqual(cat.validate(_valid_data(dept_slugs="")), [])
+        self.assertEqual(cat.validate(_valid_data(document_type_slugs="")), [])
+
+    def test_all_filters_empty_rejected(self):
+        # ...but at least one filter must bound the shortlist, or it'd be the whole corpus.
+        errs = cat.validate(_valid_data(dept_slugs="", document_type_slugs="",
+                                         keywords=""))
+        self.assertTrue(any("at least one filter" in e.lower() for e in errs))
 
     def test_bad_email(self):
         errs = cat.validate(_valid_data(owner_email="not-an-email"))

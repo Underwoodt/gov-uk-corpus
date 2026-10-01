@@ -42,8 +42,8 @@ stay comparable over time.
   qualifies if one of them published it or is named on it. Optionally include child
   organisations (e.g. Defra also pulls in Environment Agency, Natural England, RPA…).
 - **R3 — Filter by document type.** Choose the gov.uk document types to keep, with a
-  live per-organisation page count so the choice is informed. Types are only selectable
-  once at least one organisation is chosen (counts are organisation-scoped).
+  live per-organisation page count so the choice is informed. When no organisation is chosen the counts are corpus-wide, so a type-only
+  filter can still be picked.
 - **R4 — Filter by keyword.** Provide inclusion terms (one per line or comma-separated).
   A term is one word or a two-word phrase; word endings are matched (stemming); case is
   ignored.
