@@ -76,7 +76,7 @@
   </div>
   {% endif %}
 
-  {{ category_tabs(category, 'filters') }}
+  {% if is_edit %}{{ category_tabs(category, 'filters') }}{% endif %}
 
   {% if is_edit %}
   {# Prompt review (AI) — shown once a run has completed. Suggests paste-ready edits to the
