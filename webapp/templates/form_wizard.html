@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+{% from "_category_tabs.html" import category_tabs with context %}
+{% from "_shortlist_fields.html" import styles, scripts, field_name, field_orgs, field_doctypes,
+   field_keywords, field_include, field_exclude, field_examples with context %}
+{% block page_id %}guc-0002{% endblock %}
+{% block title %}{{ form_title if is_edit else 'Build shortlist' }}{% endblock %}
+{% block content %}
+  {{ styles() }}
+  <style>
+    .wiz { max-width:760px; }
+    .wiz-step { }
+    .wiz-progress { color:var(--grey-text,#505a5f); font-size:14px; font-weight:600; letter-spacing:.02em;
+      text-transform:uppercase; margin:0 0 6px; }
+    .wiz-back { display:inline-flex; align-items:center; gap:4px; background:none; border:0; padding:0;
+      font:inherit; color:var(--link,#1d70b8); cursor:pointer; text-decoration:underline;
+      text-underline-offset:2px; margin:0 0 18px; }
+    .wiz-back:hover { color:var(--dark-blue,#003078); }
+    .wiz-step h2 { font-size:27px; margin:0 0 6px; }
+    .wiz-lede { color:var(--grey-text,#505a5f); font-size:16px; margin:0 0 18px; max-width:48ch; }
+    .wiz-nav { margin-top:24px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+    .wiz-error { display:none; color:var(--red,#d4351c); font-weight:700; margin:0 0 14px;
+      padding-left:12px; border-left:4px solid var(--red,#d4351c); }
+    .wiz-error.show { display:block; }
+    /* Check-answers summary list (GDS summary-list pattern). */
+    .sumlist { border-top:1px solid var(--border,#d7dadb); margin:6px 0 26px; }
+    .sumrow { display:flex; gap:16px; padding:12px 0; border-bottom:1px solid var(--border,#d7dadb);
+      align-items:baseline; }
+    .sumrow dt { flex:0 0 190px; font-weight:700; margin:0; }
+    .sumrow dd { flex:1 1 auto; margin:0; white-space:pre-wrap; word-break:break-word; }
+    .sumrow dd.muted { color:var(--muted,#6b7477); }
+    .sum-change { flex:0 0 auto; }
+    .sum-change button { background:none; border:0; padding:0; font:inherit; color:var(--link,#1d70b8);
+      cursor:pointer; text-decoration:underline; text-underline-offset:2px; }
+    .sum-change button:hover { color:var(--dark-blue,#003078); }
+    .wiz-danger { margin-top:34px; padding-top:18px; border-top:1px solid var(--border,#d7dadb); }
+  </style>
+
+  <h1 style="margin:20px 0 6px;">{{ form_title }}</h1>
+  <p class="lede" style="margin:0 0 18px;max-width:52ch;">A shortlist is a saved set of filters that finds
+    GOV.UK pages about one topic. Answer a few questions, then review and build it.</p>
+
+  {% if saved %}
+  <div class="success" style="margin:0 0 16px;">Saved. Nothing that changes the shortlist was edited,
+    so no new run was needed.</div>
+  {% endif %}
+
+  {% if errors %}
+  <div class="error-summary" role="alert">
+    <h2>There is a problem</h2>
+    <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+
+  {% if is_edit %}{{ category_tabs(category, 'filters') }}
+  <div class="tabpanel wiz">
+  {% else %}
+  <div class="wiz" style="margin-top:8px;">
+  {% endif %}
+
+    <button type="button" class="wiz-back" id="wiz-back" hidden>&#8249; Back</button>
+
+    <form id="wiz-form" method="post" action="{{ action }}">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <input type="hidden" name="ui" value="wizard">
+      {# Owner is the signed-in user (set server-side on create); carry the current value so edit
+         keeps it and validation doesn't trip the required owner_email field. #}
+      <input type="hidden" name="owner_email" value="{{ v.owner_email or (user.email if user else '') }}">
+
+      <!-- Step 1: name -->
+      <section class="wiz-step" data-key="name">
+        <p class="wiz-progress" aria-hidden="true">Step 1 of 7</p>
+        <h2>What do you want to call this shortlist?</h2>
+        <p class="wiz-error" data-for="name">Enter a name for this shortlist.</p>
+        {{ field_name(label='Name') }}
+        <div class="wiz-nav"><button type="button" class="btn wiz-next">Continue</button></div>
+      </section>
+
+      <!-- Step 2: organisations -->
+      <section class="wiz-step" data-key="orgs" hidden>
+        <p class="wiz-progress" aria-hidden="true">Step 2 of 7</p>
+        <h2>Which organisations' pages should it search?</h2>
+        <p class="wiz-error" data-for="orgs">Choose at least one organisation.</p>
+        {{ field_orgs(label='Organisations') }}
+        <div class="wiz-nav"><button type="button" class="btn wiz-next">Continue</button></div>
+      </section>
+
+      <!-- Step 3: page types -->
+      <section class="wiz-step" data-key="doctypes" hidden>
+        <p class="wiz-progress" aria-hidden="true">Step 3 of 7</p>
+        <h2>Which page types should it include?</h2>
+        <p class="wiz-error" data-for="doctypes">Choose at least one page type.</p>
+        {{ field_doctypes(label='Page types') }}
+        <div class="wiz-nav"><button type="button" class="btn wiz-next">Continue</button></div>
+      </section>
+
+      <!-- Step 4: keywords -->
+      <section class="wiz-step" data-key="keywords" hidden>
+        <p class="wiz-progress" aria-hidden="true">Step 4 of 7</p>
+        <h2>Which keywords or phrases should pages contain?</h2>
+        <p class="wiz-lede">Every page you want shares a keyword or phrase. Any page matching any one of them
+          is included, so be inclusive — you do not need to think of them all.</p>
+        {{ field_keywords(label='Keywords or phrases') }}
+        <div class="wiz-nav"><button type="button" class="btn wiz-next">Continue</button></div>
+      </section>
+
+      <!-- Step 5: include -->
+      <section class="wiz-step" data-key="include" hidden>
+        <p class="wiz-progress" aria-hidden="true">Step 5 of 7</p>
+        <h2>What pages do you want to include?</h2>
+        <p class="wiz-error" data-for="include">Describe what you want included.</p>
+        {{ field_include(label='What to include') }}
+        <div class="wiz-nav"><button type="button" class="btn wiz-next">Continue</button></div>
+      </section>
+
+      <!-- Step 6: exclude -->
+      <section class="wiz-step" data-key="exclude" hidden>
+        <p class="wiz-progress" aria-hidden="true">Step 6 of 7</p>
+        <h2>What pages do you want to exclude?</h2>
+        {{ field_exclude(label='What to exclude') }}
+        <div class="wiz-nav"><button type="button" class="btn wiz-next">Continue</button></div>
+      </section>
+
+      <!-- Step 7: tricky examples -->
+      <section class="wiz-step" data-key="examples" hidden>
+        <p class="wiz-progress" aria-hidden="true">Step 7 of 7</p>
+        <h2>Any tricky pages to keep or drop?</h2>
+        <p class="wiz-lede">Optional. Skip this unless you already know which pages cause trouble.</p>
+        {{ field_examples(label='Keep and drop examples') }}
+        <div class="wiz-nav"><button type="button" class="btn wiz-next">Review answers</button></div>
+      </section>
+
+      <!-- Check answers / edit -->
+      <section class="wiz-step" data-key="check" hidden>
+        <p class="wiz-progress" aria-hidden="true">Review</p>
+        <h2>Check your answers</h2>
+        <dl class="sumlist" id="wiz-summary"></dl>
+        <button class="btn" type="submit">{{ 'Save changes' if is_edit else 'Build shortlist' }}</button>
+
+        {% if is_edit %}
+        <div class="wiz-danger">
+          <form method="post" action="{{ url_for('delete_category_route', cid=category.id) }}"
+            onsubmit="return confirm('Delete “{{ form_title }}” permanently?\n\nThis removes the shortlist and all of its AI runs, results and stored pages. This cannot be undone.');">
+            <input type="hidden" name="csrf" value="{{ csrf_token }}">
+            <button type="submit" class="btn danger-btn">Delete shortlist</button>
+          </form>
+        </div>
+        {% endif %}
+      </section>
+    </form>
+  </div>
+
+  {{ scripts() }}
+
+  <script>
+    // Wizard navigation: a single POST form shown one step at a time, with a check-answers
+    // screen that doubles as the edit view (each row has a Change link). No server round-trip
+    // between steps — the final submit posts the identical fields the classic form posts.
+    (function () {
+      var ORDER = ["name", "orgs", "doctypes", "keywords", "include", "exclude", "examples", "check"];
+      var steps = {};
+      document.querySelectorAll(".wiz-step").forEach(function (s) { steps[s.dataset.key] = s; });
+      var backLink = document.getElementById("wiz-back");
+      var summaryEl = document.getElementById("wiz-summary");
+      var returnToCheck = false, current = null;
+
+      function val(sel) { var el = document.querySelector(sel); return el ? (el.value || "").trim() : ""; }
+      function checkedLabels(listSel) {
+        var list = document.querySelector(listSel); if (!list) return [];
+        return [].map.call(list.querySelectorAll("input:checked"), function (b) {
+          var span = b.parentNode.querySelector("span");
+          return (span ? span.textContent : b.value).replace(/\s*\(\d[\d,]*\)\s*$/, "").trim();
+        });
+      }
+      function err(key, show) {
+        var e = document.querySelector('.wiz-error[data-for="' + key + '"]');
+        if (e) e.classList.toggle("show", !!show);
+      }
+      function requiredOk(key) {
+        if (key === "name") return !!val("#name");
+        if (key === "orgs") return checkedLabels("#org-list").length > 0;
+        if (key === "doctypes") return checkedLabels("#dt-list").length > 0;
+        if (key === "include") return !!val("#inclusion_context");
+        return true;
+      }
+      function show(key) {
+        current = key;
+        ORDER.forEach(function (k) { if (steps[k]) steps[k].hidden = (k !== key); });
+        backLink.hidden = (key === ORDER[0]);
+        if (key === "check") buildSummary();
+        var h = steps[key] && steps[key].querySelector("h2");
+        if (h) { h.setAttribute("tabindex", "-1"); h.focus({ preventScroll: true }); }
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+      function advance(key) {
+        if (!requiredOk(key)) { err(key, true); return; }
+        err(key, false);
+        if (returnToCheck) { returnToCheck = false; show("check"); return; }
+        var i = ORDER.indexOf(key);
+        show(ORDER[Math.min(i + 1, ORDER.length - 1)]);
+      }
+
+      function row(label, value, key, missing) {
+        var d = document.createElement("div"); d.className = "sumrow";
+        var dt = document.createElement("dt"); dt.textContent = label;
+        var dd = document.createElement("dd"); dd.textContent = value;
+        if (missing) dd.className = "muted";
+        var ch = document.createElement("dd"); ch.className = "sum-change";
+        var b = document.createElement("button"); b.type = "button"; b.textContent = "Change";
+        b.setAttribute("aria-label", "Change " + label.toLowerCase());
+        b.addEventListener("click", function () { returnToCheck = true; show(key); });
+        ch.appendChild(b);
+        d.appendChild(dt); d.appendChild(dd); d.appendChild(ch);
+        return d;
+      }
+      function listOrNone(sel, allText) {
+        var labels = checkedLabels(sel);
+        return labels.length ? { v: labels.join(", "), missing: false } : { v: allText, missing: true };
+      }
+      function textOrNone(sel, noneText) {
+        var t = val(sel);
+        return t ? { v: t, missing: false } : { v: noneText, missing: true };
+      }
+      function buildSummary() {
+        summaryEl.innerHTML = "";
+        var name = val("#name");
+        summaryEl.appendChild(row("Name", name || "Enter a name", "name", !name));
+        var orgs = listOrNone("#org-list", "All organisations");
+        summaryEl.appendChild(row("Organisations", orgs.v, "orgs", orgs.missing));
+        var dts = listOrNone("#dt-list", "All page types");
+        summaryEl.appendChild(row("Page types", dts.v, "doctypes", dts.missing));
+        var kw = val("#keywords").split(/[\n,]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+        summaryEl.appendChild(row("Keywords", kw.length ? kw.join(", ") : "None", "keywords", !kw.length));
+        var inc = textOrNone("#inclusion_context", "Describe what to include");
+        summaryEl.appendChild(row("What to include", inc.v, "include", inc.missing));
+        summaryEl.appendChild(row("What to exclude", val("#exclusion_context") || "None", "exclude", !val("#exclusion_context")));
+        var keep = val("#adjudication_hints_keep"), drop = val("#adjudication_hints_drop");
+        var ex = (keep || drop) ? [keep && ("Keep: " + keep), drop && ("Drop: " + drop)].filter(Boolean).join("\n") : "None";
+        summaryEl.appendChild(row("Tricky examples", ex, "examples", !(keep || drop)));
+      }
+
+      document.querySelectorAll(".wiz-next").forEach(function (b) {
+        b.addEventListener("click", function () { advance(current); });
+      });
+      backLink.addEventListener("click", function () {
+        if (returnToCheck) { returnToCheck = false; show("check"); return; }
+        var i = ORDER.indexOf(current);
+        show(ORDER[Math.max(i - 1, 0)]);
+      });
+
+      // Start on the check-answers screen when editing an existing shortlist, or when the server
+      // returned validation errors (so the error summary is in view); otherwise start at step 1.
+      var START = {{ ('check' if (is_edit or errors) else 'name') | tojson }};
+      show(typeof START === "string" ? START : "name");
+    })();
+  </script>
+{% endblock %}

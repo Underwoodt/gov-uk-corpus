@@ -57,6 +57,28 @@ COOKIE = "sb_auth"
 # is unchanged). "accounts" = per-user session login (built behind this flag).
 AUTH_MODE = os.getenv("AUTH_MODE", "shared").strip().lower()
 
+# Feature flag: the question-by-question "wizard" UI for building/editing a shortlist
+# (one thing per page + check-answers), rendered instead of the classic single-page
+# form (form.html). Off by default — the classic form is untouched. Turn on for everyone
+# with SHORTLIST_WIZARD=1, or preview per-request with ?wizard=1 on the create/edit page.
+WIZARD_UI = os.getenv("SHORTLIST_WIZARD", "").strip() == "1"
+
+
+def _form_template(request, form=None) -> str:
+    """Pick the shortlist form template. The wizard shows when its flag is on, when a POST
+    came from the wizard (hidden ui=wizard, so validation errors re-render in the wizard),
+    or when a GET carries ?wizard=1 for live preview. Otherwise the classic form."""
+    if WIZARD_UI:
+        return "form_wizard.html"
+    if form is not None and (form.get("ui") == "wizard"):
+        return "form_wizard.html"
+    try:
+        if request.query_params.get("wizard") == "1":
+            return "form_wizard.html"
+    except Exception:
+        pass
+    return "form.html"
+
 # ---- CSRF (double-submit token) -----------------------------------------
 CSRF_COOKIE = "sb_csrf"
 
@@ -916,7 +938,7 @@ def new_category_page(request: Request):
     if not authed(request):
         return login_redirect(request)
     conn = connect()
-    return templates.TemplateResponse("form.html", _form_ctx(conn, request, None, {}, []))
+    return templates.TemplateResponse(_form_template(request), _form_ctx(conn, request, None, {}, []))
 
 
 def _slug_errors(conn, data: dict) -> list:
@@ -968,7 +990,7 @@ async def create_category(request: Request):
         data["owner_email"] = cu["email"]
     errors = cat.validate(data) + _slug_errors(conn, data)
     if errors:
-        return templates.TemplateResponse("form.html", _form_ctx(conn, request, None, data, errors))
+        return templates.TemplateResponse(_form_template(request, form), _form_ctx(conn, request, None, data, errors))
     cid = cat.create_category(conn, data)
     # A new shortlist is all-new parameters: create a fresh run and land on it after the rebuild.
     run_id = _create_inclusion_run(conn, cid)
@@ -1022,7 +1044,7 @@ def edit_category_page(request: Request, cid: int, saved: int = 0):
         return RedirectResponse(url=str(request.url_for("list_categories_page")), status_code=303)
     c = _form_ctx(conn, request, category, category, [])
     c["saved"] = saved
-    return templates.TemplateResponse("form.html", c)
+    return templates.TemplateResponse(_form_template(request), c)
 
 
 @app.post("/categories/{cid}/edit")
@@ -1038,15 +1060,16 @@ async def update_category(request: Request, cid: int):
     errors = cat.validate(data) + _slug_errors(conn, data)
     if errors:
         merged = {**category, **data}
-        return templates.TemplateResponse("form.html", _form_ctx(conn, request, category, merged, errors))
+        return templates.TemplateResponse(_form_template(request, form), _form_ctx(conn, request, category, merged, errors))
     # Did anything that defines the shortlist (filters or AI criteria) change? Name/owner alone don't.
     changed = cat.shortlist_params_changed(category, data)
     cat.update_category(conn, cid, data)
     if not changed:
         conn.close()
         # Nothing to rebuild or re-run — return to Filter Parameters with a saved confirmation.
+        wiz = "&wizard=1" if form.get("ui") == "wizard" else ""
         return RedirectResponse(
-            url=str(request.url_for("edit_category_page", cid=cid)) + "?saved=1", status_code=303)
+            url=str(request.url_for("edit_category_page", cid=cid)) + "?saved=1" + wiz, status_code=303)
     # Shortlist-defining change: create a fresh run and land on it after the rebuild.
     run_id = _create_inclusion_run(conn, cid)
     conn.close()

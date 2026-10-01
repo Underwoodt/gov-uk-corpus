@@ -1,0 +1,425 @@
+{# Shared shortlist-definition fields, factored out of form.html so the classic single-page
+   form (form.html) and the feature-flagged wizard (form_wizard.html) render the SAME controls
+   and behaviours. Each field is a macro with an optional plain-English `label` override so the
+   wizard can show question-style headings without the "Pre-Inference Filtering" jargon.
+
+   NOTE (temporary): while the wizard is behind a flag, form.html keeps its own inline copy of
+   these fields so the working path is undisturbed. Once the wizard is accepted, point form.html
+   at these macros and delete the duplication. Import `with context` so `v`, `selected_orgs`,
+   `org_tree`, `org_option_slugs`, `selected_doc_types`, `is_edit` are visible. #}
+
+{% macro styles() %}
+  <style>
+    .chk-search { width:100%; max-width:520px; box-sizing:border-box; padding:8px 10px;
+      border:2px solid var(--black); border-radius:6px; margin-bottom:6px; font:inherit; }
+    .checklist { max-width:520px; max-height:260px; overflow-y:auto; border:2px solid var(--black);
+      border-radius:6px; padding:6px 8px; background:var(--white,#fff); }
+    .chk-item { display:flex; align-items:center; gap:9px; padding:4px 4px; font-size:15px;
+      cursor:pointer; border-radius:4px; }
+    .chk-item:hover { background:var(--surface-2,#f3f2f1); }
+    .chk-item input { width:18px; height:18px; flex:0 0 auto; margin:0; }
+    .sel-box { max-width:520px; box-sizing:border-box; display:flex; flex-wrap:wrap; gap:6px;
+      align-items:center; min-height:38px; border:1px solid var(--border-mid,#b1b4b6); border-radius:6px;
+      padding:6px 8px; background:var(--surface-2,#f3f2f1); margin-bottom:6px; }
+    .sel-empty { color:var(--muted,#6b7477); font-size:14px; padding:0 2px; }
+    .sel-chip { display:inline-flex; align-items:center; gap:6px; background:var(--blue,#1d70b8); color:#fff;
+      border-radius:4px; padding:3px 4px 3px 10px; font-size:13px; font-weight:600; }
+    .sel-x { background:none; border:0; color:#fff; font-size:16px; line-height:1; cursor:pointer;
+      padding:0 3px; border-radius:3px; }
+    .sel-x:hover { background:rgba(255,255,255,.25); }
+    .org-row { display:flex; align-items:center; gap:2px; }
+    .org-row .chk-item { flex:1 1 auto; }
+    .org-caret { flex:0 0 auto; width:20px; height:24px; border:0; background:none; cursor:pointer;
+      color:var(--muted,#6b7477); font-size:11px; line-height:1; padding:0; border-radius:4px; }
+    .org-caret:hover { background:var(--surface-2,#f3f2f1); color:var(--black); }
+    .org-caret-spacer { flex:0 0 auto; width:20px; }
+    .org-count-badge { color:var(--muted,#6b7477); font-size:13px; font-weight:400; font-variant-numeric:tabular-nums; }
+    .org-children[hidden] { display:none; }
+    .dt-disabled .checklist, .dt-disabled .chk-search, .dt-disabled .sel-box {
+      opacity:.55; background:var(--surface-2,#f3f2f1); pointer-events:none; }
+    .dt-disabled .chk-search { cursor:not-allowed; }
+    .dt-hint-locked { color:var(--muted,#6b7477); }
+    .kw-explain-wrap { max-width:640px; margin:8px 0 0; }
+    .kw-explain-wrap > summary { cursor:pointer; font-size:14px; color:var(--link,#1d70b8); }
+    .kw-explain { margin:6px 0 0; border:1px solid var(--border-mid,#b1b4b6);
+      border-radius:6px; background:var(--surface-2,#f3f2f1); padding:6px 12px; font-size:14px; }
+    .kw-explain .kx { padding:6px 0; border-top:1px solid var(--border,#e6e6e6); }
+    .kw-explain .kx:first-of-type { border-top:0; }
+    .kw-explain .kx-plain { display:block; margin-top:1px; color:var(--text,#0b0c0c); }
+    .kw-explain .kx-q { display:block; margin-top:2px; font-family:monospace; font-size:12px; color:var(--muted,#6b7477); }
+  </style>
+{% endmacro %}
+
+{% macro org_node(o, depth) %}
+  <div class="org-node" data-t="{{ (o.title ~ ' ' ~ o.slug)|lower }}" data-depth="{{ depth }}">
+    <div class="org-row" style="padding-left:{{ depth * 18 }}px;">
+      {% if o.children %}<button type="button" class="org-caret" aria-expanded="false"
+        aria-label="Show organisations under {{ o.title }}">▸</button>{% else %}<span class="org-caret-spacer"></span>{% endif %}
+      <label class="chk-item">
+        <input type="checkbox" name="dept_slugs" value="{{ o.slug }}" {{ 'checked' if o.slug in selected_orgs }}>
+        <span>{{ o.title }}{% if o.pages %} <span class="org-count-badge">({{ '{:,}'.format(o.pages) }})</span>{% endif %}</span>
+      </label>
+    </div>
+    {% if o.children %}
+    <div class="org-children" hidden>
+      {% for c in o.children %}{{ org_node(c, depth + 1) }}{% endfor %}
+    </div>
+    {% endif %}
+  </div>
+{% endmacro %}
+
+{% macro field_name(label=None) %}
+  <div class="field">
+    <label class="q" for="name">{{ label or 'Name' }}</label>
+    <p class="hint">A short, friendly name for this shortlist — any text. Shown in the list and
+      turned into a filename for exports. You can change it any time.</p>
+    <input id="name" name="description" type="text" maxlength="100" placeholder="Farm slurry storage"
+      value="{{ v.description or '' }}">
+    {% if is_edit and v.slug %}<p class="hint">Export filename: <code>{{ v.slug }}</code> (updates when you rename).</p>{% endif %}
+  </div>
+{% endmacro %}
+
+{% macro field_orgs(label=None) %}
+  <div class="field">
+    <label class="q" for="org-filter">{% if label %}{{ label }}{% else %}Organisations <span class="secondary" style="font-weight:400;">(Pre-Inference Filtering: 1)</span>{% endif %}</label>
+    <p class="hint">Tick the organisations whose pages to include — the title is shown, the slug is stored.
+      Search to filter the list. Leave none ticked to search all organisations.</p>
+    <details><summary>How this narrows your search</summary>
+      <div class="detail"><p>A page is kept if one of these organisations published it or is named on it.
+        Everything after this point looks only at those pages, so a tighter choice means a faster, cheaper
+        run and fewer irrelevant results.</p></div></details>
+    <div class="sel-box" id="org-selected" aria-live="polite"></div>
+    <input type="search" id="org-filter" class="chk-search" placeholder="Search organisations…" autocomplete="off">
+    <div class="checklist" id="org-list">
+      {% for o in org_tree %}{{ org_node(o, 0) }}{% endfor %}
+      {% for s in selected_orgs %}{% if s not in org_option_slugs %}
+      <div class="org-node" data-t="{{ s|lower }}" data-depth="0">
+        <div class="org-row"><span class="org-caret-spacer"></span>
+          <label class="chk-item">
+            <input type="checkbox" name="dept_slugs" value="{{ s }}" checked><span>{{ s }} (not in the org list)</span></label>
+        </div>
+      </div>
+      {% endif %}{% endfor %}
+    </div>
+    <p class="secondary" id="org-count" style="font-size:13px;margin:6px 0 0;"></p>
+    <label class="check" style="margin-top:12px;">
+      <input type="checkbox" name="include_child_orgs" value="1" {{ 'checked' if v.include_child_orgs }}>
+      Include child organisations
+    </label>
+    <p class="hint" style="margin-top:6px;">Also search the pages of any department that sits under
+      an organisation above (e.g. ticking this with <code>department-for-environment-food-rural-affairs</code>
+      also searches Environment Agency, Natural England, Rural Payments Agency, and the rest).</p>
+  </div>
+{% endmacro %}
+
+{% macro field_doctypes(label=None) %}
+  <div class="field" id="dt-field">
+    <label class="q" for="dt-filter">{% if label %}{{ label }}{% else %}Page Types <span class="secondary" style="font-weight:400;">(Pre-Inference Filtering: 2)</span>{% endif %}</label>
+    <p class="hint">Choose one or more organisations above to see the document types they publish, each
+      with its page count (for example <code>Guidance (8,829)</code>), largest first. Tick the ones to
+      include, or tick none to include every type. This is locked until an organisation is chosen.</p>
+    <details><summary>How this narrows your search</summary>
+      <div class="detail"><p>A page has to match both an organisation (if you set any) and one of these
+        types. The counts come from the corpus for the chosen organisations.</p></div></details>
+    <div class="sel-box" id="dt-selected" aria-live="polite"></div>
+    <input type="search" id="dt-filter" class="chk-search" placeholder="Search document types…" autocomplete="off">
+    <div class="checklist" id="dt-list">
+      {% for s in selected_doc_types %}
+      <label class="chk-item" data-t="{{ s|lower }}"><input type="checkbox" name="document_type_slugs" value="{{ s }}" checked><span>{{ s|replace('_',' ')|title }}</span></label>
+      {% endfor %}
+    </div>
+    <p class="secondary" id="dt-note" style="font-size:13px;margin:6px 0 0;"></p>
+  </div>
+{% endmacro %}
+
+{% macro field_keywords(label=None) %}
+  <div class="field">
+    <label class="q" for="keywords">{% if label %}{{ label }}{% else %}Inclusion Keyword(s) <span class="secondary" style="font-weight:400;">(Pre-Inference Filtering: 3)</span>{% endif %}</label>
+    <p class="hint">One term per line, or separated by commas. A term is a single word, or a phrase whose words sit next to each other.</p>
+    <details><summary>How your terms are matched</summary>
+      <div class="detail">
+        <p>We look through the title and text of every page for the terms you list. A page with none of
+          them is skipped.</p>
+        <p>A single word (<strong>slurry</strong>) matches anywhere. A multi-word term is matched as a
+          <strong>phrase</strong> — the words must appear <em>together, in order</em>
+          (<strong>catch certificate</strong> matches “a catch certificate”, but not a page that merely
+          mentions “catch” and “certificate” far apart). A small linking word between them is allowed
+          (<strong>food standards</strong> still matches “food and standards”). Word endings are matched,
+          so <strong>lagoon</strong> also finds lagoons. Capital letters do not matter.</p>
+        <ul style="margin:0;padding-left:20px;">
+          <li>Avoid broad single words such as farm, water, waste — they match thousands of pages.</li>
+          <li>Prefer a specific word or phrase: slurry, lagoon, catch certificate.</li>
+        </ul>
+      </div></details>
+    <textarea id="keywords" name="keywords" rows="4">{{ v.keywords or '' }}</textarea>
+    <details id="kw-explain-wrap" class="kw-explain-wrap" hidden>
+      <summary>What these keywords will match</summary>
+      <div id="kw-explain" class="kw-explain"></div>
+    </details>
+    <p class="hint" style="margin-top:12px;">After saving, GOV.UK's own Search is also run for these keywords
+      (scoped to the organisations and document types above), pages are tagged by provenance, and any
+      GOV.UK-only pages are fetched into the corpus so the AI Pipeline can evaluate them. This runs
+      automatically on every save — in the background, so it can take a few minutes — and its results appear
+      on the <strong>Hybrid Search</strong> tab.</p>
+  </div>
+{% endmacro %}
+
+{% macro field_include(label=None) %}
+  <div class="field">
+    <label class="q" for="inclusion_context">{{ label or 'What pages do you want to include?' }}</label>
+    <p class="hint" style="margin-bottom:6px;">This is about expressing a goal of what we're looking for.</p>
+    <ul class="hint" style="margin:0 0 10px;padding-left:20px;">
+      <li>Describe your topic in your own words.</li>
+      <li>Be generous about what you expect to review.</li>
+      <li>Try not to exclude too many things.</li>
+    </ul>
+    <details><summary>How to write this well</summary>
+      <div class="detail">
+        <p>Say what the thing is. Do not insist the page is mainly about your topic — a single mention can
+          still be the page you need. Do not list what you are not interested in; that belongs in "What to exclude".</p>
+        <div class="example"><p style="margin:0;">Slurry is liquid or semi-liquid livestock manure: cattle
+          and pig slurry, dirty water, digestate from farm anaerobic digestion, and silage effluent. Include a
+          page if it mentions slurry in this farming sense anywhere, even once.</p></div>
+      </div></details>
+    <textarea id="inclusion_context" name="inclusion_context" rows="4">{{ v.inclusion_context or '' }}</textarea>
+  </div>
+{% endmacro %}
+
+{% macro field_exclude(label=None) %}
+  <div class="field">
+    <label class="q" for="exclusion_context">{{ label or 'What pages do you want to exclude from here?' }}</label>
+    <p class="hint" style="margin-bottom:6px;">We've filtered the documents and included a set above. From this set are
+      there some types of pages we've picked up that you want to suppress?</p>
+    <ul class="hint" style="margin:0 0 10px;padding-left:20px;">
+      <li>List the things that look relevant but are not.</li>
+      <li>Be as specific as you can.</li>
+    </ul>
+    <details><summary>How to write this well</summary>
+      <div class="detail">
+        <p>Words with another meaning (coal slurry), the wrong subject area (sewage sludge when you mean
+          animal slurry), or pages that mention your topic once in passing. Being concrete works better.</p>
+        <div class="example"><p style="margin:0;">Exclude pages where slurry means something other than
+          livestock manure: coal, mining, concrete slurry. Exclude sewage sludge and biosolids.</p></div>
+      </div></details>
+    <textarea id="exclusion_context" name="exclusion_context" rows="4">{{ v.exclusion_context or '' }}</textarea>
+  </div>
+{% endmacro %}
+
+{% macro field_examples(label=None) %}
+  <div class="field">
+    <h3>{% if label %}{{ label }}{% else %}Examples of tricky pages <span class="secondary" style="font-weight:400;">(LLM Inference: 3, optional)</span>{% endif %}</h3>
+    <p class="hint">One example per line. Skip this unless you already know which pages cause trouble.</p>
+    <label class="secondary" for="adjudication_hints_keep" style="display:block;margin-bottom:5px;">Keep</label>
+    <textarea id="adjudication_hints_keep" name="adjudication_hints_keep" rows="3"
+      placeholder="Grant page that funds slurry stores even if the rest is about payments"
+      style="margin-bottom:20px;">{{ v.adjudication_hints_keep or '' }}</textarea>
+    <label class="secondary" for="adjudication_hints_drop" style="display:block;margin-bottom:5px;">Drop</label>
+    <textarea id="adjudication_hints_drop" name="adjudication_hints_drop" rows="3"
+      placeholder="Sewage sludge or biosolids, not animal slurry">{{ v.adjudication_hints_drop or '' }}</textarea>
+  </div>
+{% endmacro %}
+
+{% macro scripts() %}
+  <script>
+    // Filter a checkbox list by each item's data-t; used by Organisations and Page Types.
+    function filterChecklist(listEl, query) {
+      var q = (query || "").trim().toLowerCase();
+      [].forEach.call(listEl.querySelectorAll(".chk-item"), function (it) {
+        it.hidden = !!q && (it.dataset.t || it.textContent.toLowerCase()).indexOf(q) === -1;
+      });
+    }
+
+    // Render the ticked items of a checklist as removable tags in a summary box.
+    function renderSelected(listEl, boxEl, emptyText) {
+      if (!listEl || !boxEl) return;
+      var checked = [].slice.call(listEl.querySelectorAll('input:checked'));
+      boxEl.innerHTML = "";
+      if (!checked.length) {
+        var e = document.createElement("span"); e.className = "sel-empty"; e.textContent = emptyText; boxEl.appendChild(e); return;
+      }
+      checked.forEach(function (b) {
+        var span = b.parentNode.querySelector("span");
+        var label = (span ? span.textContent : b.value).replace(/\s*\(\d[\d,]*\)\s*$/, "");   // drop trailing "(345)"
+        var chip = document.createElement("span"); chip.className = "sel-chip";
+        var t = document.createElement("span"); t.textContent = label;
+        var x = document.createElement("button");
+        x.type = "button"; x.className = "sel-x"; x.setAttribute("aria-label", "Remove " + label); x.textContent = "×";
+        x.addEventListener("click", function () { b.checked = false; b.dispatchEvent(new Event("change", { bubbles: true })); });
+        chip.appendChild(t); chip.appendChild(x); boxEl.appendChild(chip);
+      });
+    }
+
+    // Organisations: a hierarchical tree (children tucked under a parent, ordered by page
+    // count). Collapsible branches, a tree-aware search, and a live ticked-count line.
+    (function () {
+      var list = document.getElementById("org-list");
+      if (!list) return;
+      var filter = document.getElementById("org-filter"), count = document.getElementById("org-count");
+      var box = document.getElementById("org-selected");
+
+      function kidsOf(node) { return node.querySelector(":scope > .org-children"); }
+      function caretOf(node) { return node.querySelector(":scope > .org-row > .org-caret"); }
+      function setExpanded(node, open) {
+        var kids = kidsOf(node); if (!kids) return;
+        kids.hidden = !open;
+        var caret = caretOf(node);
+        if (caret) { caret.textContent = open ? "▾" : "▸"; caret.setAttribute("aria-expanded", open ? "true" : "false"); }
+      }
+
+      list.addEventListener("click", function (e) {
+        var caret = e.target.closest && e.target.closest(".org-caret");
+        if (!caret || !list.contains(caret)) return;
+        var node = caret.closest(".org-node"), kids = kidsOf(node);
+        setExpanded(node, kids && kids.hidden);
+      });
+
+      function expandChecked() {
+        [].forEach.call(list.querySelectorAll('input:checked'), function (b) {
+          var node = b.closest(".org-node");
+          var p = node && node.parentNode ? node.parentNode.closest(".org-node") : null;
+          while (p) { setExpanded(p, true); p = p.parentNode ? p.parentNode.closest(".org-node") : null; }
+        });
+      }
+
+      function search(q) {
+        q = (q || "").trim().toLowerCase();
+        var nodes = [].slice.call(list.querySelectorAll(".org-node"));
+        if (!q) {
+          nodes.forEach(function (n) { n.hidden = false; });
+          [].forEach.call(list.querySelectorAll(".org-children"), function (c) { c.hidden = true; });
+          [].forEach.call(list.querySelectorAll(".org-caret"), function (b) {
+            b.textContent = "▸"; b.setAttribute("aria-expanded", "false"); });
+          expandChecked();
+          return;
+        }
+        nodes.sort(function (a, b) { return (+b.dataset.depth) - (+a.dataset.depth); });  // deepest first
+        var shown = [];
+        function isShown(n) { return shown.indexOf(n) !== -1; }
+        nodes.forEach(function (n) {
+          var self = (n.dataset.t || "").indexOf(q) !== -1;
+          var kidShown = [].some.call(n.querySelectorAll(":scope > .org-children > .org-node"), isShown);
+          if (self || kidShown) shown.push(n);
+        });
+        nodes.forEach(function (n) {
+          n.hidden = !isShown(n);
+          var kids = kidsOf(n); if (kids) kids.hidden = false;   // expand while searching
+          var caret = caretOf(n);
+          if (caret) { caret.textContent = "▾"; caret.setAttribute("aria-expanded", "true"); }
+        });
+      }
+
+      function refreshUI() {
+        var n = list.querySelectorAll('input:checked').length;
+        if (count) count.textContent = n
+          ? (n + " organisation" + (n === 1 ? "" : "s") + " selected")
+          : "None selected — searches all organisations.";
+        renderSelected(list, box, "No organisations selected — searches all organisations.");
+      }
+      if (filter) filter.addEventListener("input", function () { search(filter.value); });
+      list.addEventListener("change", refreshUI);
+      expandChecked();
+      refreshUI();
+    })();
+
+    // Page Types checkbox list: fetch the document types (with counts) the ticked organisations
+    // publish, rebuild "Guidance (345)" sorted by count, preserving ticks; search filters the list.
+    (function () {
+      var orgList = document.getElementById("org-list");
+      var dtList = document.getElementById("dt-list");
+      var dtFilter = document.getElementById("dt-filter");
+      var dtBox = document.getElementById("dt-selected");
+      var childCb = document.querySelector('[name="include_child_orgs"]');
+      var note = document.getElementById("dt-note");
+      var dtField = document.getElementById("dt-field");
+      if (!dtList) return;
+      var DT_EMPTY = "No document types selected — includes every type.";
+      function setLocked(on) {
+        if (dtField) dtField.classList.toggle("dt-disabled", on);
+        if (dtFilter) dtFilter.disabled = on;
+      }
+      function titleCase(s){ return String(s).replace(/_/g, " ").replace(/\b\w/g, function (c) { return c.toUpperCase(); }); }
+      function selectedOrgs(){ return orgList ? [].map.call(orgList.querySelectorAll('input:checked'), function (b) { return b.value; }) : []; }
+      function currentTypes(){ return [].map.call(dtList.querySelectorAll('input:checked'), function (b) { return b.value; }); }
+      function addItem(slug, label, checked) {
+        var lab = document.createElement("label"); lab.className = "chk-item"; lab.dataset.t = (label + " " + slug).toLowerCase();
+        var box = document.createElement("input"); box.type = "checkbox"; box.name = "document_type_slugs"; box.value = slug; box.checked = !!checked;
+        var sp = document.createElement("span"); sp.textContent = label;
+        lab.appendChild(box); lab.appendChild(sp); dtList.appendChild(lab);
+      }
+      var seq = 0;
+      async function refresh() {
+        var keep = currentTypes().filter(Boolean), orgs = selectedOrgs();
+        if (!orgs.length) {
+          setLocked(true);
+          dtList.innerHTML = "";
+          renderSelected(dtList, dtBox, DT_EMPTY);
+          if (note) note.textContent = "Pick one or more organisations above to choose page types.";
+          return;
+        }
+        setLocked(false);
+        var params = new URLSearchParams();
+        if (orgs.length) params.set("orgs", orgs.join(","));
+        if (childCb && childCb.checked) params.set("children", "1");
+        var mine = ++seq;
+        if (note) { note.style.color = ""; note.textContent = "Loading document types…"; }
+        try {
+          var res = await fetch("/api/doc-type-counts?" + params.toString());
+          var j = await res.json().catch(function () { return {}; });
+          if (mine !== seq) return;               // a newer request superseded this one
+          if (!res.ok || j.error) throw new Error(j.error || ("HTTP " + res.status));
+          var types = j.types || [], keepSet = {}, present = {};
+          keep.forEach(function (k) { keepSet[k] = true; });
+          dtList.innerHTML = "";
+          types.forEach(function (t) { present[t.type] = true; addItem(t.type, titleCase(t.type) + " (" + Number(t.count).toLocaleString() + ")", keepSet[t.type]); });
+          keep.forEach(function (k) { if (!present[k]) addItem(k, titleCase(k) + " (0)", true); });
+          filterChecklist(dtList, dtFilter ? dtFilter.value : "");
+          renderSelected(dtList, dtBox, DT_EMPTY);
+          if (note) { note.style.color = ""; note.textContent = types.length
+            ? (types.length + " document type" + (types.length === 1 ? "" : "s") + (orgs.length ? " for the selected organisations." : " across the corpus."))
+            : "No document types found."; }
+        } catch (e) {
+          if (note) { note.style.color = "var(--red,#d4351c)";
+            note.textContent = "Error: " + (e && e.message ? e.message : e); }
+        }
+      }
+      if (orgList) orgList.addEventListener("change", refresh);
+      if (childCb) childCb.addEventListener("change", refresh);
+      if (dtFilter) dtFilter.addEventListener("input", function () { filterChecklist(dtList, dtFilter.value); });
+      dtList.addEventListener("change", function () { renderSelected(dtList, dtBox, DT_EMPTY); });
+      renderSelected(dtList, dtBox, DT_EMPTY);   // show the saved selection immediately
+      refresh();
+    })();
+
+    // Live plain-English preview of what the keywords will match after tokenisation.
+    (function () {
+      var ta = document.getElementById("keywords");
+      var wrap = document.getElementById("kw-explain-wrap");
+      var panel = document.getElementById("kw-explain");
+      if (!ta || !wrap || !panel) return;
+      function esc(s){ return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+      var timer = null, seq = 0;
+      async function run() {
+        if (!ta.value.trim()) { wrap.hidden = true; panel.innerHTML = ""; return; }
+        var mine = ++seq;
+        try {
+          var r = await fetch("/api/keyword-explain", { method: "POST",
+            headers: { "Content-Type": "application/json" }, body: JSON.stringify({ keywords: ta.value }) });
+          var j = await r.json();
+          if (mine !== seq) return;                       // a newer keystroke won
+          var terms = (j && j.terms) || [];
+          if (!terms.length) { wrap.hidden = true; return; }
+          panel.innerHTML = terms.map(function (t) {
+            return '<div class="kx"><strong>' + esc(t.term) + '</strong>'
+              + '<span class="kx-plain">' + esc(t.plain) + '</span>'
+              + (t.tsquery ? '<span class="kx-q">technical: ' + esc(t.tsquery) + '</span>' : '')
+              + '</div>';
+          }).join("");
+          wrap.hidden = false;
+        } catch (e) { /* leave the last preview in place */ }
+      }
+      ta.addEventListener("input", function () { clearTimeout(timer); timer = setTimeout(run, 400); });
+      if (ta.value.trim()) run();                         // show immediately for an edited shortlist
+    })();
+  </script>
+{% endmacro %}
