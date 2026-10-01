@@ -27,9 +27,12 @@ class TestRequestKwargs(unittest.TestCase):
         self.assertEqual(kw["system"], "sys")
         self.assertNotIn("thinking", kw)
 
-    def test_system_cache_control_only_on_anthropic(self):
+    def test_system_cache_control_on_anthropic_and_foundry(self):
         kw = llm.request_kwargs(CFG, "sys", MSGS, 100, cache_system=True)
         self.assertEqual(kw["system"][0]["cache_control"], {"type": "ephemeral"})
+        fo = dict(CFG, provider="foundry", model="claude-haiku-4-5")
+        self.assertEqual(llm.request_kwargs(fo, "sys", MSGS, 100, cache_system=True)["system"][0]["cache_control"],
+                         {"type": "ephemeral"})
         ds = dict(CFG, provider="deepseek", model="deepseek-chat")
         self.assertEqual(llm.request_kwargs(ds, "sys", MSGS, 100, cache_system=True)["system"], "sys")
 
@@ -43,6 +46,10 @@ class TestRequestKwargs(unittest.TestCase):
         self.assertNotIn("output_config", kw)
         br = dict(CFG, provider="bedrock", model="eu.anthropic.claude-haiku-4-5-20251001-v1:0")
         self.assertIn("thinking", llm.request_kwargs(br, "", MSGS, 100, thinking={"type": "adaptive"}))
+        fo = dict(CFG, provider="foundry", model="claude-haiku-4-5")
+        kw = llm.request_kwargs(fo, "", MSGS, 100, thinking={"type": "adaptive"}, effort="low")
+        self.assertEqual(kw["thinking"], {"type": "adaptive"})
+        self.assertEqual(kw["output_config"], {"effort": "low"})
 
     def test_temperature_refused_on_models_that_reject_it(self):
         for m in ("claude-sonnet-5", "claude-opus-5", "claude-opus-4-7", "claude-fable-5-1",
@@ -82,6 +89,62 @@ class TestReply(unittest.TestCase):
         self.assertEqual(seen["temperature"], 0.0)
         self.assertIsNone(seen["thinking"])
         self.assertEqual(seen["max_tokens"], llm.eval_max_tokens())
+
+
+_FOUNDRY_ENVS = ("ANTHROPIC_FOUNDRY_API_KEY", "ANTHROPIC_FOUNDRY_RESOURCE",
+                 "ANTHROPIC_FOUNDRY_BASE_URL")
+
+
+def _has_azure_identity() -> bool:
+    try:
+        return __import__("importlib").util.find_spec("azure.identity") is not None
+    except ImportError:   # parent `azure` namespace itself missing
+        return False
+
+
+class TestFoundryCreds(unittest.TestCase):
+    def setUp(self):
+        self._saved = {k: os.environ.get(k) for k in _FOUNDRY_ENVS}
+        for k in _FOUNDRY_ENVS:
+            os.environ.pop(k, None)
+
+    def tearDown(self):
+        for k, v in self._saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def test_unconfigured_without_endpoint(self):
+        self.assertIsNone(llm.foundry_creds())
+        self.assertFalse(llm.provider_configured("foundry"))
+        os.environ["ANTHROPIC_FOUNDRY_API_KEY"] = "k"   # key alone is not enough
+        self.assertIsNone(llm.foundry_creds())
+
+    def test_key_plus_resource(self):
+        os.environ["ANTHROPIC_FOUNDRY_API_KEY"] = "k"
+        os.environ["ANTHROPIC_FOUNDRY_RESOURCE"] = "res"
+        creds = llm.foundry_creds()
+        self.assertEqual((creds["api_key"], creds["resource"]), ("k", "res"))
+        self.assertTrue(llm.provider_configured("foundry"))
+
+    def test_base_url_alternative_to_resource(self):
+        os.environ["ANTHROPIC_FOUNDRY_API_KEY"] = "k"
+        os.environ["ANTHROPIC_FOUNDRY_BASE_URL"] = "https://res.services.ai.azure.com/anthropic/"
+        creds = llm.foundry_creds()
+        self.assertEqual(creds["base_url"], "https://res.services.ai.azure.com/anthropic")
+
+    def test_chat_without_foundry_config_is_fatal(self):
+        fo = dict(CFG, provider="foundry", model="claude-haiku-4-5", key=None)
+        res = llm.chat(fo, "", MSGS, 10)
+        self.assertTrue(res.get("fatal"))
+
+    @unittest.skipUnless(_has_azure_identity(), "no azure-identity")
+    def test_entra_when_keyless_with_endpoint(self):
+        os.environ["ANTHROPIC_FOUNDRY_RESOURCE"] = "res"
+        creds = llm.foundry_creds()
+        self.assertTrue(creds.get("use_entra"))
+        self.assertTrue(llm.provider_configured("foundry"))
 
 
 if __name__ == "__main__":

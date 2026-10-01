@@ -1,7 +1,7 @@
 """The model call, its providers, prices and the daily budget — lifted out of webapp/app.py
 so the evaluation driver and the benchmark CLI can run without FastAPI.
 
-`chat(...)` is the one place a Claude/DeepSeek/Bedrock request is built. Sampling controls
+`chat(...)` is the one place a Claude/DeepSeek/Bedrock/Foundry request is built. Sampling controls
 (`temperature`, `thinking`, `effort`) are opt-in keyword arguments: when None (the product
 default) nothing is sent and the provider's defaults apply, exactly as before. The benchmark
 pins them and stamps them on the run. `supports_sampling` refuses `temperature` on models
@@ -40,6 +40,15 @@ PROVIDERS = {
                 "model": "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
                 "key_envs": (),
                 "price_in": 1.0, "price_out": 5.0},
+    # Azure AI Foundry serves Claude models through the same Anthropic SDK
+    # (AnthropicFoundry client) and the same Messages API — see foundry_creds.
+    # `model` is the Foundry *deployment name* (it defaults to the model id, e.g.
+    # claude-haiku-4-5, but can be customised in the Foundry portal), entered per
+    # model on the Settings page.
+    "foundry": {"label": "Azure Foundry (Claude)", "base_url": "",
+                "model": "claude-haiku-4-5",
+                "key_envs": ("ANTHROPIC_FOUNDRY_API_KEY",),
+                "price_in": 1.0, "price_out": 5.0},
 }
 DEFAULT_PROVIDER = "anthropic"
 DEFAULT_DAILY_BUDGET = 20.0     # USD/day
@@ -74,10 +83,33 @@ def bedrock_creds() -> Optional[dict]:
     return None
 
 
+def foundry_creds() -> Optional[dict]:
+    """Credentials for the Foundry client, or None if not fully configured. Needs an
+    endpoint — a resource name (ANTHROPIC_FOUNDRY_RESOURCE) or a full base URL
+    (ANTHROPIC_FOUNDRY_BASE_URL, e.g. https://<resource>.services.ai.azure.com/anthropic/)
+    — plus EITHER an API key (ANTHROPIC_FOUNDRY_API_KEY, simplest) OR Entra ID (no key,
+    with the azure-identity package installed). The key wins when both are available."""
+    resource = os.getenv("ANTHROPIC_FOUNDRY_RESOURCE")
+    base_url = (os.getenv("ANTHROPIC_FOUNDRY_BASE_URL") or "").rstrip("/") or None
+    if not (resource or base_url):
+        return None
+    key = provider_key("foundry")
+    if key:
+        return {"api_key": key, "resource": resource, "base_url": base_url}
+    try:
+        import azure.identity  # noqa: F401
+    except Exception:
+        return None
+    return {"use_entra": True, "resource": resource, "base_url": base_url}
+
+
 def provider_configured(provider: str) -> bool:
-    """Whether a provider has usable credentials — an API key, or AWS creds for Bedrock."""
+    """Whether a provider has usable credentials — an API key, AWS creds for Bedrock,
+    or a Foundry endpoint plus a key / Entra ID."""
     if provider == "bedrock":
         return bedrock_creds() is not None
+    if provider == "foundry":
+        return foundry_creds() is not None
     return provider_key(provider) is not None
 
 
@@ -114,12 +146,21 @@ def cfg_for(conn, provider: str, model: str, key: Optional[str] = None) -> dict:
     row = ai_models.find(conn, provider, model)
     price_in = row["input_per_m"] if row else p["price_in"]
     price_out = row["output_per_m"] if row else p["price_out"]
-    return {"provider": provider, "label": p["label"], "base_url": p["base_url"],
-            "model": model or p["model"],
-            "key": key if key is not None else provider_key(provider),
-            "price_in": price_in, "price_out": price_out,
-            "grid": dict(row) if row else None,
-            "peak_bitmap": peak_schedule.get_bitmap(conn, provider)}
+    cfg = {"provider": provider, "label": p["label"], "base_url": p["base_url"],
+           "model": model or p["model"],
+           "key": key if key is not None else provider_key(provider),
+           "price_in": price_in, "price_out": price_out,
+           "grid": dict(row) if row else None,
+           "peak_bitmap": peak_schedule.get_bitmap(conn, provider)}
+    if provider == "foundry":
+        # The endpoint (resource name or full base URL) rides on the config so _client
+        # needn't re-read env — and so callers can override it per config.
+        fc = foundry_creds() or {}
+        cfg["resource"] = fc.get("resource")
+        if fc.get("base_url"):
+            cfg["base_url"] = fc["base_url"]
+        cfg["use_entra"] = bool(fc.get("use_entra"))
+    return cfg
 
 
 # ---- the request ----------------------------------------------------------------
@@ -155,14 +196,14 @@ def request_kwargs(config: dict, system: str, messages: list, max_tokens: int, *
                    thinking: Optional[dict] = None, effort: Optional[str] = None) -> dict:
     """The messages.create(...) keyword arguments — pure, so the exact request a run makes is
     testable. Each sampling control is added only when given; `thinking`/`effort` only for
-    Claude providers (anthropic / bedrock). Raises ValueError for a temperature on a model that
-    rejects it."""
+    Claude providers (anthropic / bedrock / foundry). Raises ValueError for a temperature on
+    a model that rejects it."""
     kwargs: Dict = dict(model=config["model"], max_tokens=max_tokens, messages=list(messages))
     if (system or "").strip():
-        # Cache the stable system prefix on Anthropic (cache_control) so a run's repeated
-        # instructions are cheap cache-reads after the first call. DeepSeek's endpoint ignores
-        # cache_control but auto-caches the same prefix, so a plain string is enough there.
-        if cache_system and config.get("provider") == "anthropic":
+        # Cache the stable system prefix on Anthropic and Foundry (cache_control) so a run's
+        # repeated instructions are cheap cache-reads after the first call. DeepSeek's endpoint
+        # ignores cache_control but auto-caches the same prefix, so a plain string is enough there.
+        if cache_system and config.get("provider") in ("anthropic", "foundry"):
             kwargs["system"] = [{"type": "text", "text": system.strip(),
                                  "cache_control": {"type": "ephemeral"}}]
         else:
@@ -172,7 +213,7 @@ def request_kwargs(config: dict, system: str, messages: list, max_tokens: int, *
             raise ValueError(f"{config['model']} rejects `temperature` (it thinks adaptively); "
                              f"run it without sampling controls or pick a model that accepts them")
         kwargs["temperature"] = float(temperature)
-    claude = config.get("provider") in ("anthropic", "bedrock")
+    claude = config.get("provider") in ("anthropic", "bedrock", "foundry")
     if thinking is not None and claude:
         kwargs["thinking"] = dict(thinking)
     if effort is not None and claude:
@@ -207,6 +248,38 @@ def _client(config: dict, timeout: float, max_retries: int):
             if creds.get("aws_session_token"):
                 bkw["aws_session_token"] = creds["aws_session_token"]
         return BedrockClient(**bkw), None
+    if config.get("provider") == "foundry":
+        creds = foundry_creds() or {}
+        # A config may carry its own endpoint (cfg_for stamps it); env is the fallback.
+        resource = config.get("resource") or creds.get("resource")
+        base_url = config.get("base_url") or creds.get("base_url") or None
+        api_key = config.get("key") or creds.get("api_key")
+        use_entra = config.get("use_entra") or creds.get("use_entra")
+        if not (resource or base_url) or (not api_key and not use_entra):
+            return None, {"fatal": True, "error": "Azure Foundry not configured. Set "
+                          "ANTHROPIC_FOUNDRY_RESOURCE (or ANTHROPIC_FOUNDRY_BASE_URL) plus "
+                          "ANTHROPIC_FOUNDRY_API_KEY in ~/gov-uk-corpus.env and restart — or "
+                          "leave the key unset with azure-identity installed for Entra ID."}
+        FoundryClient = getattr(anthropic, "AnthropicFoundry", None)
+        if FoundryClient is None:
+            return None, {"fatal": True, "error": "This 'anthropic' build has no Foundry support. "
+                          "Run: pip install -U 'anthropic>=0.74'"}
+        fkw = dict(timeout=timeout, max_retries=max_retries)
+        if base_url:      # full endpoint URL and resource name are mutually exclusive
+            fkw["base_url"] = base_url
+        else:
+            fkw["resource"] = resource
+        if api_key:
+            fkw["api_key"] = api_key
+        else:              # Entra ID via the Azure token-provider pattern
+            try:
+                from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+            except Exception:
+                return None, {"fatal": True, "error": "Entra ID needs the 'azure-identity' package. "
+                              "Run: pip install azure-identity (or set ANTHROPIC_FOUNDRY_API_KEY)."}
+            fkw["azure_ad_token_provider"] = get_bearer_token_provider(
+                DefaultAzureCredential(), "https://ai.azure.com/.default")
+        return FoundryClient(**fkw), None
     if not config.get("key"):
         return None, {"fatal": True, "error": f"No API key set for {config['label']}. Add its key to "
                       f"~/gov-uk-corpus.env and restart, or pick a provider that has one in Settings."}

@@ -43,6 +43,8 @@ _DEFAULTS = [
     ("anthropic", "claude-sonnet-5", 2.0, 10.0),
     ("anthropic", "claude-sonnet-4-6", 3.0, 15.0),   # benchmark arm: accepts temperature=0, no thinking by default
     ("deepseek", "deepseek-chat", 0.27, 1.10),
+    ("foundry", "claude-haiku-4-5", 1.0, 5.0),       # Foundry deployment names (no date suffix)
+    ("foundry", "claude-sonnet-5", 2.0, 10.0),
 ]
 
 

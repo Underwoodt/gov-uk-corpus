@@ -2,26 +2,18 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    postgresql-client \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements and install
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY . .
+COPY govuk_corpus ./govuk_corpus
+COPY webapp ./webapp
 
-# Create log and report directories
-RUN mkdir -p logs reports
+RUN mkdir -p /data
 
-# Set environment
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
+ENV CORPUS_DB=/data/pilot.db
 
-EXPOSE 8000
+EXPOSE 8600
 
-CMD ["python", "-m", "api.app"]
+CMD ["uvicorn", "webapp.app:app", "--host", "0.0.0.0", "--port", "8600"]

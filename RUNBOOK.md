@@ -140,6 +140,9 @@ DASHBOARD_PASSWORD=CHANGE_ME_LOGIN
 
 # LLM providers (only on the server; needed for the Semantic/LLM evaluation passes)
 ANTHROPIC_API_KEY=sk-ant-...
+# Azure Foundry (Claude) instead of / alongside Anthropic direct:
+# ANTHROPIC_FOUNDRY_RESOURCE=<foundry-resource-name>
+# ANTHROPIC_FOUNDRY_API_KEY=<foundry-api-key>
 ```
 
 Lock it down:
@@ -380,6 +383,9 @@ default is optional; unset means the default. Restart the service after changing
 |---|---|---|
 | `ANTHROPIC_API_KEY` | _(unset)_ | Anthropic key. |
 | `DEEPSEEK_API_KEY` | _(unset)_ | DeepSeek key. |
+| `ANTHROPIC_FOUNDRY_API_KEY` | _(unset)_ | Foundry key (key auth; omit for Entra ID). |
+| `ANTHROPIC_FOUNDRY_RESOURCE` | _(unset)_ | Foundry resource name (or set `ANTHROPIC_FOUNDRY_BASE_URL` instead). |
+| `ANTHROPIC_FOUNDRY_BASE_URL` | _(unset)_ | Full Foundry endpoint, e.g. `https://<resource>.services.ai.azure.com/anthropic/`. |
 | `AI_API_KEY` | _(unset)_ | Fallback key used if the provider-specific one is unset. |
 | `ANTHROPIC_WORKSPACE_ID` | _(unset)_ | Optional Anthropic workspace id (spend attribution). |
 | `AI_TIMEOUT` | `45` | Per-request LLM timeout (seconds). |

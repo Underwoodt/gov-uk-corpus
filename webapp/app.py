@@ -397,13 +397,16 @@ PROVIDERS = llm.PROVIDERS
 DEFAULT_PROVIDER = llm.DEFAULT_PROVIDER
 _provider_key = llm.provider_key
 _bedrock_creds = llm.bedrock_creds
+_foundry_creds = llm.foundry_creds
 
 
 def _provider_configured(provider: str) -> bool:
-    """Whether a provider has usable credentials — an API key, or AWS creds for Bedrock
-    (routes through the patchable hooks above)."""
+    """Whether a provider has usable credentials — an API key, AWS creds for Bedrock,
+    or a Foundry endpoint plus a key / Entra ID (routes through the patchable hooks above)."""
     if provider == "bedrock":
         return _bedrock_creds() is not None
+    if provider == "foundry":
+        return _foundry_creds() is not None
     return _provider_key(provider) is not None
 
 
@@ -436,11 +439,18 @@ def _config_from_model(conn, m: dict) -> dict:
     """Build an AI config dict from an ai_models row."""
     provider = m["provider"]
     p = PROVIDERS.get(provider) or PROVIDERS[DEFAULT_PROVIDER]
-    return {"provider": provider, "label": p["label"], "base_url": p["base_url"],
-            "model": m["model_id"], "key": _provider_key(provider),
-            "has_key": _provider_configured(provider),
-            "price_in": m["input_per_m"], "price_out": m["output_per_m"],
-            "grid": dict(m), "peak_bitmap": peak_schedule.get_bitmap(conn, provider)}
+    cfg = {"provider": provider, "label": p["label"], "base_url": p["base_url"],
+           "model": m["model_id"], "key": _provider_key(provider),
+           "has_key": _provider_configured(provider),
+           "price_in": m["input_per_m"], "price_out": m["output_per_m"],
+           "grid": dict(m), "peak_bitmap": peak_schedule.get_bitmap(conn, provider)}
+    if provider == "foundry":
+        fc = _foundry_creds() or {}
+        cfg["resource"] = fc.get("resource")
+        if fc.get("base_url"):
+            cfg["base_url"] = fc["base_url"]
+        cfg["use_entra"] = bool(fc.get("use_entra"))
+    return cfg
 
 
 def _default_config(conn) -> dict:
@@ -1971,9 +1981,10 @@ def _run_evaluation(cid: int, limit: int) -> dict:
         run = evaluate.get_run(conn, run_id)
         phase = run.get("phase") or evaluate.PHASE_INCLUSION
         cfg = _cfg_for(conn, run["provider"], run["model"])
-        if not cfg["key"]:
+        if not _provider_configured(run["provider"]):
             evaluate.mark_run_stopped(conn, run_id, "config")
-            return {"error": f"No API key for {cfg['label']} (this run's provider) — set one in Settings.",
+            return {"error": f"No credentials for {cfg['label']} (this run's provider) — set them in "
+                    f"~/gov-uk-corpus.env and restart, or pick a provider that has them in Settings.",
                     "stop_reason": "config"}
 
         limit = min(limit, _max_docs(conn))
@@ -2384,8 +2395,8 @@ def _retry_unparsable(cid: int, cap: int = 300, run_id: Optional[str] = None) ->
                 continue
             run = evaluate.get_run(conn, run_id)
             cfg = _cfg_for(conn, run["provider"], run["model"])
-            if not cfg["key"]:
-                out["phases"].append({"phase": run.get("phase"), "error": f"no API key for {cfg['label']}"})
+            if not _provider_configured(run["provider"]):
+                out["phases"].append({"phase": run.get("phase"), "error": f"no credentials for {cfg['label']}"})
                 continue
             # Reproduce THIS run's prompt exactly: its stamped spec (template + variant + caching),
             # else live for legacy runs.
@@ -5964,8 +5975,9 @@ async def test_model_route(request: Request, mid: int):
         return JSONResponse({"ok": False, "error": "Model not found."}, status_code=404)
     cfg = _cfg_for(conn, row["provider"], row["model_id"])
     conn.close()
-    if not _provider_configured(row["provider"]):   # API key, or AWS creds for Bedrock
-        creds = ("AWS credentials" if row["provider"] == "bedrock" else "API key")
+    if not _provider_configured(row["provider"]):   # API key, AWS creds, or Foundry endpoint
+        creds = {"bedrock": "AWS credentials", "foundry": "Foundry endpoint + key"}.get(
+            row["provider"], "API key")
         return JSONResponse({"ok": False,
                              "error": f"No {creds} set for {cfg['label']}."})
     res = await run_in_threadpool(_ai_reply, cfg, "", "Reply with the single word: ok")
