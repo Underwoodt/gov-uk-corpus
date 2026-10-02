@@ -39,7 +39,7 @@ from starlette.concurrency import run_in_threadpool
 
 from govuk_corpus import accounts, ai_models, audit
 from govuk_corpus import categories as cat
-from govuk_corpus import category_counts, category_transfer, feedback, sessions
+from govuk_corpus import category_counts, category_transfer, doc_types, feedback, sessions
 from govuk_corpus import (audit_stats, category_interview, evaluate, evaluate_driver, extract,
                           gold, help_docs, keyword_explain, llm, orgs, peak_schedule, pricing,
                           prompts, readability, reporting, roles, search_augment, settings,
@@ -954,16 +954,12 @@ def new_category_page(request: Request):
 def _slug_errors(conn, data: dict) -> list:
     """Server-side slug validation — reject organisation / document-type slugs that don't exist
     (plurals and typos won't), suggesting the closest real slugs. Returns human-readable errors
-    ([] if all valid). Document types are validated against the live corpus (the real types the
-    Page Types picker is built from), not a hardcoded list — otherwise a real corpus type the
-    picker shows (e.g. 'research') would be rejected on save."""
+    ([] if all valid). Document types are validated against the real corpus types (the
+    precomputed `document_types` table the Page Types picker is built from), not a hardcoded
+    list — otherwise a real corpus type the picker shows (e.g. 'research') would be rejected on
+    save. Falls back to a live scan if that table isn't built yet."""
     errors: list = []
-    # Validate against the corpus's real document types (what the Page Types picker is built
-    # from), not a stale hardcoded list. The raw type set covers every type the picker offers:
-    # effective types are parent types (guidance, policy_paper, …), which all exist as raw types
-    # too. Raw keeps this cheap — no JSON parsing of the effective expression over the whole
-    # corpus, which could hit the statement timeout.
-    known_dt = {r["dt"] for r in conn.execute(
+    known_dt = doc_types.known_types(conn) or {r["dt"] for r in conn.execute(
         "SELECT DISTINCT c.document_type AS dt FROM content c "
         "WHERE c.is_redirect = 0 AND c.content_hash IS NOT NULL AND c.document_type IS NOT NULL"
     ).fetchall()}
@@ -3605,30 +3601,33 @@ def sustainability_page(request: Request):
 
 
 def _doc_type_counts(conn, org_slugs) -> list:
-    """Corpus document types (effective type) with page counts, restricted to the given
-    organisations, newest-largest first. Empty org list = the whole corpus.
+    """Corpus document types with page counts, newest-largest first. Empty org list = the
+    whole corpus, served from the precomputed `document_types` table (rebuilt in the batch
+    tidy-up) so it needs no live GROUP BY over `content`; falls back to a live query if that
+    table isn't built yet.
 
-    For an org filter we start from page_organisations (the DISTINCT matching page_urls off
-    the org index) and join content, rather than an EXISTS per content row — ~7x faster for
-    broad orgs with child departments (e.g. DEFRA+children: ~0.9s vs ~6.5s), so the Page
-    Types picker on the edit form loads its full list promptly instead of appearing stuck."""
-    if org_slugs:
-        ph = ",".join([shortlist._P] * len(org_slugs))
-        eff = shortlist.EFFECTIVE_DOCTYPE_EXPR      # html_publication -> parent type
-        sql = (f"SELECT {eff} AS dt, COUNT(*) AS n FROM "
-               f"(SELECT DISTINCT po.page_url FROM page_organisations po "
-               f" WHERE po.organisation_slug IN ({ph})) pp "
-               f"JOIN content c ON c.url = pp.page_url "
-               f"WHERE c.is_redirect = 0 AND c.content_hash IS NOT NULL "
-               f"GROUP BY {eff} ORDER BY n DESC")
-        params = list(org_slugs)
-    else:
-        # Whole corpus: raw type keeps the grouping fast (no org join).
-        sql = ("SELECT c.document_type AS dt, COUNT(*) AS n FROM content c "
-               "WHERE c.is_redirect = 0 AND c.content_hash IS NOT NULL "
-               "GROUP BY c.document_type ORDER BY n DESC")
-        params = []
-    rows = conn.execute(sql, tuple(params)).fetchall()
+    For an org filter we compute the effective type live from page_organisations (the DISTINCT
+    matching page_urls off the org index) joined to content, rather than an EXISTS per content
+    row — ~7x faster for broad orgs with child departments (e.g. DEFRA+children: ~0.9s vs
+    ~6.5s), so the Page Types picker loads its full list promptly instead of appearing stuck."""
+    if not org_slugs:
+        pre = doc_types.all_counts(conn)
+        if pre:
+            return pre
+        rows = conn.execute(
+            "SELECT c.document_type AS dt, COUNT(*) AS n FROM content c "
+            "WHERE c.is_redirect = 0 AND c.content_hash IS NOT NULL "
+            "GROUP BY c.document_type ORDER BY n DESC").fetchall()
+        return [{"type": r["dt"], "count": r["n"]} for r in rows if r["dt"]]
+    ph = ",".join([shortlist._P] * len(org_slugs))
+    eff = shortlist.EFFECTIVE_DOCTYPE_EXPR      # html_publication -> parent type
+    sql = (f"SELECT {eff} AS dt, COUNT(*) AS n FROM "
+           f"(SELECT DISTINCT po.page_url FROM page_organisations po "
+           f" WHERE po.organisation_slug IN ({ph})) pp "
+           f"JOIN content c ON c.url = pp.page_url "
+           f"WHERE c.is_redirect = 0 AND c.content_hash IS NOT NULL "
+           f"GROUP BY {eff} ORDER BY n DESC")
+    rows = conn.execute(sql, tuple(org_slugs)).fetchall()
     return [{"type": r["dt"], "count": r["n"]} for r in rows if r["dt"]]
 
 

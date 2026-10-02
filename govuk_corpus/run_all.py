@@ -17,6 +17,7 @@ import os
 from typing import Optional
 
 from . import category_counts
+from . import doc_types
 from . import orgs
 from .backend import db
 from .stage_align import align_urls
@@ -72,6 +73,11 @@ def run_tidy_up(conn) -> None:
         print(f"[tidy-up] organisation page counts: {n} organisations refreshed")
     except Exception as e:
         print(f"[tidy-up] organisation page counts: skipped ({type(e).__name__}: {e})")
+    try:
+        m = doc_types.refresh_document_types(conn)
+        print(f"[tidy-up] document types: {m} types refreshed")
+    except Exception as e:
+        print(f"[tidy-up] document types: skipped ({type(e).__name__}: {e})")
 
 
 def main() -> None:

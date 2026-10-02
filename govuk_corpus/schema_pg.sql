@@ -125,6 +125,15 @@ CREATE TABLE IF NOT EXISTS organisation_page_counts (
     computed_at text
 );
 
+-- Precomputed document-type counts over the whole corpus, rebuilt in the batch tidy-up
+-- (run_all.run_tidy_up). Feeds the whole-corpus Page Types picker and document-type
+-- validation without a live GROUP BY over `content` on every request.
+CREATE TABLE IF NOT EXISTS document_types (
+    document_type text PRIMARY KEY,
+    type_count    bigint NOT NULL DEFAULT 0,
+    computed_at   text
+);
+
 -- AI inclusion-pass evaluation, tracked per run so different models can be compared.
 CREATE TABLE IF NOT EXISTS evaluation_runs (
     run_id       text PRIMARY KEY,
