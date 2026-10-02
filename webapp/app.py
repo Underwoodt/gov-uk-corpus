@@ -952,13 +952,23 @@ def new_category_page(request: Request):
 
 
 def _slug_errors(conn, data: dict) -> list:
-    """Server-side slug validation — the hard backstop behind the assistant's guidance.
-    Reject organisation / document-type slugs that don't exist (plurals and typos won't),
-    suggesting the closest real slugs. Returns human-readable errors ([] if all valid)."""
+    """Server-side slug validation — reject organisation / document-type slugs that don't exist
+    (plurals and typos won't), suggesting the closest real slugs. Returns human-readable errors
+    ([] if all valid). Document types are validated against the live corpus (the real types the
+    Page Types picker is built from), not a hardcoded list — otherwise a real corpus type the
+    picker shows (e.g. 'research') would be rejected on save."""
     errors: list = []
-    known_dt = set(category_interview.DOCUMENT_TYPES)
+    # Validate against the corpus's real document types (what the Page Types picker is built
+    # from), not a stale hardcoded list. The raw type set covers every type the picker offers:
+    # effective types are parent types (guidance, policy_paper, …), which all exist as raw types
+    # too. Raw keeps this cheap — no JSON parsing of the effective expression over the whole
+    # corpus, which could hit the statement timeout.
+    known_dt = {r["dt"] for r in conn.execute(
+        "SELECT DISTINCT c.document_type AS dt FROM content c "
+        "WHERE c.is_redirect = 0 AND c.content_hash IS NOT NULL AND c.document_type IS NOT NULL"
+    ).fetchall()}
     for s in cat.parse_list(data.get("document_type_slugs")):
-        if s not in known_dt:
+        if known_dt and s not in known_dt:   # empty set = can't validate (e.g. empty corpus) → allow
             near = category_interview.match_document_types(s)
             hint = f" Did you mean: {', '.join(near)}?" if near else ""
             errors.append(f"Unknown document type '{s}' — not a real slug.{hint}")
