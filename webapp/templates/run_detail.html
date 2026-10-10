@@ -450,7 +450,8 @@
       const spin = document.getElementById("run-live-spin");
       if (!box) return;
       const CHAIN = CHAIN_IDS.map(String);
-      let timer = null, everRan = false;
+      const PROGRESS_RELOAD_MS = 8000;   // while running, reload the page so on-page progress advances
+      let timer = null, everRan = false, reloadScheduled = false;
       function stop() { if (timer) { clearInterval(timer); timer = null; } }
       function showSpinner(on) { if (spin) spin.style.display = on ? "" : "none"; }
       // DB truth: is any run in this lineage actually alive (live pid + fresh heartbeat)?
@@ -494,6 +495,13 @@
             + (s.remaining != null ? ` · ${Number(s.remaining).toLocaleString()} left` : "")
             + (s.phase ? ` · ${s.phase}` : "");
           if (!timer) timer = setInterval(check, 3000);
+          // Refresh the whole page periodically so the run's progress (the phase table, kept/dropped
+          // counts and the outcome panel) advances on screen, not just the banner. Scheduled once per
+          // page load; each reload re-detects the live run and re-schedules, giving a steady refresh.
+          if (!reloadScheduled) {
+            reloadScheduled = true;
+            setTimeout(() => location.reload(), PROGRESS_RELOAD_MS);
+          }
         } else {
           finish();
         }
