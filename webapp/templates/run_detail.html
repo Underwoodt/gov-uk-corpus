@@ -423,20 +423,10 @@
           if (cont.done) { cs.textContent = "Nothing to continue — already complete."; return; }
           const j = await (await fetch(`/api/categories/${CID}/evaluate-bg/start`, { method: "POST" })).json();
           if (j.error) { cs.textContent = "Error: " + j.error; completeBtn.disabled = false; return; }
-          const poll = setInterval(async () => {
-            let s;
-            try { s = await (await fetch(`/api/categories/${CID}/evaluate-bg/status`)).json(); }
-            catch (e) { return; }
-            const done = (s.done || 0).toLocaleString();
-            if (s.running) {
-              cs.innerHTML = `<span class="spinner"></span> Running in the background — evaluated ${done}`
-                + (s.phase ? ` (${s.phase})` : "");
-            } else {
-              clearInterval(poll);
-              cs.textContent = s.error ? ("Error: " + s.error) : "Finished — refreshing…";
-              setTimeout(() => location.reload(), 900);
-            }
-          }, 3000);
+          // The run is now evaluating in the background — hand the user to the runs list
+          // (guc-0004c), where live progress refreshes on its own.
+          cs.innerHTML = '<span class="spinner"></span> Started — opening the runs list…';
+          window.location.href = `/categories/${CID}/ai-pipeline`;
         } catch (e) { cs.textContent = "Could not start."; completeBtn.disabled = false; }
       });
     }
@@ -450,7 +440,7 @@
       const spin = document.getElementById("run-live-spin");
       if (!box) return;
       const CHAIN = CHAIN_IDS.map(String);
-      const PROGRESS_RELOAD_MS = 8000;   // while running, reload the page so on-page progress advances
+      const PROGRESS_RELOAD_MS = 10000;   // while running, reload the page so on-page progress advances (every 10s)
       let timer = null, everRan = false, reloadScheduled = false;
       function stop() { if (timer) { clearInterval(timer); timer = null; } }
       function showSpinner(on) { if (spin) spin.style.display = on ? "" : "none"; }

@@ -102,7 +102,7 @@
   }
   function beginBgPolling() {
     bgUiRunning(true);
-    if (!bgTimer) bgTimer = setInterval(pollBg, 3000);
+    if (!bgTimer) bgTimer = setInterval(pollBg, 10000);   // refresh run progress every 10s while executing
     pollBg();
   }
 
