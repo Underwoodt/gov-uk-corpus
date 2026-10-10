@@ -49,7 +49,7 @@
     {% if outcome.why %}<p style="margin:8px 0 0;font-size:14px;"><strong>Why it didn't complete:</strong> {{ outcome.why }}</p>{% endif %}
     <p style="margin:8px 0 0;font-size:14px;"><strong>What failed:</strong>
       {% if outcome.unparsed or outcome.truncated %}
-        {% if outcome.unparsed %}<a href="#not-parsed">{{ outcome.unparsed }} repl{{ 'y' if outcome.unparsed == 1 else 'ies' }} couldn't be parsed</a>{% endif %}{% if outcome.unparsed and outcome.truncated %} · {% endif %}
+        {% if outcome.unparsed %}{% set np_text %}{{ outcome.unparsed }} repl{{ 'y' if outcome.unparsed == 1 else 'ies' }} couldn't be parsed{% endset %}{% if is_admin %}<a href="#not-parsed">{{ np_text }}</a>{% else %}{{ np_text }}{% endif %}{% endif %}{% if outcome.unparsed and outcome.truncated %} · {% endif %}
         {% if outcome.truncated %}{{ outcome.truncated }} repl{{ 'y' if outcome.truncated == 1 else 'ies' }} cut off at the token limit{% endif %}.
       {% else %}None — every evaluated page returned a usable verdict.{% endif %}
     </p>
@@ -138,39 +138,8 @@
     </table>
   </div>
 
-  {# Per-page results: every page this run scored, with the inclusion pass's grounding fields
-     (primary topic / matched-in / verbatim evidence). Loaded from the run's results API. #}
-  <h2 style="margin-top:30px;">Per-page results</h2>
-  <p class="hint" style="max-width:860px;">Every page this run scored, with the inclusion pass's grounding:
-    the <strong>primary topic</strong> (what the page is mainly about), where the topic was
-    <strong>matched in</strong> (title, description, body) and the <strong>evidence</strong> quotes copied
-    verbatim from the page. On an exclusion run these come from its inclusion run.</p>
-  <div class="controls" style="align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 8px;">
-    <label class="secondary" style="font-size:14px;">Show
-      <select id="pr-filter" style="font:inherit;padding:3px 6px;border:2px solid var(--black);border-radius:4px;margin-left:4px;">
-        <option value="">All</option><option value="1">Kept</option><option value="0">Dropped</option>
-      </select></label>
-    <label class="secondary" style="font-size:14px;">Per page
-      <select id="pr-page-size" style="font:inherit;padding:3px 6px;border:2px solid var(--black);border-radius:4px;margin-left:4px;">
-        <option value="20" selected>20</option><option value="100">100</option><option value="all">All</option>
-      </select></label>
-    <span id="pr-summary" class="secondary"></span>
-  </div>
-  <div class="table-wrap">
-    <table id="pr-table" style="font-size:13px;">
-      <thead><tr>
-        <th>Page</th><th>Verdict</th><th class="num">Score</th><th>Confidence</th>
-        <th>Primary topic</th><th>Matched in</th><th>Evidence</th><th>Reason</th>
-      </tr></thead>
-      <tbody><tr><td colspan="8" class="secondary" style="padding:10px 6px;"><span class="spinner"></span></td></tr></tbody>
-    </table>
-  </div>
-  <div id="pr-pager" class="controls" style="align-items:center;gap:12px;margin-top:10px;" hidden>
-    <button class="btn secondary-btn" id="pr-prev" type="button" style="padding:5px 12px;">‹ Prev</button>
-    <span id="pr-range" class="secondary"></span>
-    <button class="btn secondary-btn" id="pr-next" type="button" style="padding:5px 12px;">Next ›</button>
-  </div>
-
+  {% if is_admin %}
+  <div data-level="advanced">
   <h2 style="margin-top:30px;">Run commentary</h2>
   <p class="hint">An automatic read of this run's phases — what has run, any errors, and whether each phase's
     output reconciles with its input (input = kept + dropped, allowing for unparseable replies).</p>
@@ -220,6 +189,8 @@
   {% else %}
   <p class="secondary" style="margin:0 0 18px;">None — every evaluated page was scored (kept or dropped).</p>
   {% endif %}
+  </div>
+  {% endif %}
 
   {# Advanced-only: the actual completed prompt sent to the model for each phase. #}
   <details id="ex-prompts" data-level="advanced" style="margin-top:34px;max-width:960px;">
@@ -262,6 +233,8 @@
   </details>
 
   {# What actually controlled each phase of this run — so a run's real settings are unmistakable. #}
+  {% if is_admin %}
+  <div data-level="advanced">
   <h2 style="margin-top:34px;">Run configuration</h2>
   <p class="hint">The settings that governed each phase of this run (stamped when the run was created,
     so they're what actually ran — not just the run's name).</p>
@@ -293,73 +266,14 @@
   <p class="hint" style="margin-top:8px;">Concurrency &gt; 1 evaluates that many pages in parallel; the
     <em>cached</em> prompt variant reorders the prompt so its stable half can be cached (and, with caching on,
     sets an Anthropic cache breakpoint). Both phases inherit the trial chosen at “New Run”.</p>
+  </div>
+  {% endif %}
 
   <script>
     const CID = {{ category.id }}, RUN_ID = {{ run.run_id|tojson }};
     const CHAIN_IDS = {{ (chain|map(attribute='run_id')|list)|tojson }};
     const RUN_STATE = {{ run_state|tojson }};   // DB truth at page load: 'fresh' | 'partial' | 'complete' | …
 
-    // Per-page results (guc-0006): fetched from the run's results API, filtered client-side.
-    (function () {
-      const tbody = document.querySelector("#pr-table tbody"), sum = document.getElementById("pr-summary");
-      const filter = document.getElementById("pr-filter");
-      const sizeSel = document.getElementById("pr-page-size");
-      const pager = document.getElementById("pr-pager"), rangeEl = document.getElementById("pr-range");
-      const prevBtn = document.getElementById("pr-prev"), nextBtn = document.getElementById("pr-next");
-      const esc = s => { const d = document.createElement("div"); d.textContent = s == null ? "" : s; return d.innerHTML; };
-      let all = [], page = 0;
-      const pageSize = () => { const v = sizeSel ? sizeSel.value : "20"; return v === "all" ? Infinity : (parseInt(v, 10) || 20); };
-      function render() {
-        const f = filter.value;
-        const rows = f === "" ? all : all.filter(r => String(r.keep) === f);
-        sum.textContent = `${rows.length} of ${all.length} page${all.length === 1 ? "" : "s"}`;
-        const size = pageSize();
-        const nPages = Math.max(1, Math.ceil(rows.length / (size === Infinity ? (rows.length || 1) : size)));
-        if (page >= nPages) page = nPages - 1;
-        if (page < 0) page = 0;
-        const start = size === Infinity ? 0 : page * size;
-        const slice = size === Infinity ? rows : rows.slice(start, start + size);
-        if (!rows.length) {
-          tbody.innerHTML = '<tr><td colspan="8" class="secondary" style="padding:10px 6px;">No pages.</td></tr>';
-          if (pager) pager.hidden = true;
-          return;
-        }
-        if (pager) {
-          if (size === Infinity || rows.length <= size) { pager.hidden = true; }
-          else {
-            pager.hidden = false;
-            rangeEl.textContent = `${start + 1}–${Math.min(start + size, rows.length)} of ${rows.length}`;
-            prevBtn.disabled = page === 0;
-            nextBtn.disabled = page >= nPages - 1;
-          }
-        }
-        tbody.innerHTML = slice.map(r => {
-          const verdict = r.keep === 1 ? '<span style="color:var(--green,#00703c);font-weight:700;">Keep</span>'
-                        : r.keep === 0 ? '<span style="color:var(--red,#d4351c);font-weight:700;">Drop</span>'
-                        : '<span class="secondary">Unscored</span>';
-          const quotes = (r.evidence || "").split(" | ").filter(Boolean)
-                           .map(q => `<li>“${esc(q)}”</li>`).join("");
-          return `<tr>
-            <td><a href="${esc(r.url)}" target="_blank" rel="noopener" style="word-break:break-all;">${esc(r.url)}</a></td>
-            <td>${verdict}</td>
-            <td class="num">${r.score == null ? '<span class="secondary">—</span>' : Number(r.score).toFixed(2)}</td>
-            <td>${esc(r.confidence || "")}</td>
-            <td>${esc(r.primary_topic || "—")}</td>
-            <td>${esc(r.where_hit || "—")}</td>
-            <td>${quotes ? `<ul style="margin:0;padding-left:16px;">${quotes}</ul>` : '<span class="secondary">—</span>'}</td>
-            <td class="secondary">${esc(r.reason || "")}</td>
-          </tr>`;
-        }).join("");
-      }
-      filter.addEventListener("change", () => { page = 0; render(); });
-      if (sizeSel) sizeSel.addEventListener("change", () => { page = 0; render(); });
-      if (prevBtn) prevBtn.addEventListener("click", () => { if (page > 0) { page--; render(); } });
-      if (nextBtn) nextBtn.addEventListener("click", () => { page++; render(); });
-      fetch(`/api/categories/${CID}/runs/${RUN_ID}/results`, { headers: { "Accept": "application/json" } })
-        .then(r => r.json())
-        .then(j => { all = (j && j.rows) || []; render(); })
-        .catch(() => { tbody.innerHTML = '<tr><td colspan="8" class="secondary" style="padding:10px 6px;">Could not load results.</td></tr>'; });
-    })();
     const nameInput = document.getElementById("run-name");
     const status = document.getElementById("name-status");
     async function saveName() {
