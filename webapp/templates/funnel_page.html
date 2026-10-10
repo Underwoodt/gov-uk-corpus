@@ -183,10 +183,15 @@
     }
 
     let sankeyLLM = null;         // {inclKept, inclDropped, exclKept, exclDropped} or null
-    let govukAdd = 0;             // GOV.UK-Search pages added on top of the keyword shortlist (this run)
+    let govukAdd = 0;             // GOV.UK-Search-only pages forwarded on top of the keyword shortlist
+    let govukOnly = null;         // authoritative C count from the ai-input-breakdown API (null until loaded)
     const sankeyCounts = {};
 
     function updateGovukRow() {
+      // Use the same authoritative C ("GOV.UK only") the table shows, so the diagram and the
+      // table never disagree. Fall back to (AI input − keyword shortlist) only before the
+      // breakdown has loaded, when no better figure is available.
+      if (govukOnly != null) { govukAdd = govukOnly; return; }
       const kw = sankeyCounts.keyword;
       const aiInput = sankeyLLM ? (Number(sankeyLLM.inclKept || 0) + Number(sankeyLLM.inclDropped || 0)) : null;
       govukAdd = (kw != null && aiInput != null) ? Math.max(0, aiInput - kw) : 0;
@@ -326,6 +331,8 @@
         document.getElementById("ai-b").textContent = fmtInt(j.shortlister);
         document.getElementById("ai-c").textContent = fmtInt(j.govuk_only);
         document.getElementById("ai-total").textContent = fmtInt(j.total);
+        govukOnly = Number(j.govuk_only) || 0;   // feed the Sankey the same C the table shows
+        drawSankey();
         document.querySelectorAll("#funnel tr.ai-fwd").forEach(tr => { tr.hidden = false; });
         const note = document.getElementById("ai-input-note");
         if (note) {
