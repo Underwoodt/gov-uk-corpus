@@ -5878,8 +5878,13 @@ def settings_page(request: Request, saved: int = 0, user_ok: int = 0, user_error
     return resp
 
 
-def _price_form(form, prefix: str) -> dict:
-    """Pull the six tiered price fields (prefix + field name) out of a form."""
+def _price_form(form, prefix: str, provider: str = "") -> dict:
+    """Pull the six tiered price fields (prefix + field name) out of a form.
+
+    Only DeepSeek publishes distinct peak / off-peak rates; every other supplier
+    (Anthropic, Bedrock, Foundry) is flat. So for a non-DeepSeek provider we mirror
+    each peak tier onto its off-peak value, guarding against the mis-entry that made
+    the editor an easy place to silently skew cost estimates."""
     out = {}
     for f in ai_models.PRICE_FIELDS:
         v = form.get(prefix + f)
@@ -5888,6 +5893,12 @@ def _price_form(form, prefix: str) -> dict:
                 out[f] = float(v)
             except (TypeError, ValueError):
                 pass
+    if provider and provider != "deepseek":
+        for off, peak in (("in_hit_off", "in_hit_peak"),
+                          ("in_miss_off", "in_miss_peak"),
+                          ("out_off", "out_peak")):
+            if off in out:
+                out[peak] = out[off]
     return out
 
 
@@ -5916,7 +5927,7 @@ async def save_settings(request: Request):
         if prov in PROVIDERS and mod:
             try:
                 ai_models.update_model(conn, rid, prov, mod,
-                                       prices=_price_form(form, f"m_{rid}_"))
+                                       prices=_price_form(form, f"m_{rid}_", prov))
             except ValueError:
                 pass
     # Guarded so saving another Settings tab (which doesn't post these) can't reset them.
@@ -5947,7 +5958,7 @@ async def add_model_route(request: Request):
     if provider in PROVIDERS and model_id:
         try:
             ai_models.add_model(conn, provider, model_id,
-                                prices=_price_form(form, "add_"))
+                                prices=_price_form(form, "add_", provider))
         except ValueError:
             pass
     conn.close()

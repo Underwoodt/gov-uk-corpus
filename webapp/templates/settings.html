@@ -27,6 +27,9 @@
         <strong>Inclusion</strong> phase, and its <strong>Exclusion</strong> phase. A phase with no model set
         falls back to the General Queries model. All prices are USD per 1M tokens; the standard rate used for
         cost estimates is <em>input cache-miss off-peak</em> and <em>output off-peak</em>.</p>
+      <p class="hint" style="margin-top:6px;">Only <strong>DeepSeek</strong> charges different peak / off-peak
+        rates. For every other supplier the peak columns follow off-peak automatically — they're locked here and
+        mirrored on save, so a stray peak figure can't skew an estimate.</p>
 
       {% set PF = ['in_hit_off','in_hit_peak','in_miss_off','in_miss_peak','out_off','out_peak'] %}
       <div style="overflow-x:auto;">
@@ -58,7 +61,8 @@
             <td style="text-align:center;"><input type="radio" name="phase_model_exclusion" value="{{ m.id }}" {{ 'checked' if m.is_exclusion }}
               style="width:20px;height:20px;accent-color:var(--blue,#1d70b8);"></td>
             <td>
-              <select name="m_{{ m.id }}_provider" style="font-size:13px;padding:3px;border:2px solid var(--black);">
+              <select name="m_{{ m.id }}_provider" class="price-provider"
+                style="font-size:13px;padding:3px;border:2px solid var(--black);">
                 {% for prov in providers %}<option value="{{ prov }}" {{ 'selected' if m.provider == prov }}>{{ prov }}</option>{% endfor %}
               </select>
             </td>
@@ -67,6 +71,7 @@
             {% for f in PF %}
             <td class="num"><input name="m_{{ m.id }}_{{ f }}" type="number" step="0.01" min="0"
               value="{{ '%.2f'|format(m[f] or 0) }}"
+              {% if f.endswith('_peak') %}class="price-peak" data-off="m_{{ m.id }}_{{ f[:-5] }}_off"{% else %}class="price-off"{% endif %}
               style="width:70px;padding:3px;border:2px solid var(--black);text-align:right;"></td>
             {% endfor %}
             <td>{% if m.has_key %}✅{% else %}<span style="color:#d4351c;">⛔</span>{% endif %}</td>
@@ -325,6 +330,42 @@
         })
         .catch(function (e) { out.style.color = "#d4351c"; out.textContent = "⛔ " + e; })
         .finally(function () { btn.disabled = false; });
+    });
+  });
+
+  // Peak = off-peak for every supplier except DeepSeek. Lock the peak inputs on those
+  // rows and keep them mirrored, so the grid shows exactly what the server will store.
+  function syncPeakRow(sel) {
+    var row = sel.closest("tr");
+    if (!row) return;
+    var flat = sel.value !== "deepseek";
+    row.querySelectorAll(".price-peak").forEach(function (peak) {
+      var off = row.querySelector('[name="' + peak.dataset.off + '"]');
+      if (flat) {
+        if (off) peak.value = off.value;
+        peak.readOnly = true;
+        peak.style.background = "#f3f2f1";
+        peak.style.color = "#6f777b";
+        peak.tabIndex = -1;
+        peak.title = sel.value + " uses one flat rate — peak follows off-peak";
+      } else {
+        peak.readOnly = false;
+        peak.style.background = "";
+        peak.style.color = "";
+        peak.removeAttribute("tabindex");
+        peak.title = "";
+      }
+    });
+  }
+  document.querySelectorAll(".price-provider").forEach(function (sel) {
+    syncPeakRow(sel);
+    sel.addEventListener("change", function () { syncPeakRow(sel); });
+  });
+  document.querySelectorAll(".price-off").forEach(function (off) {
+    off.addEventListener("input", function () {
+      var row = off.closest("tr");
+      var sel = row && row.querySelector(".price-provider");
+      if (sel) syncPeakRow(sel);
     });
   });
   </script>
