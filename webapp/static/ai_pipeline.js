@@ -54,6 +54,17 @@
     const m = STOP_CHIP[r.stop_reason] || { t: r.stop_reason, cls: "stopped-warn" };
     return ` <span class="run-chip ${m.cls}" title="${esc(m.title || ("Stopped early — reason: " + r.stop_reason))}">■ ${esc(m.t)}</span>`;
   }
+  // Did this run NOT finish — stopped early (e.g. page cap or daily budget), never finished a phase,
+  // or kept pages in inclusion but hasn't run the exclusion phase yet — so it can be completed?
+  function chainIncomplete(incl, excl) {
+    const phases = excl ? [incl, excl] : [incl];
+    if (phases.some(p => p.alive)) return false;                     // currently running — not resumable
+    if (phases.some(p => p.run_status === "stopped")) return true;   // stopped early (cap/budget/errors/manual)
+    if (!incl.finished_at) return true;                             // inclusion never finished
+    if ((Number(incl.kept) || 0) > 0 && !excl) return true;        // kept pages but no exclusion phase yet
+    if (excl && !excl.finished_at) return true;                    // exclusion never finished
+    return false;
+  }
   function statusPill(status) {
     const m = { complete: { t: "Complete", bg: "#cce2d8", c: "#005a30" },
                 incomplete: { t: "Incomplete", bg: "#fdf3d8", c: "#7a5b00" },
@@ -104,6 +115,21 @@
     bgUiRunning(true);
     if (!bgTimer) bgTimer = setInterval(pollBg, 10000);   // refresh run progress every 10s while executing
     pollBg();
+  }
+
+  // Finish a run that stopped early or never completed: point the active run at the phase that
+  // still needs work (resume it, or start the pending exclusion), then run it in the background.
+  async function completeRun(runId) {
+    const st = $("eval-status");
+    if (st) st.innerHTML = '<span class="spinner"></span> Resuming…';
+    try {
+      const cont = await (await fetch(`/api/categories/${CID}/runs/${runId}/continue`, { method: "POST" })).json();
+      if (cont.error) { if (st) st.textContent = "Error: " + cont.error; return; }
+      if (cont.done) { if (st) st.textContent = "Nothing to complete — this run already finished."; await loadRuns(); return; }
+      const j = await (await fetch(`/api/categories/${CID}/evaluate-bg/start`, { method: "POST" })).json();
+      if (j.error) { if (st) st.textContent = "Error: " + j.error; return; }
+      beginBgPolling();
+    } catch (e) { if (st) st.textContent = "Could not resume."; }
   }
 
   async function loadActiveSummary() {
@@ -173,7 +199,7 @@
       const chip = phases.some(p => p.alive) ? ' <span class="run-chip running" title="A process is evaluating this run">● running</span>'
                  : phases.some(p => p.stalled) ? ' <span class="run-chip stalled" title="Marked running but no process is working it">⚠ stalled</span>'
                  : stopChip(tail);
-      const phaseNote = excl ? ` <span class="pg-sub">(incl ${fmtInt(incl.pages)} → excl ${fmtInt(excl.pages)})</span>` : '';
+      const canComplete = !j.any_running && chainIncomplete(incl, excl);
       const tr = document.createElement("tr");
       if (isActive) tr.style.fontWeight = "700";
       tr.innerHTML =
@@ -183,13 +209,17 @@
         `<td><a class="name-link" href="/categories/${CID}/runs/${incl.run_id}" title="Open run details">${esc(incl.name || incl.run_id)}</a>${chip}</td>` +
         `<td>${fmtDate(incl.started_at)}</td>` +
         `<td class="num timing">${chainWall(phases)}</td>` +
-        `<td class="num">${fmtInt(incl.pages)}${phaseNote}</td>` +
+        `<td class="num">${fmtInt(incl.pages)}</td>` +
         `<td class="num">${fmtInt((excl || incl).kept)}</td>` +
         `<td class="num">${fmtInt(sumF(phases, "dropped"))}</td>` +
         `<td class="num">${fmtInt(sumF(phases, "in_tokens"))}</td>` +
         `<td class="num">${fmtInt(sumF(phases, "out_tokens"))}</td>` +
         `<td class="num">$${sumF(phases, "cost").toFixed(2)}</td>` +
-        `<td><a href="/categories/${CID}/download?run=${encodeURIComponent(incl.run_id)}&stage=final" title="Download THIS run's final shortlist on the download page (pick columns/format there)">Download</a>` +
+        `<td>` +
+        (canComplete
+          ? `<a href="#" class="complete-run" data-run="${tail.run_id}" title="Finish this run — resume the phase that stopped early (e.g. page cap or daily budget) or start the pending exclusion phase. Uses API credit." style="font-weight:700;margin-right:14px;">Complete</a>`
+          : "") +
+        `<a href="/categories/${CID}/download?run=${encodeURIComponent(incl.run_id)}&stage=final" title="Download THIS run's final shortlist on the download page (pick columns/format there)">Download</a>` +
         `<a href="#" class="del-run" data-runs="${phases.map(p => p.run_id).join(",")}" data-pages="${sumF(phases, "pages")}" style="color:#d4351c;margin-left:14px;">Delete</a></td>`;
       tbody.appendChild(tr);
     }
@@ -198,6 +228,8 @@
 
     table.querySelectorAll("a.del-run").forEach(a =>
       a.addEventListener("click", e => { e.preventDefault(); deleteRun(a.dataset.runs, a.dataset.pages); }));
+    table.querySelectorAll("a.complete-run").forEach(a =>
+      a.addEventListener("click", e => { e.preventDefault(); completeRun(a.dataset.run); }));
     const lockRadios = !!($("stop-bg") && !$("stop-bg").hidden);
     table.querySelectorAll("input.active-run").forEach(radio => {
       radio.disabled = lockRadios;
